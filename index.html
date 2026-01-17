@@ -1,14 +1,13 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script src="https://quge5.com/88/tag.min.js" data-zone="202824" async data-cfasync="false"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NeuroQuant | Professional IQ Test</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <meta name="monetag" content="17e9c0e4400fb2ee0e4c8c17af5b1501">
     <style>
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
@@ -60,14 +59,25 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
-    <meta name="monetag" content="17e9c0e4400fb2ee0e4c8c17af5b1501">
 </head>
-    
 <body>
     <div class="bg-blob bg-indigo-600 top-[-100px] left-[-100px]"></div>
     <div class="bg-blob bg-violet-600 bottom-[-100px] right-[-100px]" style="animation-delay: -5s;"></div>
     <div id="root"></div>
-<script type="module" src="/index.tsx"></script>
+
+    <!-- Service Worker Registration for Monetag -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('sw.js')
+            .then(function(registration) {
+              console.log('SW registered with scope: ', registration.scope);
+            })
+            .catch(function(err) {
+              console.warn('Service Worker registration skipped or failed:', err.message);
+            });
+        });
+      }
+    </script>
 </body>
 </html>
