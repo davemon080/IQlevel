@@ -65,6 +65,19 @@
     <div class="bg-blob bg-indigo-600 top-[-100px] left-[-100px]"></div>
     <div class="bg-blob bg-violet-600 bottom-[-100px] right-[-100px]" style="animation-delay: -5s;"></div>
     <div id="root"></div>
+
+    <!-- Service Worker Registration for Monetag -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js').then(function(registration) {
+            console.log('SW registered with scope: ', registration.scope);
+          }, function(err) {
+            console.error('SW registration failed: ', err);
+          });
+        });
+      }
+    </script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
