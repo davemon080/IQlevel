@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AppState, Question, UserAnswer, IQResult } from './types';
 import { LOCAL_QUESTIONS } from './data/questions';
@@ -24,33 +25,6 @@ const App: React.FC = () => {
   const [result, setResult] = useState<IQResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sharedMeta, setSharedMeta] = useState<{ correctCount: number; totalCount: number } | null>(null);
-
-  // Manage Ad Script visibility based on application state
-  useEffect(() => {
-    const isAdPage = state === 'landing' || state === 'results';
-    const AD_SCRIPT_URL = 'https://quge5.com/88/tag.min.js';
-    const SCRIPT_ID = 'monetag-ad-script';
-
-    if (isAdPage) {
-      if (!document.getElementById(SCRIPT_ID)) {
-        const script = document.createElement('script');
-        script.id = SCRIPT_ID;
-        script.src = AD_SCRIPT_URL;
-        script.setAttribute('data-zone', '202824');
-        script.async = true;
-        script.setAttribute('data-cfasync', 'false');
-        document.head.appendChild(script);
-      }
-    } else {
-      const existingScript = document.getElementById(SCRIPT_ID);
-      if (existingScript) {
-        existingScript.remove();
-        // Best effort cleanup of any global elements created by the script
-        const generatedElements = document.querySelectorAll('iframe[src*="monetag"], div[class*="monetag"]');
-        generatedElements.forEach(el => el.remove());
-      }
-    }
-  }, [state]);
 
   // Check for shared result on load
   useEffect(() => {
