@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Question, UserAnswer } from '../types';
 
@@ -15,7 +14,13 @@ const Quiz: React.FC<QuizProps> = ({ questions, onComplete }) => {
   
   const currentQuestion = questions[currentIndex];
 
-  const handleOptionClick = (idx: number) => {
+  const handleOptionClick = (idx: number, e: React.MouseEvent) => {
+    // Stop propagation to prevent ad scripts on the document/window from seeing this click
+    e.stopPropagation();
+    e.nativeEvent.stopImmediatePropagation();
+    
+    if (selectedOption !== null) return;
+    
     setSelectedOption(idx);
     
     setTimeout(() => {
@@ -45,7 +50,17 @@ const Quiz: React.FC<QuizProps> = ({ questions, onComplete }) => {
   const progress = ((currentIndex + 1) / questions.length) * 100;
 
   return (
-    <div className="max-w-xl w-full space-y-8 animate-in fade-in zoom-in duration-300">
+    /* 
+       The click handler here prevents any clicks within the quiz from bubbling 
+       up to the document level where the ad script is listening. 
+    */
+    <div 
+      className="max-w-xl w-full space-y-8 animate-in fade-in zoom-in duration-300"
+      onClick={(e) => {
+        e.stopPropagation();
+        e.nativeEvent.stopImmediatePropagation();
+      }}
+    >
       <div className="flex flex-col space-y-4">
         <div className="flex items-center justify-between">
             <span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">
@@ -73,7 +88,7 @@ const Quiz: React.FC<QuizProps> = ({ questions, onComplete }) => {
             <button
               key={idx}
               disabled={selectedOption !== null}
-              onClick={() => handleOptionClick(idx)}
+              onClick={(e) => handleOptionClick(idx, e)}
               className={`w-full py-5 px-8 text-center rounded-2xl border-2 transition-all duration-200 relative overflow-hidden ${
                 selectedOption === idx 
                   ? 'border-indigo-500 bg-indigo-500/10 text-white' 

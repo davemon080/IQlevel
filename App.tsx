@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AppState, Question, UserAnswer, IQResult } from './types';
 import { LOCAL_QUESTIONS } from './data/questions';
@@ -26,13 +25,27 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [sharedMeta, setSharedMeta] = useState<{ correctCount: number; totalCount: number } | null>(null);
 
+  // Toggle quiz-mode class on body to activate the CSS-based ad shield
+  useEffect(() => {
+    const isQuizActive = state === 'quiz' || state === 'loading_questions' || state === 'analyzing';
+    
+    if (isQuizActive) {
+      document.body.classList.add('quiz-mode');
+    } else {
+      document.body.classList.remove('quiz-mode');
+    }
+
+    return () => {
+      document.body.classList.remove('quiz-mode');
+    };
+  }, [state]);
+
   // Check for shared result on load
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sharedData = params.get('share');
     if (sharedData) {
       try {
-        // Base64 decode with Unicode support
         const jsonStr = decodeURIComponent(atob(sharedData).split('').map(function(c) {
             return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
         }).join(''));
@@ -46,7 +59,6 @@ const App: React.FC = () => {
         setState('results');
       } catch (e) {
         console.error("Invalid share link", e);
-        // Clear invalid params
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
@@ -56,7 +68,6 @@ const App: React.FC = () => {
     setState('loading_questions');
     setError(null);
     
-    // Clear URL if starting fresh
     if (window.location.search) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -87,7 +98,6 @@ const App: React.FC = () => {
     setAnswers([]);
     setResult(null);
     setSharedMeta(null);
-    // Clear URL on reset
     if (window.location.search) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
