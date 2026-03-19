@@ -1,0 +1,230 @@
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import type { User } from '@supabase/supabase-js';
+import { supabase } from './supabase';
+import { supabaseService } from './services/supabaseService';
+import { UserProfile } from './types';
+import { Mail, Lock, User as UserIcon, LogIn, UserPlus, Link2 } from 'lucide-react';
+
+// Components
+import Layout from './components/Layout';
+import Onboarding from './components/Onboarding';
+import Feed from './components/Feed';
+import JobBoard from './components/JobBoard';
+import Profile from './components/Profile';
+import Network from './components/Network';
+import Chat from './components/Chat';
+import Settings from './components/Settings';
+import FriendRequests from './components/FriendRequests';
+import ManageGigs from './components/ManageGigs';
+
+export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    const loadProfile = async (sessionUser: User | null) => {
+      if (!active) return;
+      setUser(sessionUser);
+      if (sessionUser) {
+        try {
+          const userProfile = await supabaseService.getUserProfile(sessionUser.id);
+          setProfile(userProfile);
+        } catch (err) {
+          console.error('Error fetching profile:', err);
+        }
+      } else {
+        setProfile(null);
+      }
+      setLoading(false);
+    };
+
+    supabase.auth.getSession().then(({ data }) => {
+      loadProfile(data.session?.user ?? null);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      loadProfile(session?.user ?? null);
+    });
+
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleGoogleLogin = async () => {
+    try {
+      setError('');
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) {
+        setError(error.message);
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      setError(error.message || 'Login failed. Please try again.');
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    try {
+      if (authMode === 'register') {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: displayName,
+            },
+          },
+        });
+        if (error) throw error;
+        if (!data.session) {
+          setError('Check your email to confirm your account before signing in.');
+        }
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+    } catch (error: any) {
+      console.error('Auth error:', error);
+      setError(error.message);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center gap-2 text-teal-700 mb-2">
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-teal-600 text-white">
+                <Link2 size={18} />
+              </span>
+              <h1 className="text-3xl font-bold">Connect</h1>
+            </div>
+            <p className="text-gray-600">The professional network for students and freelancers.</p>
+          </div>
+
+          <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
+            {authMode === 'register' && (
+              <div className="relative">
+                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input
+                  type="text"
+                  placeholder="Full Name"
+                  required
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
+                />
+              </div>
+            )}
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="email"
+                placeholder="Email Address"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
+              />
+            </div>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="password"
+                placeholder="Password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
+              />
+            </div>
+
+            {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
+
+            <button
+              type="submit"
+              className="w-full bg-teal-700 text-white font-bold py-3 px-4 rounded-xl hover:bg-teal-800 transition-all flex items-center justify-center gap-2"
+            >
+              {authMode === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />}
+              {authMode === 'login' ? 'Sign In' : 'Create Account'}
+            </button>
+          </form>
+
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
+            <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-gray-500">Or continue with</span></div>
+          </div>
+
+          <button
+            onClick={handleGoogleLogin}
+            className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors shadow-sm mb-6"
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+            Google
+          </button>
+
+          <p className="text-center text-sm text-gray-600">
+            {authMode === 'login' ? "Don't have an account?" : "Already have an account?"}{' '}
+            <button
+              onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+              className="text-teal-700 font-bold hover:underline"
+            >
+              {authMode === 'login' ? 'Register' : 'Sign In'}
+            </button>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return <Onboarding user={user} onComplete={setProfile} />;
+  }
+
+  return (
+    <Router>
+      <Layout user={user} profile={profile} onLogout={handleLogout}>
+        <Routes>
+          <Route path="/" element={<Feed profile={profile} />} />
+          <Route path="/jobs" element={<JobBoard profile={profile} />} />
+          <Route path="/network" element={<Network profile={profile} />} />
+          <Route path="/requests" element={<FriendRequests profile={profile} />} />
+          <Route path="/manage-gigs" element={<ManageGigs profile={profile} />} />
+          <Route path="/profile/:uid" element={<Profile profile={profile} />} />
+          <Route path="/messages" element={<Chat profile={profile} />} />
+          <Route path="/settings" element={<Settings profile={profile} onLogout={handleLogout} onProfileUpdate={setProfile} />} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </Layout>
+    </Router>
+  );
+}
