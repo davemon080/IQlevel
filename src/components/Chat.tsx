@@ -102,9 +102,18 @@ export default function Chat({ profile }: ChatProps) {
     // Subscribe to active chats
     const unsubscribe = supabaseService.subscribeToActiveChats(
       profile.uid, 
-      (chats) => {
+      async (chats) => {
         clearTimeout(timeout);
-        setActiveChats(chats);
+        if (chats.length === 0) {
+          try {
+            const recent = await supabaseService.getRecentConversations(profile.uid);
+            setActiveChats(recent);
+          } catch (e) {
+            setActiveChats([]);
+          }
+        } else {
+          setActiveChats(chats);
+        }
         setLoading(false);
         setError(null);
       },

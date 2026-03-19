@@ -17,6 +17,7 @@ import Chat from './components/Chat';
 import Settings from './components/Settings';
 import FriendRequests from './components/FriendRequests';
 import ManageGigs from './components/ManageGigs';
+import Wallets from './components/Wallets';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -221,6 +222,7 @@ export default function App() {
           <Route path="/manage-gigs" element={<ManageGigs profile={profile} />} />
           <Route path="/profile/:uid" element={<Profile profile={profile} />} />
           <Route path="/messages" element={<Chat profile={profile} />} />
+          <Route path="/wallets" element={<Wallets profile={profile} />} />
           <Route path="/settings" element={<Settings profile={profile} onLogout={handleLogout} onProfileUpdate={setProfile} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

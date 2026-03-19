@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency } from '../types';
 
 type DbUserProfile = {
   uid: string;
@@ -77,6 +77,27 @@ type DbConnection = {
   id: string;
   uids: string[];
   created_at: string;
+};
+
+type DbWallet = {
+  id: string;
+  user_uid: string;
+  usd_balance: number;
+  ngn_balance: number;
+  eur_balance: number;
+  updated_at: string;
+};
+
+type DbWalletTransaction = {
+  id: string;
+  user_uid: string;
+  currency: WalletCurrency;
+  type: 'topup' | 'withdraw';
+  method: 'card' | 'transfer';
+  amount: number;
+  status: 'completed' | 'pending' | 'failed';
+  created_at: string;
+  reference?: string | null;
 };
 
 function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
@@ -187,6 +208,31 @@ function mapConnectionFromDb(row: DbConnection): Connection {
     id: row.id,
     uids: row.uids,
     createdAt: row.created_at,
+  };
+}
+
+function mapWalletFromDb(row: DbWallet): Wallet {
+  return {
+    id: row.id,
+    userUid: row.user_uid,
+    usdBalance: row.usd_balance,
+    ngnBalance: row.ngn_balance,
+    eurBalance: row.eur_balance,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapWalletTransactionFromDb(row: DbWalletTransaction): WalletTransaction {
+  return {
+    id: row.id,
+    userUid: row.user_uid,
+    currency: row.currency,
+    type: row.type,
+    method: row.method,
+    amount: row.amount,
+    status: row.status,
+    createdAt: row.created_at,
+    reference: row.reference || undefined,
   };
 }
 
@@ -488,6 +534,52 @@ export const supabaseService = {
     return subscribeToTable('active_chats', fetcher, callback, `user_uid=eq.${uid}`, onError);
   },
 
+  async getRecentConversations(uid: string) {
+    const rows = await runQuery<DbMessage[]>(
+      supabase
+        .from('messages')
+        .select('*')
+        .or(`sender_uid.eq.${uid},receiver_uid.eq.${uid}`)
+        .order('created_at', { ascending: false })
+        .limit(200),
+      'getRecentConversations'
+    );
+
+    const convoMap = new Map<string, { lastMessage: string; updatedAt: string }>();
+    rows.forEach((msg) => {
+      const otherUid = msg.sender_uid === uid ? msg.receiver_uid : msg.sender_uid;
+      if (!convoMap.has(otherUid)) {
+        convoMap.set(otherUid, {
+          lastMessage: msg.content || (msg.attachments && msg.attachments.length > 0 ? 'Attachment' : ''),
+          updatedAt: msg.created_at,
+        });
+      }
+    });
+
+    const otherUids = Array.from(convoMap.keys());
+    if (otherUids.length === 0) return [];
+
+    const profiles = await runQuery<DbUserProfile[]>(
+      supabase.from('users').select('*').in('uid', otherUids),
+      'getRecentConversations:profiles'
+    );
+    const profileMap = new Map(profiles.map((p) => [p.uid, mapUserProfileFromDb(p)]));
+
+    return otherUids
+      .map((otherUid) => {
+        const user = profileMap.get(otherUid);
+        if (!user) return null;
+        const convo = convoMap.get(otherUid)!;
+        return {
+          otherUid,
+          user,
+          lastMessage: convo.lastMessage,
+          updatedAt: convo.updatedAt,
+        };
+      })
+      .filter((c): c is any => c !== null);
+  },
+
   // Friend Requests
   subscribeToIncomingFriendRequests(uid: string, callback: (requests: FriendRequest[]) => void) {
     const fetcher = async () => {
@@ -607,6 +699,111 @@ export const supabaseService = {
       'getFriends:users'
     );
     return rows.map(mapUserProfileFromDb);
+  },
+
+  // Wallets
+  async getOrCreateWallet(uid: string): Promise<Wallet> {
+    const existing = await runQuery<DbWallet | null>(
+      supabase.from('wallets').select('*').eq('user_uid', uid).maybeSingle(),
+      'getOrCreateWallet'
+    );
+
+    if (existing) return mapWalletFromDb(existing);
+
+    const created = await runQuery<DbWallet>(
+      supabase
+        .from('wallets')
+        .insert({
+          user_uid: uid,
+          usd_balance: 0,
+          ngn_balance: 0,
+          eur_balance: 0,
+          updated_at: new Date().toISOString(),
+        })
+        .select('*')
+        .single(),
+      'createWallet'
+    );
+
+    return mapWalletFromDb(created);
+  },
+
+  async listWalletTransactions(uid: string): Promise<WalletTransaction[]> {
+    const rows = await runQuery<DbWalletTransaction[]>(
+      supabase
+        .from('wallet_transactions')
+        .select('*')
+        .eq('user_uid', uid)
+        .order('created_at', { ascending: false })
+        .limit(100),
+      'listWalletTransactions'
+    );
+    return rows.map(mapWalletTransactionFromDb);
+  },
+
+  async topUpWallet(uid: string, currency: WalletCurrency, amount: number, method: 'card' | 'transfer') {
+    const wallet = await this.getOrCreateWallet(uid);
+    const nextBalances = {
+      usd_balance: wallet.usdBalance + (currency === 'USD' ? amount : 0),
+      ngn_balance: wallet.ngnBalance + (currency === 'NGN' ? amount : 0),
+      eur_balance: wallet.eurBalance + (currency === 'EUR' ? amount : 0),
+    };
+
+    await runQuery(
+      supabase
+        .from('wallets')
+        .update({ ...nextBalances, updated_at: new Date().toISOString() })
+        .eq('user_uid', uid),
+      'topUpWallet:update'
+    );
+
+    await runQuery(
+      supabase.from('wallet_transactions').insert({
+        user_uid: uid,
+        currency,
+        type: 'topup',
+        method,
+        amount,
+        status: 'completed',
+        created_at: new Date().toISOString(),
+      }),
+      'topUpWallet:transaction'
+    );
+  },
+
+  async withdrawFromWallet(uid: string, currency: WalletCurrency, amount: number, method: 'card' | 'transfer') {
+    const wallet = await this.getOrCreateWallet(uid);
+    const current = currency === 'USD' ? wallet.usdBalance : currency === 'NGN' ? wallet.ngnBalance : wallet.eurBalance;
+    if (amount > current) {
+      throw new Error('Insufficient balance.');
+    }
+
+    const nextBalances = {
+      usd_balance: wallet.usdBalance - (currency === 'USD' ? amount : 0),
+      ngn_balance: wallet.ngnBalance - (currency === 'NGN' ? amount : 0),
+      eur_balance: wallet.eurBalance - (currency === 'EUR' ? amount : 0),
+    };
+
+    await runQuery(
+      supabase
+        .from('wallets')
+        .update({ ...nextBalances, updated_at: new Date().toISOString() })
+        .eq('user_uid', uid),
+      'withdrawWallet:update'
+    );
+
+    await runQuery(
+      supabase.from('wallet_transactions').insert({
+        user_uid: uid,
+        currency,
+        type: 'withdraw',
+        method,
+        amount,
+        status: 'completed',
+        created_at: new Date().toISOString(),
+      }),
+      'withdrawWallet:transaction'
+    );
   },
 
   // Client Job Management

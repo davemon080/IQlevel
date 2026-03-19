@@ -106,3 +106,26 @@ export interface Connection {
   uids: string[];
   createdAt: string;
 }
+
+export type WalletCurrency = 'USD' | 'NGN' | 'EUR';
+
+export interface Wallet {
+  id: string;
+  userUid: string;
+  usdBalance: number;
+  ngnBalance: number;
+  eurBalance: number;
+  updatedAt: string;
+}
+
+export interface WalletTransaction {
+  id: string;
+  userUid: string;
+  currency: WalletCurrency;
+  type: 'topup' | 'withdraw';
+  method: 'card' | 'transfer';
+  amount: number;
+  status: 'completed' | 'pending' | 'failed';
+  createdAt: string;
+  reference?: string;
+}

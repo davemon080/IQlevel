@@ -15,7 +15,8 @@ import {
   AlertCircle,
   Globe,
   Moon,
-  Smartphone
+  Smartphone,
+  Wallet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -168,6 +169,14 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
                   onClick={() => setActiveSection('notifications')}
                   color="text-blue-600"
                 />
+                <Link to="/wallets">
+                  <SettingItem 
+                    icon={Wallet} 
+                    label="Wallets" 
+                    sublabel="Balances, top-ups, withdrawals"
+                    color="text-emerald-600"
+                  />
+                </Link>
               </div>
 
               <div className="py-2 border-t border-gray-100">
