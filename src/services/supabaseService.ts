@@ -291,30 +291,29 @@ function subscribeToTable<T>(
   onError?: (error: any) => void
 ) {
   let active = true;
-  fetcher()
-    .then((data) => {
-      if (active) callback(data);
-    })
-    .catch((error) => {
-      console.error(`Supabase fetch error (${table}):`, error);
-      if (onError) onError(error);
-    });
+  let fetchVersion = 0;
+
+  const refresh = () => {
+    const currentVersion = ++fetchVersion;
+    fetcher()
+      .then((data) => {
+        // Prevent stale fetch responses from overwriting newer state.
+        if (active && currentVersion === fetchVersion) callback(data);
+      })
+      .catch((error) => {
+        console.error(`Supabase fetch error (${table}):`, error);
+        if (onError) onError(error);
+      });
+  };
+
+  refresh();
 
   const channel = supabase
     .channel(`realtime:${table}:${Math.random().toString(36).slice(2)}`)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table, filter },
-      () => {
-        fetcher()
-          .then((data) => {
-            if (active) callback(data);
-          })
-          .catch((error) => {
-            console.error(`Supabase realtime error (${table}):`, error);
-            if (onError) onError(error);
-          });
-      }
+      refresh
     )
     .subscribe();
 
@@ -460,27 +459,40 @@ export const supabaseService = {
   },
 
   async setPostLike(postId: string, userUid: string, shouldLike: boolean): Promise<void> {
-    if (shouldLike) {
+    const existingRows = await runQuery<Pick<DbPostLike, 'id'>[]>(
+      supabase.from('post_likes').select('id').eq('post_id', postId).eq('user_uid', userUid),
+      'setPostLike:existing'
+    );
+
+    if (!shouldLike) {
+      if (existingRows.length === 0) return;
+      const existingIds = existingRows.map((row) => row.id);
       await runQuery(
-        supabase.from('post_likes').upsert(
-          {
-            post_id: postId,
-            user_uid: userUid,
-            created_at: new Date().toISOString(),
-          },
-          {
-            onConflict: 'post_id,user_uid',
-          }
-        ),
-        'setPostLike:create'
+        supabase.from('post_likes').delete().in('id', existingIds),
+        'setPostLike:delete'
       );
       return;
     }
 
-    await runQuery(
-      supabase.from('post_likes').delete().eq('post_id', postId).eq('user_uid', userUid),
-      'setPostLike:delete'
-    );
+    if (existingRows.length === 0) {
+      await runQuery(
+        supabase.from('post_likes').insert({
+          post_id: postId,
+          user_uid: userUid,
+          created_at: new Date().toISOString(),
+        }),
+        'setPostLike:insert'
+      );
+      return;
+    }
+
+    if (existingRows.length > 1) {
+      const duplicateIds = existingRows.slice(1).map((row) => row.id);
+      await runQuery(
+        supabase.from('post_likes').delete().in('id', duplicateIds),
+        'setPostLike:dedupe'
+      );
+    }
   },
 
   async listPostComments(postId: string): Promise<PostComment[]> {

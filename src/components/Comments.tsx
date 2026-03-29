@@ -32,8 +32,18 @@ export default function Comments({ profile }: CommentsProps) {
       });
 
     const unsubscribe = supabaseService.subscribeToPostComments(postId, setComments);
+    const interval = setInterval(async () => {
+      try {
+        const freshComments = await supabaseService.listPostComments(postId);
+        setComments(freshComments);
+      } catch {
+        // Keep last known comments if polling fails.
+      }
+    }, 7000);
+
     return () => {
       active = false;
+      clearInterval(interval);
       unsubscribe();
     };
   }, [postId]);

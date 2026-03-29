@@ -51,6 +51,23 @@ export default function Feed({ profile }: FeedProps) {
     };
   }, []);
 
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const [freshLikes, freshComments] = await Promise.all([
+          supabaseService.listPostLikes(),
+          supabaseService.listAllPostComments(),
+        ]);
+        setLikes(freshLikes);
+        setComments(freshComments);
+      } catch {
+        // Keep last known state if polling fails.
+      }
+    }, 7000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPostContent.trim() && !postImageFile) return;
@@ -107,13 +124,28 @@ export default function Feed({ profile }: FeedProps) {
     if (postId.startsWith('temp-')) return;
     if (likingPostIds.includes(postId)) return;
     const shouldLike = !likedPostIds.has(postId);
+    const previousLikes = likes;
     setLikingPostIds((prev) => [...prev, postId]);
+    setLikes((prev) => {
+      const filtered = prev.filter((item) => !(item.postId === postId && item.userUid === profile.uid));
+      if (!shouldLike) return filtered;
+      return [
+        ...filtered,
+        {
+          id: `temp-like-${postId}-${profile.uid}`,
+          postId,
+          userUid: profile.uid,
+          createdAt: new Date().toISOString(),
+        },
+      ];
+    });
+
     try {
       await supabaseService.setPostLike(postId, profile.uid, shouldLike);
       const refreshed = await supabaseService.listPostLikes();
       setLikes(refreshed);
     } catch {
-      // Keep previous stable state if request fails.
+      setLikes(previousLikes);
     } finally {
       setLikingPostIds((prev) => prev.filter((id) => id !== postId));
     }
