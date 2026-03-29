@@ -14,6 +14,7 @@ type DbUserProfile = {
   phone_number?: string | null;
   status?: string | null;
   location?: string | null;
+  date_of_birth?: string | null;
   skills?: string[] | null;
   education?: UserProfile['education'] | null;
   experience?: UserProfile['experience'] | null;
@@ -171,6 +172,7 @@ function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
     phoneNumber: row.phone_number || undefined,
     status: row.status || undefined,
     location: row.location || undefined,
+    dateOfBirth: row.date_of_birth || undefined,
     skills: row.skills || undefined,
     education: row.education || undefined,
     experience: row.experience || undefined,
@@ -193,6 +195,7 @@ function mapUserProfileToDb(data: Partial<UserProfile>): Partial<DbUserProfile> 
     phone_number: data.phoneNumber ?? null,
     status: data.status ?? null,
     location: data.location ?? null,
+    date_of_birth: data.dateOfBirth ?? null,
     skills: data.skills ?? null,
     education: data.education ?? null,
     experience: data.experience ?? null,
@@ -548,10 +551,25 @@ export const supabaseService = {
 
   async updateUserProfile(uid: string, data: Partial<UserProfile>): Promise<void> {
     const payload = mapUserProfileToDb(data);
-    await runQuery(
-      supabase.from('users').update(payload).eq('uid', uid),
-      'updateUserProfile'
-    );
+    try {
+      await runQuery(
+        supabase.from('users').update(payload).eq('uid', uid),
+        'updateUserProfile'
+      );
+    } catch (error: any) {
+      const message = String(error?.message || '').toLowerCase();
+      if ('date_of_birth' in payload && (message.includes('date_of_birth') || message.includes('column'))) {
+        // Backward compatibility for databases that have not added users.date_of_birth yet.
+        const fallbackPayload = { ...payload };
+        delete fallbackPayload.date_of_birth;
+        await runQuery(
+          supabase.from('users').update(fallbackPayload).eq('uid', uid),
+          'updateUserProfile:fallbackWithoutDateOfBirth'
+        );
+      } else {
+        throw error;
+      }
+    }
     const prev = this.profileCache.get(uid);
     if (prev) this.profileCache.set(uid, { ...prev, ...data });
   },

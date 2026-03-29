@@ -20,6 +20,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
   const [tab, setTab] = useState<'about' | 'portfolio' | 'activity'>('about');
   const [saving, setSaving] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
 
   const isOwnProfile = uid === loggedInProfile.uid;
 
@@ -249,19 +250,28 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
           </div>
 
           {tab === 'about' && (
-            <div className="mt-6 space-y-6">
-              <EditableField label="Display Name" value={editing ? draft.displayName : userProfile.displayName} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, displayName: v }))} />
-              <EditableField label="Bio" value={editing ? draft.bio : userProfile.bio} textarea editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, bio: v }))} />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <EditableField label="Public User ID" value={editing ? draft.publicId : userProfile.publicId || userProfile.uid} editing={false} onChange={() => undefined} />
-                <EditableField label="Phone Number" value={editing ? draft.phoneNumber : userProfile.phoneNumber} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, phoneNumber: v }))} />
-                <EditableField label="Location" value={editing ? draft.location : userProfile.location} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, location: v }))} />
-                <EditableField label="Status" value={editing ? draft.status : userProfile.status} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, status: v }))} />
-              </div>
+            <div className="mt-6 space-y-7">
+              <section className="space-y-4">
+                <p className="text-sm font-bold text-gray-900">Personal Details</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <EditableField label="Display Name" value={editing ? draft.displayName : userProfile.displayName} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, displayName: v }))} />
+                  <EditableField label="Public User ID" value={editing ? draft.publicId : userProfile.publicId || userProfile.uid} editing={false} onChange={() => undefined} />
+                  <EditableField label="Phone Number" value={editing ? draft.phoneNumber : userProfile.phoneNumber} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, phoneNumber: v }))} />
+                  <EditableField label="Status" value={editing ? draft.status : userProfile.status} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, status: v }))} />
+                </div>
+              </section>
+
+              <section className="space-y-4">
+                <p className="text-sm font-bold text-gray-900">Location & Date Of Birth</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <EditableField label="Location" value={editing ? draft.location : userProfile.location} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, location: v }))} />
+                  <EditableField label="Date Of Birth" value={editing ? draft.dateOfBirth : userProfile.dateOfBirth} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, dateOfBirth: v }))} inputType="date" />
+                </div>
+              </section>
 
               <section>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-bold text-gray-900">Skills</p>
+                  <p className="text-sm font-bold text-gray-900">Skill</p>
                   {editing && (
                     <button onClick={handleAddSkill} className="px-2 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200">
                       <Plus size={12} />
@@ -279,60 +289,89 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                       )}
                     </span>
                   ))}
-                </div>
-              </section>
-
-              <section className="space-y-3">
-                <p className="text-sm font-bold text-gray-900">Education</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <EditableField label="University" value={editing ? draft.education?.university : userProfile.education?.university} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, education: { ...(prev.education || { university: '', degree: '', verified: false }), university: v } }))} />
-                  <EditableField label="Degree" value={editing ? draft.education?.degree : userProfile.education?.degree} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, education: { ...(prev.education || { university: '', degree: '', verified: false }), degree: v } }))} />
-                  <EditableField label="Year" value={editing ? draft.education?.year : userProfile.education?.year} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, education: { ...(prev.education || { university: '', degree: '', verified: false }), year: v } }))} />
-                </div>
-              </section>
-
-              <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-bold text-gray-900">Experience</p>
-                  {editing && (
-                    <button onClick={addExperience} className="px-2 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1">
-                      <Plus size={12} />
-                      Add
-                    </button>
+                  {(!(editing ? draft.skills : userProfile.skills) || (editing ? draft.skills : userProfile.skills || []).length === 0) && (
+                    <p className="text-sm text-gray-500">No skills added yet.</p>
                   )}
                 </div>
-                {(editing ? draft.experience : userProfile.experience || []).map((exp, index) => (
-                  <div key={index} className="p-3 rounded-xl border border-gray-100 space-y-2">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      <EditableField label="Title" value={exp.title} editing={editing} onChange={(v) => updateExperience(index, 'title', v)} />
-                      <EditableField label="Company" value={exp.company} editing={editing} onChange={(v) => updateExperience(index, 'company', v)} />
-                      <EditableField label="Type" value={exp.type} editing={editing} onChange={(v) => updateExperience(index, 'type', v)} />
-                      <EditableField label="Period" value={exp.period} editing={editing} onChange={(v) => updateExperience(index, 'period', v)} />
-                    </div>
-                    <EditableField label="Description" value={exp.description} editing={editing} textarea onChange={(v) => updateExperience(index, 'description', v)} />
-                    {editing && (
-                      <button onClick={() => removeExperience(index)} className="text-xs text-red-600 font-semibold">Remove</button>
-                    )}
+              </section>
+
+              <section className="space-y-3">
+                <p className="text-sm font-bold text-gray-900">All Posts</p>
+                {posts.length === 0 && <p className="text-sm text-gray-500">No posts yet.</p>}
+                {posts.map((post) => (
+                  <div key={post.id} className="p-4 border border-gray-100 rounded-2xl">
+                    <p className="text-xs text-gray-400 mb-2">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{post.content}</p>
+                    {post.imageUrl && <img src={post.imageUrl} alt="post" className="w-full mt-3 rounded-xl" />}
                   </div>
                 ))}
               </section>
 
-              <section className="space-y-3">
-                <p className="text-sm font-bold text-gray-900">Social Links</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <EditableField label="LinkedIn" value={editing ? draft.socialLinks?.linkedin : userProfile.socialLinks?.linkedin} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), linkedin: v } }))} />
-                  <EditableField label="GitHub" value={editing ? draft.socialLinks?.github : userProfile.socialLinks?.github} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), github: v } }))} />
-                  <EditableField label="Twitter" value={editing ? draft.socialLinks?.twitter : userProfile.socialLinks?.twitter} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), twitter: v } }))} />
-                  <EditableField label="Website" value={editing ? draft.socialLinks?.website : userProfile.socialLinks?.website} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), website: v } }))} />
-                </div>
-              </section>
+              <section className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => setShowMoreDetails((prev) => !prev)}
+                  className="text-sm font-semibold text-teal-700 hover:text-teal-800"
+                >
+                  {showMoreDetails ? 'Hide details' : 'See more details'}
+                </button>
 
-              <section className="space-y-3">
-                <p className="text-sm font-bold text-gray-900">Company Info</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <EditableField label="Company Name" value={editing ? draft.companyInfo?.name : userProfile.companyInfo?.name} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, companyInfo: { ...(prev.companyInfo || { name: '', about: '' }), name: v } }))} />
-                  <EditableField label="About Company" value={editing ? draft.companyInfo?.about : userProfile.companyInfo?.about} editing={editing} textarea onChange={(v) => setDraft((prev) => ({ ...prev, companyInfo: { ...(prev.companyInfo || { name: '', about: '' }), about: v } }))} />
-                </div>
+                {showMoreDetails && (
+                  <div className="space-y-6">
+                    <section className="space-y-3">
+                      <p className="text-sm font-bold text-gray-900">Experience</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">Work history</span>
+                        {editing && (
+                          <button onClick={addExperience} className="px-2 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1">
+                            <Plus size={12} />
+                            Add
+                          </button>
+                        )}
+                      </div>
+                      {(editing ? draft.experience : userProfile.experience || []).map((exp, index) => (
+                        <div key={index} className="p-3 rounded-xl border border-gray-100 space-y-2">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <EditableField label="Title" value={exp.title} editing={editing} onChange={(v) => updateExperience(index, 'title', v)} />
+                            <EditableField label="Company" value={exp.company} editing={editing} onChange={(v) => updateExperience(index, 'company', v)} />
+                            <EditableField label="Type" value={exp.type} editing={editing} onChange={(v) => updateExperience(index, 'type', v)} />
+                            <EditableField label="Period" value={exp.period} editing={editing} onChange={(v) => updateExperience(index, 'period', v)} />
+                          </div>
+                          <EditableField label="Description" value={exp.description} editing={editing} textarea onChange={(v) => updateExperience(index, 'description', v)} />
+                          {editing && (
+                            <button onClick={() => removeExperience(index)} className="text-xs text-red-600 font-semibold">Remove</button>
+                          )}
+                        </div>
+                      ))}
+                      {(!(editing ? draft.experience : userProfile.experience) || (editing ? draft.experience : userProfile.experience || []).length === 0) && (
+                        <p className="text-sm text-gray-500">No experience added yet.</p>
+                      )}
+                    </section>
+
+                    <section className="space-y-3">
+                      <p className="text-sm font-bold text-gray-900">Education</p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <EditableField label="University" value={editing ? draft.education?.university : userProfile.education?.university} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, education: { ...(prev.education || { university: '', degree: '', verified: false }), university: v } }))} />
+                        <EditableField label="Degree" value={editing ? draft.education?.degree : userProfile.education?.degree} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, education: { ...(prev.education || { university: '', degree: '', verified: false }), degree: v } }))} />
+                        <EditableField label="Year" value={editing ? draft.education?.year : userProfile.education?.year} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, education: { ...(prev.education || { university: '', degree: '', verified: false }), year: v } }))} />
+                      </div>
+                    </section>
+
+                    <section className="space-y-3">
+                      <p className="text-sm font-bold text-gray-900">Social Links</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <EditableField label="LinkedIn" value={editing ? draft.socialLinks?.linkedin : userProfile.socialLinks?.linkedin} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), linkedin: v } }))} />
+                        <EditableField label="GitHub" value={editing ? draft.socialLinks?.github : userProfile.socialLinks?.github} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), github: v } }))} />
+                        <EditableField label="Twitter" value={editing ? draft.socialLinks?.twitter : userProfile.socialLinks?.twitter} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), twitter: v } }))} />
+                        <EditableField label="Website" value={editing ? draft.socialLinks?.website : userProfile.socialLinks?.website} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), website: v } }))} />
+                      </div>
+                    </section>
+
+                    <section className="space-y-3">
+                      <EditableField label="Bio" value={editing ? draft.bio : userProfile.bio} textarea editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, bio: v }))} />
+                    </section>
+                  </div>
+                )}
               </section>
             </div>
           )}
@@ -390,12 +429,16 @@ function EditableField({
   editing,
   onChange,
   textarea = false,
+  placeholder,
+  inputType = 'text',
 }: {
   label: string;
   value?: string;
   editing: boolean;
   onChange: (value: string) => void;
   textarea?: boolean;
+  placeholder?: string;
+  inputType?: string;
 }) {
   return (
     <div className="space-y-1">
@@ -405,12 +448,15 @@ function EditableField({
           <textarea
             value={value || ''}
             onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
             className="w-full px-3 py-2 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-teal-500 min-h-[88px]"
           />
         ) : (
           <input
+            type={inputType}
             value={value || ''}
             onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
             className="w-full px-3 py-2 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-teal-500"
           />
         )

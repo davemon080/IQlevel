@@ -12,6 +12,7 @@ export interface UserProfile {
   phoneNumber?: string;
   status?: string;
   location?: string;
+  dateOfBirth?: string;
   skills?: string[];
   education?: {
     university: string;
