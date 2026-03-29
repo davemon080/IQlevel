@@ -4,7 +4,7 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { supabaseService } from './services/supabaseService';
 import { UserProfile } from './types';
-import { Mail, Lock, User as UserIcon, LogIn, UserPlus, Link2 } from 'lucide-react';
+import { Mail, Lock, User as UserIcon, LogIn, UserPlus, Link2, Eye, EyeOff } from 'lucide-react';
 
 // Components
 import Layout from './components/Layout';
@@ -23,17 +23,46 @@ import JobApply from './components/JobApply';
 import Notifications from './components/Notifications';
 
 export default function App() {
+  const ONBOARDING_KEY = 'connect_onboarding_uid';
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [loading, setLoading] = useState(true);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     let active = true;
+
+    const createDefaultProfile = async (sessionUser: User): Promise<UserProfile> => {
+      const defaultProfile: UserProfile = {
+        uid: sessionUser.id,
+        email: sessionUser.email || '',
+        displayName: sessionUser.user_metadata?.full_name || sessionUser.user_metadata?.name || 'Anonymous',
+        photoURL:
+          sessionUser.user_metadata?.avatar_url ||
+          `https://ui-avatars.com/api/?name=${sessionUser.user_metadata?.full_name || 'Anonymous'}`,
+        role: 'freelancer',
+        bio: '',
+        skills: [],
+        education: {
+          university: '',
+          degree: '',
+          verified: false,
+        },
+        portfolio: [],
+        companyInfo: {
+          name: '',
+          about: '',
+        },
+      };
+      await supabaseService.createUserProfile(defaultProfile);
+      return defaultProfile;
+    };
 
     const loadProfile = async (sessionUser: User | null) => {
       if (!active) return;
@@ -41,12 +70,27 @@ export default function App() {
       if (sessionUser) {
         try {
           const userProfile = await supabaseService.getUserProfile(sessionUser.id);
-          setProfile(userProfile);
+          if (userProfile) {
+            setProfile(userProfile);
+            setShowOnboarding(false);
+          } else {
+            const pendingOnboardingUid = localStorage.getItem(ONBOARDING_KEY);
+            if (pendingOnboardingUid === sessionUser.id) {
+              setShowOnboarding(true);
+              setProfile(null);
+            } else {
+              // For login/no-profile cases, create profile directly without showing onboarding.
+              const quickProfile = await createDefaultProfile(sessionUser);
+              setProfile(quickProfile);
+              setShowOnboarding(false);
+            }
+          }
         } catch (err) {
           console.error('Error fetching profile:', err);
         }
       } else {
         setProfile(null);
+        setShowOnboarding(false);
       }
       setLoading(false);
     };
@@ -96,6 +140,9 @@ export default function App() {
           },
         });
         if (error) throw error;
+        if (data.user) {
+          localStorage.setItem(ONBOARDING_KEY, data.user.id);
+        }
         if (!data.session) {
           setError('Check your email to confirm your account before signing in.');
         }
@@ -163,13 +210,21 @@ export default function App() {
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 placeholder="Password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
+                className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
 
             {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
@@ -211,7 +266,24 @@ export default function App() {
   }
 
   if (!profile) {
-    return <Onboarding user={user} onComplete={setProfile} />;
+    if (showOnboarding) {
+      return (
+        <Onboarding
+          user={user}
+          onComplete={(nextProfile) => {
+            localStorage.removeItem(ONBOARDING_KEY);
+            setShowOnboarding(false);
+            setProfile(nextProfile);
+          }}
+        />
+      );
+    }
+
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+      </div>
+    );
   }
 
   return (

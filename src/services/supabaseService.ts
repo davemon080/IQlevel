@@ -851,6 +851,85 @@ export const supabaseService = {
     );
   },
 
+  async transferByUserId(senderUid: string, recipientUid: string, currency: WalletCurrency, amount: number) {
+    if (!recipientUid.trim()) {
+      throw new Error('Recipient user ID is required.');
+    }
+    if (senderUid === recipientUid) {
+      throw new Error('You cannot transfer funds to yourself.');
+    }
+    if (amount <= 0) {
+      throw new Error('Transfer amount must be greater than zero.');
+    }
+
+    const recipientProfile = await this.getUserProfile(recipientUid);
+    if (!recipientProfile) {
+      throw new Error('Recipient user ID not found.');
+    }
+
+    const [senderWallet, recipientWallet] = await Promise.all([
+      this.getOrCreateWallet(senderUid),
+      this.getOrCreateWallet(recipientUid),
+    ]);
+
+    const senderCurrent =
+      currency === 'USD' ? senderWallet.usdBalance : currency === 'NGN' ? senderWallet.ngnBalance : senderWallet.eurBalance;
+    if (amount > senderCurrent) {
+      throw new Error('Insufficient balance.');
+    }
+
+    const senderNextBalances = {
+      usd_balance: senderWallet.usdBalance - (currency === 'USD' ? amount : 0),
+      ngn_balance: senderWallet.ngnBalance - (currency === 'NGN' ? amount : 0),
+      eur_balance: senderWallet.eurBalance - (currency === 'EUR' ? amount : 0),
+    };
+
+    const recipientNextBalances = {
+      usd_balance: recipientWallet.usdBalance + (currency === 'USD' ? amount : 0),
+      ngn_balance: recipientWallet.ngnBalance + (currency === 'NGN' ? amount : 0),
+      eur_balance: recipientWallet.eurBalance + (currency === 'EUR' ? amount : 0),
+    };
+
+    const timestamp = new Date().toISOString();
+    const transferRef = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    await runQuery(
+      supabase.from('wallets').update({ ...senderNextBalances, updated_at: timestamp }).eq('user_uid', senderUid),
+      'transferWallet:updateSender'
+    );
+
+    await runQuery(
+      supabase.from('wallets').update({ ...recipientNextBalances, updated_at: timestamp }).eq('user_uid', recipientUid),
+      'transferWallet:updateRecipient'
+    );
+
+    await runQuery(
+      supabase.from('wallet_transactions').insert([
+        {
+          user_uid: senderUid,
+          currency,
+          type: 'withdraw',
+          method: 'transfer',
+          amount,
+          status: 'completed',
+          reference: `transfer_out:${recipientUid}:${transferRef}`,
+          created_at: timestamp,
+        },
+        {
+          user_uid: recipientUid,
+          currency,
+          type: 'topup',
+          method: 'transfer',
+          amount,
+          status: 'completed',
+          reference: `transfer_in:${senderUid}:${transferRef}`,
+          created_at: timestamp,
+        },
+      ]),
+      'transferWallet:transactions'
+    );
+  },
+
   // Client Job Management
   subscribeToClientJobs(clientUid: string, callback: (jobs: Job[]) => void) {
     const fetcher = async () => {
