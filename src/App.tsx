@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { supabaseService } from './services/supabaseService';
@@ -18,6 +18,7 @@ import Settings from './components/Settings';
 import FriendRequests from './components/FriendRequests';
 import ManageGigs from './components/ManageGigs';
 import Wallets from './components/Wallets';
+import ProcessTransfer from './components/ProcessTransfer';
 import JobDetails from './components/JobDetails';
 import JobApply from './components/JobApply';
 import Notifications from './components/Notifications';
@@ -312,6 +313,7 @@ export default function App() {
           <Route path="/profile/:uid" element={<Profile profile={profile} />} />
           <Route path="/messages" element={<Chat profile={profile} />} />
           <Route path="/wallets" element={<Wallets profile={profile} />} />
+          <Route path="/wallets/transfer" element={<ProcessTransfer profile={profile} />} />
           <Route path="/comments/:postId" element={<Comments profile={profile} />} />
           <Route path="/settings" element={<Settings profile={profile} onLogout={handleLogout} onProfileUpdate={setProfile} />} />
           <Route path="*" element={<Navigate to="/" />} />

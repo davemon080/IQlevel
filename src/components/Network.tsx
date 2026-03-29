@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, FriendRequest, Connection, Post } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, MapPin, Briefcase, Star, MessageSquare, UserPlus, Users, Bell, Check, X, Sparkles, TrendingUp } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Search, Star, MessageSquare, UserPlus, Users, Check, Sparkles, TrendingUp } from 'lucide-react';
+import { motion } from 'motion/react';
 
 interface NetworkProps {
   profile: UserProfile;
 }
+
+const PAGE_SIZE = 20;
 
 export default function Network({ profile }: NetworkProps) {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -17,23 +19,48 @@ export default function Network({ profile }: NetworkProps) {
   const [highlights, setHighlights] = useState<Post[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [showRequests, setShowRequests] = useState(false);
   const [activeTab, setActiveTab] = useState<'suggested' | 'discover'>('suggested');
   const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>({});
+  const [offset, setOffset] = useState(0);
+  const [hasMoreUsers, setHasMoreUsers] = useState(true);
+  const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
+
+  const loadMoreUsers = async (reset = false) => {
+    if (loadingMoreUsers) return;
+    if (!reset && !hasMoreUsers) return;
+
+    setLoadingMoreUsers(true);
+    try {
+      const pageOffset = reset ? 0 : offset;
+      const rows = await supabaseService.listUsersPaginated(PAGE_SIZE + 1, pageOffset, profile.uid);
+      const hasNextPage = rows.length > PAGE_SIZE;
+      const nextPage = hasNextPage ? rows.slice(0, PAGE_SIZE) : rows;
+
+      setUsers((prev) => {
+        if (reset) return nextPage;
+        const map = new Map(prev.map((item) => [item.uid, item]));
+        nextPage.forEach((item) => map.set(item.uid, item));
+        return Array.from(map.values());
+      });
+      setOffset(pageOffset + nextPage.length);
+      setHasMoreUsers(hasNextPage);
+    } catch (error) {
+      console.error('Error loading network users:', error);
+    } finally {
+      setLoadingMoreUsers(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch all users
-        const allUsers = (await supabaseService.getAllUsers()).filter(u => u.uid !== profile.uid);
-        setUsers(allUsers);
-
-        // Fetch highlights (recent posts)
+        await loadMoreUsers(true);
         const posts = await supabaseService.getHighlights(10);
         setHighlights(posts);
       } catch (error) {
-        console.error("Error fetching network data:", error);
+        console.error('Error fetching network data:', error);
       } finally {
         setLoading(false);
       }
@@ -41,10 +68,9 @@ export default function Network({ profile }: NetworkProps) {
 
     fetchData();
 
-    // Listen for friend requests
     const unsubscribeRequests = supabaseService.subscribeToIncomingFriendRequests(
       profile.uid,
-      (requests) => setFriendRequests(requests.filter(r => r.status === 'pending'))
+      (requests) => setFriendRequests(requests.filter((r) => r.status === 'pending'))
     );
 
     const unsubscribeOutgoing = supabaseService.subscribeToOutgoingFriendRequests(
@@ -80,80 +106,74 @@ export default function Network({ profile }: NetworkProps) {
           return next;
         });
       })
-      .catch(() => {
-        // Keep fallback photos if fetch fails.
-      });
+      .catch(() => {});
+
     return () => {
       active = false;
     };
   }, [highlights]);
 
+  useEffect(() => {
+    if (activeTab !== 'suggested') return;
+    if (!loadMoreRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0].isIntersecting) return;
+        loadMoreUsers(false);
+      },
+      { rootMargin: '140px' }
+    );
+
+    observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [activeTab, hasMoreUsers, loadingMoreUsers, offset]);
+
   const sendFriendRequest = async (targetUser: UserProfile) => {
     try {
-      // Check if already sent or connected
-      const alreadyConnected = connections.some(c => c.uids.includes(targetUser.uid));
+      const alreadyConnected = connections.some((c) => c.uids.includes(targetUser.uid));
       if (alreadyConnected) return;
 
-      // Check if there's already a pending request (either way)
       const alreadyOutgoing = outgoingRequests.some(
-        r => r.toUid === targetUser.uid && r.status === 'pending'
+        (r) => r.toUid === targetUser.uid && r.status === 'pending'
       );
       const alreadyIncoming = friendRequests.some(
-        r => r.fromUid === targetUser.uid && r.status === 'pending'
+        (r) => r.fromUid === targetUser.uid && r.status === 'pending'
       );
       if (alreadyOutgoing || alreadyIncoming) return;
 
       await supabaseService.sendFriendRequest(targetUser, profile);
-
       navigate('/requests');
     } catch (error) {
-      console.error("Error sending friend request:", error);
+      console.error('Error sending friend request:', error);
     }
   };
 
-  const acceptRequest = async (request: FriendRequest) => {
-    await supabaseService.acceptFriendRequest(request, profile);
-  };
-
-  const rejectRequest = async (request: FriendRequest) => {
-    await supabaseService.rejectFriendRequest(request.id);
-  };
-
-  // Algorithm: Suggest users based on skills, university, or opposite role
   const suggestedUsers = users
-    .filter(u => !connections.some(c => c.uids.includes(u.uid)))
-    .map(u => {
+    .filter((u) => !connections.some((c) => c.uids.includes(u.uid)))
+    .map((u) => {
       let score = 0;
-      // Skill match
-      const commonSkills = u.skills?.filter(s => profile.skills?.includes(s)) || [];
+      const commonSkills = u.skills?.filter((s) => profile.skills?.includes(s)) || [];
       score += commonSkills.length * 15;
-      
-      // Opposite role (Freelancer <-> Client) - Higher priority for networking
       if (u.role !== profile.role) score += 25;
-      
-      // Same university - Strong connection point
       if (u.education?.university && u.education?.university === profile.education?.university) {
         score += 30;
       }
-      
-      // Same location
       if (u.location && u.location === profile.location) score += 10;
-      
       return { ...u, score };
     })
     .sort((a, b) => b.score - a.score);
 
-  const filteredUsers = suggestedUsers.filter(u => 
-    u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.skills?.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredUsers = suggestedUsers.filter(
+    (u) =>
+      u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.skills?.some((s) => s.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-12">
-      {/* Header & Search */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/5 rounded-full -mr-16 -mt-16 blur-3xl" />
-        
         <div className="flex items-center gap-4 relative z-10">
           <div className="p-3 bg-teal-600 rounded-2xl shadow-lg shadow-teal-100">
             <Users className="text-white" size={24} />
@@ -175,8 +195,7 @@ export default function Network({ profile }: NetworkProps) {
               className="w-full pl-11 pr-4 py-2.5 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-sm transition-all border border-gray-100"
             />
           </div>
-          
-          <Link 
+          <Link
             to="/requests"
             className="relative p-2.5 rounded-xl transition-all border bg-white border-gray-100 hover:border-teal-200 text-gray-600 hover:text-teal-600"
             title="Friend Requests"
@@ -191,9 +210,8 @@ export default function Network({ profile }: NetworkProps) {
         </div>
       </div>
 
-      {/* Main Content Tabs */}
       <div className="flex items-center gap-6 border-b border-gray-100 pb-1">
-        <button 
+        <button
           onClick={() => setActiveTab('suggested')}
           className={`pb-4 text-sm font-bold transition-all relative ${activeTab === 'suggested' ? 'text-teal-600' : 'text-gray-400 hover:text-gray-600'}`}
         >
@@ -203,7 +221,7 @@ export default function Network({ profile }: NetworkProps) {
           </div>
           {activeTab === 'suggested' && <motion.div layoutId="tab" className="absolute bottom-0 left-0 right-0 h-1 bg-teal-600 rounded-full" />}
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('discover')}
           className={`pb-4 text-sm font-bold transition-all relative ${activeTab === 'discover' ? 'text-teal-600' : 'text-gray-400 hover:text-gray-600'}`}
         >
@@ -218,85 +236,88 @@ export default function Network({ profile }: NetworkProps) {
       {loading ? (
         <div className="flex justify-center p-12"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div></div>
       ) : activeTab === 'suggested' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredUsers.map((user) => (
-            <motion.div
-              key={user.uid}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-2xl border border-gray-100 p-4 hover:border-teal-200 hover:shadow-xl hover:shadow-teal-900/5 transition-all group relative"
-            >
-              <div className="flex items-start gap-4">
-                <Link to={`/profile/${user.uid}`} className="relative shrink-0">
-                  <img 
-                    src={user.photoURL} 
-                    alt={user.displayName} 
-                    className="w-16 h-16 rounded-2xl object-cover shadow-sm group-hover:scale-105 transition-transform duration-300" 
-                  />
-                  {user.score > 30 && (
-                    <div className="absolute -top-1 -right-1 p-1 bg-amber-400 text-white rounded-lg shadow-sm">
-                      <Star size={10} fill="currentColor" />
-                    </div>
-                  )}
-                </Link>
-                
-                <div className="flex-1 min-w-0">
-                  <Link to={`/profile/${user.uid}`} className="block font-bold text-gray-900 hover:text-teal-600 transition-colors truncate text-sm">
-                    {user.displayName}
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredUsers.map((user) => (
+              <motion.div
+                key={user.uid}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-2xl border border-gray-100 p-4 hover:border-teal-200 hover:shadow-xl hover:shadow-teal-900/5 transition-all group relative"
+              >
+                <div className="flex items-start gap-4">
+                  <Link to={`/profile/${user.uid}`} className="relative shrink-0">
+                    <img
+                      src={user.photoURL}
+                      alt={user.displayName}
+                      loading="lazy"
+                      className="w-16 h-16 rounded-2xl object-cover shadow-sm group-hover:scale-105 transition-transform duration-300"
+                    />
+                    {user.score > 30 && (
+                      <div className="absolute -top-1 -right-1 p-1 bg-amber-400 text-white rounded-lg shadow-sm">
+                        <Star size={10} fill="currentColor" />
+                      </div>
+                    )}
                   </Link>
-                  <p className="text-[11px] font-medium text-teal-600 uppercase tracking-wider mb-1">
-                    {user.role}
-                  </p>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {user.skills?.slice(0, 2).map(skill => (
-                      <span key={skill} className="px-1.5 py-0.5 bg-gray-50 text-gray-500 text-[9px] font-bold rounded-md border border-gray-100">
-                        {skill}
-                      </span>
-                    ))}
+                  <div className="flex-1 min-w-0">
+                    <Link to={`/profile/${user.uid}`} className="block font-bold text-gray-900 hover:text-teal-600 transition-colors truncate text-sm">
+                      {user.displayName}
+                    </Link>
+                    <p className="text-[11px] font-medium text-teal-600 uppercase tracking-wider mb-1">{user.role}</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {user.skills?.slice(0, 2).map((skill) => (
+                        <span key={skill} className="px-1.5 py-0.5 bg-gray-50 text-gray-500 text-[9px] font-bold rounded-md border border-gray-100">
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-2 mt-4">
-                <button 
-                  onClick={() => sendFriendRequest(user)}
-                  disabled={outgoingRequests.some(r => r.toUid === user.uid && r.status === 'pending') || connections.some(c => c.uids.includes(user.uid))}
-                  className={`py-2 px-3 font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                    outgoingRequests.some(r => r.toUid === user.uid && r.status === 'pending')
-                      ? 'bg-gray-50 text-gray-400 cursor-not-allowed'
-                      : connections.some(c => c.uids.includes(user.uid))
-                      ? 'bg-teal-50 text-teal-600 cursor-default'
-                      : 'bg-teal-600 hover:bg-teal-700 text-white shadow-md shadow-teal-100'
-                  }`}
-                >
-                  {connections.some(c => c.uids.includes(user.uid)) ? (
-                    <>
-                      <Check size={12} />
-                      Connected
-                    </>
-                  ) : outgoingRequests.some(r => r.toUid === user.uid && r.status === 'pending') ? (
-                    'Pending'
-                  ) : (
-                    <>
-                      <UserPlus size={12} />
-                      Connect
-                    </>
-                  )}
-                </button>
-                <Link
-                  to={`/messages?uid=${user.uid}`}
-                  className="py-2 px-3 bg-gray-50 hover:bg-teal-50 text-gray-600 hover:text-teal-600 font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1.5 border border-transparent hover:border-teal-100"
-                >
-                  <MessageSquare size={12} />
-                  Message
-                </Link>
-              </div>
-            </motion.div>
-          ))}
-        </div>
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                  <button
+                    onClick={() => sendFriendRequest(user)}
+                    disabled={outgoingRequests.some((r) => r.toUid === user.uid && r.status === 'pending') || connections.some((c) => c.uids.includes(user.uid))}
+                    className={`py-2 px-3 font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                      outgoingRequests.some((r) => r.toUid === user.uid && r.status === 'pending')
+                        ? 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                        : connections.some((c) => c.uids.includes(user.uid))
+                        ? 'bg-teal-50 text-teal-600 cursor-default'
+                        : 'bg-teal-600 hover:bg-teal-700 text-white shadow-md shadow-teal-100'
+                    }`}
+                  >
+                    {connections.some((c) => c.uids.includes(user.uid)) ? (
+                      <>
+                        <Check size={12} />
+                        Connected
+                      </>
+                    ) : outgoingRequests.some((r) => r.toUid === user.uid && r.status === 'pending') ? (
+                      'Pending'
+                    ) : (
+                      <>
+                        <UserPlus size={12} />
+                        Connect
+                      </>
+                    )}
+                  </button>
+                  <Link
+                    to={`/messages?uid=${user.uid}`}
+                    className="py-2 px-3 bg-gray-50 hover:bg-teal-50 text-gray-600 hover:text-teal-600 font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1.5 border border-transparent hover:border-teal-100"
+                  >
+                    <MessageSquare size={12} />
+                    Message
+                  </Link>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+          <div ref={loadMoreRef} className="h-10 flex items-center justify-center text-xs text-gray-400">
+            {loadingMoreUsers ? 'Loading more users...' : hasMoreUsers ? 'Scroll to load more users' : 'No more users'}
+          </div>
+        </>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {highlights.map(post => (
+          {highlights.map((post) => (
             <motion.div
               key={post.id}
               initial={{ opacity: 0, scale: 0.95 }}
@@ -304,7 +325,7 @@ export default function Network({ profile }: NetworkProps) {
               className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-all"
             >
               <div className="p-4 flex items-center gap-3 border-b border-gray-50">
-                <img src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto} className="w-10 h-10 rounded-xl object-cover" alt="" />
+                <img src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto} loading="lazy" className="w-10 h-10 rounded-xl object-cover" alt="" />
                 <div>
                   <p className="font-bold text-gray-900 text-sm">{post.authorName}</p>
                   <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Recent Highlight</p>
@@ -313,12 +334,9 @@ export default function Network({ profile }: NetworkProps) {
               <div className="p-4">
                 <p className="text-gray-600 text-sm line-clamp-3 mb-4">{post.content}</p>
                 {post.imageUrl && (
-                  <img src={post.imageUrl} className="w-full h-48 object-cover rounded-2xl mb-4" alt="" />
+                  <img src={post.imageUrl} loading="lazy" className="w-full h-48 object-cover rounded-2xl mb-4" alt="" />
                 )}
-                <Link 
-                  to={`/profile/${post.authorUid}`}
-                  className="inline-flex items-center gap-2 text-teal-600 font-bold text-xs hover:gap-3 transition-all"
-                >
+                <Link to={`/profile/${post.authorUid}`} className="inline-flex items-center gap-2 text-teal-600 font-bold text-xs hover:gap-3 transition-all">
                   View Portfolio
                   <TrendingUp size={14} />
                 </Link>

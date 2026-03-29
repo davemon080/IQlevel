@@ -119,6 +119,13 @@ type DbWalletTransaction = {
   reference?: string | null;
 };
 
+type DbWalletSecurity = {
+  user_uid: string;
+  pin_hash: string;
+  updated_at: string;
+  created_at: string;
+};
+
 function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
   return {
     uid: row.uid,
@@ -297,6 +304,16 @@ function buildPublicId(uid: string) {
   return `SL-${uid.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
 }
 
+async function hashPin(pin: string) {
+  if (typeof window === 'undefined' || !window.crypto?.subtle) {
+    throw new Error('Secure PIN hashing is not available in this environment.');
+  }
+  const data = new TextEncoder().encode(pin);
+  const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 function subscribeToTable<T>(
   table: string,
   fetcher: () => Promise<T>,
@@ -455,6 +472,26 @@ export const supabaseService = {
     const rows = await runQuery<DbUserProfile[]>(
       supabase.from('users').select('*'),
       'getAllUsers'
+    );
+    const profiles = rows.map(mapUserProfileFromDb);
+    profiles.forEach((profile) => this.profileCache.set(profile.uid, profile));
+    return profiles;
+  },
+
+  async listUsersPaginated(limitCount: number, offsetCount: number, excludeUid?: string): Promise<UserProfile[]> {
+    let query = supabase
+      .from('users')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(offsetCount, offsetCount + limitCount - 1);
+
+    if (excludeUid) {
+      query = query.neq('uid', excludeUid);
+    }
+
+    const rows = await runQuery<DbUserProfile[]>(
+      query,
+      'listUsersPaginated'
     );
     const profiles = rows.map(mapUserProfileFromDb);
     profiles.forEach((profile) => this.profileCache.set(profile.uid, profile));
@@ -1020,6 +1057,60 @@ export const supabaseService = {
     return rows.map(mapWalletTransactionFromDb);
   },
 
+  async hasTransactionPin(uid: string): Promise<boolean> {
+    const row = await runQuery<Pick<DbWalletSecurity, 'user_uid'> | null>(
+      supabase.from('wallet_security').select('user_uid').eq('user_uid', uid).maybeSingle(),
+      'hasTransactionPin'
+    );
+    return !!row;
+  },
+
+  async setTransactionPin(uid: string, nextPin: string, currentPin?: string): Promise<void> {
+    if (!/^\d{4}$/.test(nextPin)) {
+      throw new Error('PIN must be exactly 4 digits.');
+    }
+
+    const existing = await runQuery<DbWalletSecurity | null>(
+      supabase.from('wallet_security').select('*').eq('user_uid', uid).maybeSingle(),
+      'setTransactionPin:existing'
+    );
+
+    if (existing) {
+      if (!currentPin || !/^\d{4}$/.test(currentPin)) {
+        throw new Error('Current PIN is required.');
+      }
+      const currentHash = await hashPin(currentPin);
+      if (currentHash !== existing.pin_hash) {
+        throw new Error('Current PIN is incorrect.');
+      }
+    }
+
+    const nextHash = await hashPin(nextPin);
+    await runQuery(
+      supabase.from('wallet_security').upsert(
+        {
+          user_uid: uid,
+          pin_hash: nextHash,
+          updated_at: new Date().toISOString(),
+          created_at: existing?.created_at || new Date().toISOString(),
+        },
+        { onConflict: 'user_uid' }
+      ),
+      'setTransactionPin:upsert'
+    );
+  },
+
+  async verifyTransactionPin(uid: string, pin: string): Promise<boolean> {
+    if (!/^\d{4}$/.test(pin)) return false;
+    const row = await runQuery<DbWalletSecurity | null>(
+      supabase.from('wallet_security').select('*').eq('user_uid', uid).maybeSingle(),
+      'verifyTransactionPin'
+    );
+    if (!row) return false;
+    const incomingHash = await hashPin(pin);
+    return incomingHash === row.pin_hash;
+  },
+
   async topUpWallet(uid: string, currency: WalletCurrency, amount: number, method: 'card' | 'transfer') {
     const wallet = await this.getOrCreateWallet(uid);
     const nextBalances = {
@@ -1169,6 +1260,24 @@ export const supabaseService = {
       ]),
       'transferWallet:transactions'
     );
+  },
+
+  async transferByUserIdWithPin(
+    senderUid: string,
+    recipientIdentifier: string,
+    currency: WalletCurrency,
+    amount: number,
+    pin: string
+  ) {
+    const hasPin = await this.hasTransactionPin(senderUid);
+    if (!hasPin) {
+      throw new Error('Set a transaction PIN in wallet security first.');
+    }
+    const isValid = await this.verifyTransactionPin(senderUid, pin);
+    if (!isValid) {
+      throw new Error('Invalid transaction PIN.');
+    }
+    await this.transferByUserId(senderUid, recipientIdentifier, currency, amount);
   },
 
   // Client Job Management

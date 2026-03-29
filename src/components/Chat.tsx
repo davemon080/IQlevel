@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { UserProfile, Message, Attachment } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { Send, Search, MessageSquare, User, MoreVertical, Phone, Video, ArrowLeft, CheckCheck, Smile, Paperclip, PlusSquare, Lock, Keyboard as KeyboardIcon, FileIcon, X, Download, Image as ImageIcon, Loader2, Clock3, Check } from 'lucide-react';
+import { Send, Search, MessageSquare, User, MoreVertical, Phone, Video, ArrowLeft, CheckCheck, Smile, PlusSquare, Lock, FileIcon, X, Download, Image as ImageIcon, Loader2, Clock3, Check } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import VirtualKeyboard from './VirtualKeyboard';
@@ -34,13 +34,19 @@ export default function Chat({ profile }: ChatProps) {
   const uploading = activeUploads > 0;
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isInitialLoad = useRef(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 0);
   const [viewportOffsetTop, setViewportOffsetTop] = useState(0);
+
+  const adjustComposerHeight = () => {
+    if (!inputRef.current) return;
+    inputRef.current.style.height = '0px';
+    inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 168)}px`;
+  };
 
   useEffect(() => {
     if (!window.visualViewport) return;
@@ -217,12 +223,16 @@ export default function Chat({ profile }: ChatProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    adjustComposerHeight();
+  }, [newMessage]);
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const messageText = newMessage.trim();
     const files = [...selectedFiles];
     
-    if ((!messageText && files.length === 0) || !selectedContact) return;
+    if (!messageText || !selectedContact) return;
     
     // If we're already uploading files, we can still send text-only messages,
     // but we shouldn't allow sending more files until the current ones finish.
@@ -742,26 +752,6 @@ export default function Chat({ profile }: ChatProps) {
                     </AnimatePresence>
                   </div>
 
-                  <button 
-                    type="button" 
-                    onClick={() => setShowVirtualKeyboard(!showVirtualKeyboard)}
-                    className={`p-2 rounded-full transition-all ${showVirtualKeyboard ? 'text-teal-600 bg-teal-50' : 'text-gray-500 hover:bg-gray-200'}`}
-                  >
-                    <KeyboardIcon size={24} />
-                  </button>
-                  
-                  <button 
-                    type="button" 
-                    onClick={() => {
-                      fileInputRef.current?.removeAttribute('capture');
-                      fileInputRef.current?.setAttribute('accept', '*/*');
-                      fileInputRef.current?.click();
-                    }}
-                    className="p-2 text-gray-500 hover:bg-gray-200 rounded-full transition-all"
-                  >
-                    <Paperclip size={24} />
-                  </button>
-                  
                   <input
                     type="file"
                     multiple
@@ -772,32 +762,30 @@ export default function Chat({ profile }: ChatProps) {
                 </div>
                 
                 <div className="flex-1 relative">
-                  <input
+                  <textarea
                     ref={inputRef}
-                    type="text"
+                    rows={1}
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     onFocus={() => setShowVirtualKeyboard(true)}
                     inputMode="none"
                     placeholder="Type a message"
-                    className="w-full px-4 py-2.5 bg-white border-transparent focus:ring-0 rounded-xl text-base transition-all shadow-sm"
+                    className="w-full px-4 py-2.5 bg-white border-transparent focus:ring-0 rounded-xl text-base transition-all shadow-sm resize-none overflow-y-auto max-h-40"
                   />
                   <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600">
                     <Smile size={20} />
                   </button>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={(!newMessage.trim() && selectedFiles.length === 0) || (selectedFiles.length > 0 && uploading)}
-                  className={`p-3 rounded-full transition-all shadow-md flex items-center justify-center min-w-[48px] ${
-                    (newMessage.trim() || selectedFiles.length > 0) && !(selectedFiles.length > 0 && uploading)
-                      ? 'bg-teal-600 text-white hover:bg-teal-700' 
-                      : 'bg-gray-400 text-white'
-                  }`}
-                >
-                  {uploading && selectedFiles.length > 0 ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-                </button>
+                {newMessage.trim().length > 0 && (
+                  <button
+                    type="submit"
+                    disabled={uploading}
+                    className="p-3 rounded-full transition-all shadow-md flex items-center justify-center min-w-[48px] bg-teal-600 text-white hover:bg-teal-700 disabled:bg-gray-400"
+                  >
+                    {uploading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                  </button>
+                )}
               </form>
             </div>
           </>
@@ -872,7 +860,7 @@ export default function Chat({ profile }: ChatProps) {
           }, 0);
         }}
         onEnter={() => {
-          if (newMessage.trim() || selectedFiles.length > 0) {
+          if (newMessage.trim()) {
             const fakeEvent = {
               preventDefault: () => {},
             } as React.FormEvent;

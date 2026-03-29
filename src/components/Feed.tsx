@@ -21,6 +21,7 @@ export default function Feed({ profile }: FeedProps) {
   const [likingPostIds, setLikingPostIds] = useState<string[]>([]);
   const [newPostContent, setNewPostContent] = useState('');
   const [isPosting, setIsPosting] = useState(false);
+  const [backgroundPostingCount, setBackgroundPostingCount] = useState(0);
   const [showComposer, setShowComposer] = useState(false);
   const [postImageFile, setPostImageFile] = useState<File | null>(null);
   const [postImagePreview, setPostImagePreview] = useState<string | null>(null);
@@ -96,41 +97,50 @@ export default function Feed({ profile }: FeedProps) {
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPostContent.trim() && !postImageFile) return;
+    const content = newPostContent;
+    const selectedImage = postImageFile;
+
     setIsPosting(true);
-
-    let imageUrl: string | undefined;
-    if (postImageFile) {
-      const upload = await supabaseService.uploadFile(postImageFile, 'posts');
-      imageUrl = upload.url;
-    }
-
-    const optimistic: Post = {
-      id: `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      authorUid: profile.uid,
-      authorName: profile.displayName,
-      authorPhoto: profile.photoURL,
-      content: newPostContent,
-      imageUrl,
-      type: 'social',
-      createdAt: new Date().toISOString(),
-    };
-    setPosts((prev) => [optimistic, ...prev]);
-
-    const inserted = await supabaseService.createPost({
-      authorUid: profile.uid,
-      authorName: profile.displayName,
-      authorPhoto: profile.photoURL,
-      content: newPostContent,
-      imageUrl,
-      type: 'social',
-    });
-    setPosts((prev) => prev.map((p) => (p.id === optimistic.id ? inserted : p)));
-
+    setBackgroundPostingCount((prev) => prev + 1);
+    setShowComposer(false);
     setNewPostContent('');
     setPostImageFile(null);
     setPostImagePreview(null);
-    setShowComposer(false);
-    setIsPosting(false);
+
+    try {
+      let imageUrl: string | undefined;
+      if (selectedImage) {
+        const upload = await supabaseService.uploadFile(selectedImage, 'posts');
+        imageUrl = upload.url;
+      }
+
+      const optimistic: Post = {
+        id: `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        authorUid: profile.uid,
+        authorName: profile.displayName,
+        authorPhoto: profile.photoURL,
+        content,
+        imageUrl,
+        type: 'social',
+        createdAt: new Date().toISOString(),
+      };
+      setPosts((prev) => [optimistic, ...prev]);
+
+      const inserted = await supabaseService.createPost({
+        authorUid: profile.uid,
+        authorName: profile.displayName,
+        authorPhoto: profile.photoURL,
+        content,
+        imageUrl,
+        type: 'social',
+      });
+      setPosts((prev) => prev.map((p) => (p.id === optimistic.id ? inserted : p)));
+    } catch {
+      // If upload/insert fails, feed remains unchanged and user can retry.
+    } finally {
+      setBackgroundPostingCount((prev) => Math.max(0, prev - 1));
+      setIsPosting(false);
+    }
   };
 
   const likeCountMap = likes.reduce<Record<string, number>>((acc, like) => {
@@ -176,14 +186,7 @@ export default function Feed({ profile }: FeedProps) {
     }
   };
 
-  const getPostShareLink = (post: Post) => `${window.location.origin}/?comments=${post.id}`;
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const sharedPostId = params.get('comments');
-    if (!sharedPostId) return;
-    navigate(`/comments/${sharedPostId}`);
-  }, [navigate]);
+  const getPostShareLink = (post: Post) => `${window.location.origin}/#/comments/${post.id}`;
 
   const openShareSheet = (post: Post) => {
     setCopied(false);
@@ -233,7 +236,7 @@ export default function Feed({ profile }: FeedProps) {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="h-20 bg-teal-600"></div>
           <div className="px-6 pb-6 -mt-10 text-center">
-            <img src={profile.photoURL} alt={profile.displayName} className="w-20 h-20 rounded-2xl border-4 border-white mx-auto mb-4 object-cover shadow-md" />
+            <img src={profile.photoURL} alt={profile.displayName} loading="lazy" className="w-20 h-20 rounded-2xl border-4 border-white mx-auto mb-4 object-cover shadow-md" />
             <h3 className="text-lg font-bold text-gray-900">{profile.displayName}</h3>
             <p className="text-sm text-gray-500 mb-4 capitalize">{profile.role}</p>
             <div className="pt-4 border-t border-gray-100 flex justify-around text-center">
@@ -266,6 +269,11 @@ export default function Feed({ profile }: FeedProps) {
       </div>
 
       <div className="lg:col-span-6 space-y-4 sm:space-y-6">
+        {backgroundPostingCount > 0 && (
+          <div className="sticky top-20 z-20 bg-amber-50 border border-amber-200 text-amber-800 text-xs sm:text-sm font-semibold rounded-xl px-4 py-2.5">
+            {backgroundPostingCount === 1 ? 'Your post is updating in background...' : `${backgroundPostingCount} posts are updating in background...`}
+          </div>
+        )}
         <AnimatePresence>
           {posts.map((post) => (
             <motion.div
@@ -278,7 +286,7 @@ export default function Feed({ profile }: FeedProps) {
               <div className="p-4 sm:p-6">
                 <div className="flex items-center justify-between mb-3 sm:mb-4">
                   <div className="flex items-center gap-2 sm:gap-3">
-                    <img src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto} alt={post.authorName} className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-cover" />
+                    <img src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto} alt={post.authorName} loading="lazy" className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-cover" />
                     <div>
                       <h4 className="text-xs sm:text-sm font-bold text-gray-900">{post.authorName}</h4>
                       <p className="text-[10px] sm:text-xs text-gray-500">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
@@ -291,7 +299,7 @@ export default function Feed({ profile }: FeedProps) {
                   )}
                 </div>
                 <p className="text-gray-700 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
-                {post.imageUrl && <img src={post.imageUrl} alt="Post content" className="mt-3 sm:mt-4 rounded-xl w-full object-cover max-h-64 sm:max-h-96" />}
+                {post.imageUrl && <img src={post.imageUrl} alt="Post content" loading="lazy" className="mt-3 sm:mt-4 rounded-xl w-full object-cover max-h-64 sm:max-h-96" />}
               </div>
               <div className="px-4 sm:px-6 py-3 sm:py-4 bg-gray-50 border-t border-gray-100 flex items-center gap-4 sm:gap-6">
                 <button
@@ -344,7 +352,7 @@ export default function Feed({ profile }: FeedProps) {
 
             <form onSubmit={handleCreatePost} className="space-y-4">
               <div className="flex gap-3 sm:gap-4">
-                <img src={profile.photoURL} alt={profile.displayName} className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-cover" />
+                <img src={profile.photoURL} alt={profile.displayName} loading="lazy" className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-cover" />
                 <div className="flex-1 space-y-2">
                   <textarea
                     value={newPostContent}
@@ -354,7 +362,7 @@ export default function Feed({ profile }: FeedProps) {
                   />
                   {postImagePreview && (
                     <div className="relative rounded-xl overflow-hidden border border-gray-200">
-                      <img src={postImagePreview} alt="Post preview" className="w-full max-h-56 object-cover" />
+                      <img src={postImagePreview} alt="Post preview" loading="lazy" className="w-full max-h-56 object-cover" />
                       <button
                         type="button"
                         onClick={() => {
@@ -435,7 +443,7 @@ export default function Feed({ profile }: FeedProps) {
           <div className="space-y-4">
             {topStudents.map((student) => (
               <div key={student.uid} className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded-xl transition-all" onClick={() => navigate(`/profile/${student.uid}`)}>
-                <img src={student.photoURL} alt={student.displayName} className="w-10 h-10 rounded-xl object-cover" />
+                <img src={student.photoURL} alt={student.displayName} loading="lazy" className="w-10 h-10 rounded-xl object-cover" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-900 truncate">{student.displayName}</p>
                   <p className="text-[10px] text-gray-500 truncate">{student.skills?.[0] || 'Student'} · 4.9 ★</p>
