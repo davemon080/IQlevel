@@ -41,7 +41,7 @@ export default function Feed({ profile }: FeedProps) {
 
     const fetchTopStudents = async () => {
       const students = await supabaseService.getTopStudents(5);
-      setTopStudents(students.slice(0, 3));
+      setTopStudents(students.slice(0, 10));
     };
     fetchTopStudents();
 
@@ -232,6 +232,45 @@ export default function Feed({ profile }: FeedProps) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="lg:col-span-12 -mt-2">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-3 sm:p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wider">
+              Top Active Freelancers
+            </h3>
+            <button
+              onClick={() => navigate('/network')}
+              className="text-[10px] sm:text-xs font-semibold text-teal-700 hover:text-teal-800"
+            >
+              View more
+            </button>
+          </div>
+          <div className="flex items-start gap-4 overflow-x-auto pb-1">
+            {topStudents.length > 0 ? (
+              topStudents.map((student) => (
+                <button
+                  key={student.uid}
+                  onClick={() => navigate(`/profile/${student.uid}`)}
+                  className="shrink-0 flex flex-col items-center gap-1.5 min-w-[70px]"
+                >
+                  <img
+                    src={student.photoURL}
+                    alt={student.displayName}
+                    loading="lazy"
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-teal-100"
+                  />
+                  <span className="text-[10px] sm:text-xs font-semibold text-gray-700 text-center truncate w-16 sm:w-20">
+                    {student.displayName}
+                  </span>
+                </button>
+              ))
+            ) : (
+              <p className="text-xs text-gray-400 italic">No active freelancers yet.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="hidden lg:block lg:col-span-3 space-y-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="h-20 bg-teal-600"></div>
@@ -450,7 +489,7 @@ export default function Feed({ profile }: FeedProps) {
             Top Rated Students
           </h4>
           <div className="space-y-4">
-            {topStudents.map((student) => (
+            {topStudents.slice(0, 3).map((student) => (
               <div key={student.uid} className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded-xl transition-all" onClick={() => navigate(`/profile/${student.uid}`)}>
                 <img src={student.photoURL} alt={student.displayName} loading="lazy" className="w-10 h-10 rounded-xl object-cover" />
                 <div className="flex-1 min-w-0">

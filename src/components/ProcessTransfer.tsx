@@ -106,8 +106,8 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
 
   return (
     <div
-      className="max-w-3xl mx-auto px-4 py-8 space-y-6 min-h-[100dvh]"
-      style={{ paddingBottom: `${keyboardInset + 180}px` }}
+      className="max-w-3xl mx-auto px-4 py-8 space-y-6 min-h-[100dvh] overflow-y-auto touch-pan-y"
+      style={{ paddingBottom: `${keyboardInset + 260}px` }}
     >
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/wallets')} className="p-2 rounded-full hover:bg-gray-100">

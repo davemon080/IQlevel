@@ -151,7 +151,7 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
 
   return (
     <div
-      className="max-w-3xl mx-auto px-4 py-8 space-y-6 min-h-[100dvh]"
+      className="max-w-3xl mx-auto px-4 py-8 space-y-6 min-h-[100dvh] overflow-y-auto"
       style={{ paddingBottom: `${keyboardInset + 220}px` }}
     >
       <div className="flex items-center gap-3">
@@ -161,22 +161,6 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Transfer Details</h1>
           <p className="text-sm text-gray-500">Enter amount and complete transaction with your PIN.</p>
-        </div>
-      </div>
-
-      <div className="bg-gradient-to-br from-teal-700 to-emerald-700 text-white rounded-3xl p-6 shadow-lg space-y-3">
-        <p className="text-xs uppercase tracking-wider opacity-80">Available Balance</p>
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-3xl font-black">{formatAmount(availableBalance, currency)}</p>
-          <select
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value as WalletCurrency)}
-            className="w-36 px-3 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white text-sm"
-          >
-            <option value="USD" className="text-gray-900">USD</option>
-            <option value="NGN" className="text-gray-900">NGN</option>
-            <option value="EUR" className="text-gray-900">EUR</option>
-          </select>
         </div>
       </div>
 
@@ -192,6 +176,19 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
                 {recipientProfile.publicId || recipientProfile.uid}
               </p>
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Currency</label>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value as WalletCurrency)}
+              className="w-full px-3 py-2.5 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              <option value="USD">USD</option>
+              <option value="NGN">NGN</option>
+              <option value="EUR">EUR</option>
+            </select>
           </div>
 
           <div className="space-y-1">
