@@ -105,7 +105,10 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6" style={{ paddingBottom: `${keyboardInset + 24}px` }}>
+    <div
+      className="max-w-3xl mx-auto px-4 py-8 space-y-6 min-h-[100dvh]"
+      style={{ paddingBottom: `${keyboardInset + 180}px` }}
+    >
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/wallets')} className="p-2 rounded-full hover:bg-gray-100">
           <ArrowLeft size={20} className="text-gray-600" />
@@ -140,7 +143,9 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
             type="text"
             value={recipientId}
             onChange={(e) => setRecipientId(e.target.value)}
-            onFocus={() => recipientInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+            onFocus={() => {
+              recipientInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }}
             placeholder="Enter recipient public ID or UID"
             className="w-full px-3 py-2.5 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-teal-500"
             required

@@ -295,7 +295,9 @@ export default function Feed({ profile }: FeedProps) {
                       />
                     </Link>
                     <div>
-                      <h4 className="text-xs sm:text-sm font-bold text-gray-900">{post.authorName}</h4>
+                      <Link to={`/profile/${post.authorUid}`} className="text-xs sm:text-sm font-bold text-gray-900 hover:text-teal-700 transition-colors">
+                        {post.authorName}
+                      </Link>
                       <p className="text-[10px] sm:text-xs text-gray-500">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
                     </div>
                   </div>
