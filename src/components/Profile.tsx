@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { UserProfile, Post } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { ArrowLeft, Camera, MessageSquare, Save, Share2, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Camera, MessageSquare, Save, Share2, Plus, Trash2, Copy } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface ProfileProps {
@@ -19,6 +19,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'about' | 'portfolio' | 'activity'>('about');
   const [saving, setSaving] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
 
   const isOwnProfile = uid === loggedInProfile.uid;
 
@@ -69,6 +70,13 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleCopyUserId = async () => {
+    const value = (editing ? draft.publicId : userProfile.publicId) || userProfile.uid;
+    await navigator.clipboard.writeText(value);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 1200);
   };
 
   const handleUploadImage = async (file: File, target: 'photoURL' | 'coverPhotoURL') => {
@@ -186,6 +194,14 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               <h2 className="text-2xl font-bold text-gray-900">{editing ? draft.displayName : userProfile.displayName}</h2>
               <p className="text-sm text-gray-500 mt-1 capitalize">{userProfile.role}</p>
               <p className="text-xs text-gray-400 mt-1">Profile completion: {completion}%</p>
+              <button
+                onClick={handleCopyUserId}
+                type="button"
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-lg"
+              >
+                <Copy size={12} />
+                {copiedId ? 'Copied' : `User ID: ${(editing ? draft.publicId : userProfile.publicId) || userProfile.uid}`}
+              </button>
             </div>
             {isOwnProfile ? (
               <div className="flex gap-2">
@@ -237,6 +253,8 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               <EditableField label="Display Name" value={editing ? draft.displayName : userProfile.displayName} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, displayName: v }))} />
               <EditableField label="Bio" value={editing ? draft.bio : userProfile.bio} textarea editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, bio: v }))} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <EditableField label="Public User ID" value={editing ? draft.publicId : userProfile.publicId || userProfile.uid} editing={false} onChange={() => undefined} />
+                <EditableField label="Phone Number" value={editing ? draft.phoneNumber : userProfile.phoneNumber} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, phoneNumber: v }))} />
                 <EditableField label="Location" value={editing ? draft.location : userProfile.location} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, location: v }))} />
                 <EditableField label="Status" value={editing ? draft.status : userProfile.status} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, status: v }))} />
               </div>

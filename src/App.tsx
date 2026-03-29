@@ -42,6 +42,7 @@ export default function App() {
     const createDefaultProfile = async (sessionUser: User): Promise<UserProfile> => {
       const defaultProfile: UserProfile = {
         uid: sessionUser.id,
+        publicId: `SL-${sessionUser.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`,
         email: sessionUser.email || '',
         displayName: sessionUser.user_metadata?.full_name || sessionUser.user_metadata?.name || 'Anonymous',
         photoURL:

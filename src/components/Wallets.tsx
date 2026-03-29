@@ -170,7 +170,7 @@ export default function Wallets({ profile }: WalletsProps) {
                 type="text"
                 value={recipientId}
                 onChange={(e) => setRecipientId(e.target.value)}
-                placeholder="Enter recipient ID"
+                placeholder="Enter public ID or UID"
                 className="w-full px-3 py-2.5 rounded-xl bg-white text-gray-900 text-sm outline-none"
                 required
               />

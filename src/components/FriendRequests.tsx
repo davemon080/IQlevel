@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { supabaseService } from '../services/supabaseService';
 import { UserProfile, FriendRequest } from '../types';
-import { Check, X, Clock, UserPlus, ArrowLeft, UserCheck, UserX, Send } from 'lucide-react';
+import { Check, X, Clock, UserPlus, ArrowLeft, UserCheck, UserX, Send, Copy, MapPin } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -9,17 +9,21 @@ interface FriendRequestsProps {
   profile: UserProfile;
 }
 
+type RequestTab = 'incoming' | 'outgoing';
+
 export default function FriendRequests({ profile }: FriendRequestsProps) {
   const [incomingRequests, setIncomingRequests] = useState<FriendRequest[]>([]);
   const [outgoingRequests, setOutgoingRequests] = useState<FriendRequest[]>([]);
-  const [activeTab, setActiveTab] = useState<'incoming' | 'outgoing'>('incoming');
+  const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>({});
+  const [activeTab, setActiveTab] = useState<RequestTab>('incoming');
   const [loading, setLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     const unsubIncoming = supabaseService.subscribeToIncomingFriendRequests(profile.uid, (requests) => {
       setIncomingRequests(requests);
-      if (loading) setLoading(false);
+      setLoading(false);
     });
 
     const unsubOutgoing = supabaseService.subscribeToOutgoingFriendRequests(profile.uid, (requests) => {
@@ -31,6 +35,46 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
       unsubOutgoing();
     };
   }, [profile.uid]);
+
+  useEffect(() => {
+    const uids = Array.from(
+      new Set([
+        ...incomingRequests.map((item) => item.fromUid),
+        ...outgoingRequests.map((item) => item.toUid),
+      ])
+    );
+    if (uids.length === 0) return;
+
+    let active = true;
+    supabaseService
+      .getUsersByUids(uids)
+      .then((users) => {
+        if (!active) return;
+        setProfileByUid((prev) => {
+          const next = { ...prev };
+          users.forEach((user) => {
+            next[user.uid] = user;
+          });
+          return next;
+        });
+      })
+      .catch(() => {
+        // Keep existing resolved profile cards if fetch fails.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [incomingRequests, outgoingRequests]);
+
+  const pendingIncomingCount = useMemo(
+    () => incomingRequests.filter((item) => item.status === 'pending').length,
+    [incomingRequests]
+  );
+  const pendingOutgoingCount = useMemo(
+    () => outgoingRequests.filter((item) => item.status === 'pending').length,
+    [outgoingRequests]
+  );
 
   const handleAccept = async (request: FriendRequest) => {
     try {
@@ -56,194 +100,213 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
     }
   };
 
+  const handleCopyId = async (user: UserProfile | undefined) => {
+    if (!user) return;
+    const value = user.publicId || user.uid;
+    await navigator.clipboard.writeText(value);
+    setCopiedId(value);
+    setTimeout(() => setCopiedId(null), 1200);
+  };
+
+  const renderStatus = (status: FriendRequest['status']) => {
+    const classes =
+      status === 'accepted'
+        ? 'bg-teal-100 text-teal-700'
+        : status === 'pending'
+        ? 'bg-amber-100 text-amber-700'
+        : 'bg-red-100 text-red-700';
+    return (
+      <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${classes}`}>
+        {status === 'accepted' ? <UserCheck size={14} /> : status === 'pending' ? <Clock size={14} /> : <UserX size={14} />}
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </span>
+    );
+  };
+
+  const RequestCard = ({ request, direction }: { request: FriendRequest; direction: RequestTab }) => {
+    const user = direction === 'incoming' ? profileByUid[request.fromUid] : profileByUid[request.toUid];
+    const avatar = direction === 'incoming' ? request.fromPhoto : user?.photoURL;
+    const name = direction === 'incoming' ? request.fromName : user?.displayName || 'User';
+    const publicUserId = user?.publicId || user?.uid;
+    const targetUid = direction === 'incoming' ? request.fromUid : request.toUid;
+
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm">
+        <div className="flex items-start gap-3 sm:gap-4">
+          <Link to={`/profile/${targetUid}`} className="shrink-0">
+            <img
+              src={avatar || 'https://via.placeholder.com/96?text=U'}
+              className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-gray-100"
+              alt={name}
+            />
+          </Link>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link to={`/profile/${targetUid}`} className="font-bold text-gray-900 hover:text-teal-600 truncate">
+                {name}
+              </Link>
+              {renderStatus(request.status)}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {new Date(request.createdAt).toLocaleString()}
+            </p>
+
+            {user && (
+              <div className="mt-2 space-y-1">
+                <p className="text-[11px] uppercase tracking-wider font-bold text-teal-600">{user.role}</p>
+                {user.bio && <p className="text-sm text-gray-600 line-clamp-2">{user.bio}</p>}
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  {user.location && (
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin size={12} />
+                      {user.location}
+                    </span>
+                  )}
+                  {publicUserId && (
+                    <button
+                      onClick={() => handleCopyId(user)}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold"
+                      type="button"
+                    >
+                      <Copy size={12} />
+                      {copiedId === publicUserId ? 'Copied' : `ID: ${publicUserId}`}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2 justify-end">
+          {direction === 'incoming' ? (
+            request.status === 'pending' ? (
+              <>
+                <button
+                  onClick={() => handleReject(request)}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-200 transition-all flex items-center gap-2"
+                >
+                  <X size={16} />
+                  Decline
+                </button>
+                <button
+                  onClick={() => handleAccept(request)}
+                  className="px-4 py-2 bg-teal-600 text-white text-sm font-bold rounded-xl hover:bg-teal-700 transition-all flex items-center gap-2"
+                >
+                  <Check size={16} />
+                  Accept
+                </button>
+              </>
+            ) : (
+              <Link
+                to={`/profile/${targetUid}`}
+                className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-200"
+              >
+                View Profile
+              </Link>
+            )
+          ) : (
+            <>
+              <Link
+                to={`/profile/${targetUid}`}
+                className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-200"
+              >
+                View Profile
+              </Link>
+              {request.status === 'pending' && (
+                <button
+                  onClick={() => handleCancel(request.id)}
+                  className="px-4 py-2 bg-red-50 text-red-700 text-sm font-bold rounded-xl hover:bg-red-100 transition-all"
+                >
+                  Cancel
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="flex items-center gap-4 mb-8">
-        <button 
-          onClick={() => navigate(-1)}
-          className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-        >
-          <ArrowLeft size={24} className="text-gray-600" />
+    <div className="max-w-5xl mx-auto px-4 py-6 sm:py-8">
+      <div className="flex items-center gap-3 sm:gap-4 mb-6">
+        <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+          <ArrowLeft size={22} className="text-gray-600" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Friend Requests</h1>
-          <p className="text-gray-500 text-sm">Manage your connections and pending invites</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Friend Requests</h1>
+          <p className="text-gray-500 text-xs sm:text-sm">Review received requests and track sent invites</p>
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex border-b border-gray-100">
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="grid grid-cols-2 border-b border-gray-100">
           <button
             onClick={() => setActiveTab('incoming')}
-            className={`flex-1 py-4 text-sm font-bold transition-all relative ${
+            className={`py-4 text-sm font-bold transition-all relative ${
               activeTab === 'incoming' ? 'text-teal-600' : 'text-gray-400 hover:text-gray-600'
             }`}
           >
             <div className="flex items-center justify-center gap-2">
-              <UserPlus size={18} />
+              <UserPlus size={17} />
               Received
-              {incomingRequests.filter(r => r.status === 'pending').length > 0 && (
-                <span className="bg-teal-600 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                  {incomingRequests.filter(r => r.status === 'pending').length}
-                </span>
+              {pendingIncomingCount > 0 && (
+                <span className="bg-teal-600 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingIncomingCount}</span>
               )}
             </div>
-            {activeTab === 'incoming' && (
-              <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-1 bg-teal-600" />
-            )}
+            {activeTab === 'incoming' && <motion.div layoutId="requestTab" className="absolute bottom-0 left-0 right-0 h-1 bg-teal-600" />}
           </button>
           <button
             onClick={() => setActiveTab('outgoing')}
-            className={`flex-1 py-4 text-sm font-bold transition-all relative ${
+            className={`py-4 text-sm font-bold transition-all relative ${
               activeTab === 'outgoing' ? 'text-teal-600' : 'text-gray-400 hover:text-gray-600'
             }`}
           >
             <div className="flex items-center justify-center gap-2">
-              <Send size={18} />
+              <Send size={17} />
               Sent
-              {outgoingRequests.filter(r => r.status === 'pending').length > 0 && (
-                <span className="bg-gray-400 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                  {outgoingRequests.filter(r => r.status === 'pending').length}
-                </span>
+              {pendingOutgoingCount > 0 && (
+                <span className="bg-gray-400 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingOutgoingCount}</span>
               )}
             </div>
-            {activeTab === 'outgoing' && (
-              <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-1 bg-teal-600" />
-            )}
+            {activeTab === 'outgoing' && <motion.div layoutId="requestTab" className="absolute bottom-0 left-0 right-0 h-1 bg-teal-600" />}
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {loading ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+            <div className="flex justify-center py-14">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600" />
             </div>
           ) : (
             <AnimatePresence mode="wait">
               {activeTab === 'incoming' ? (
                 <motion.div
                   key="incoming"
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 10 }}
-                  className="space-y-4"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="space-y-3 sm:space-y-4"
                 >
                   {incomingRequests.length === 0 ? (
-                    <div className="text-center py-12">
-                      <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <UserPlus size={32} className="text-gray-300" />
-                      </div>
-                      <p className="text-gray-500">No incoming requests yet.</p>
-                    </div>
+                    <EmptyState label="No incoming requests yet." icon={<UserPlus size={30} className="text-gray-300" />} />
                   ) : (
-                    incomingRequests.map((request) => (
-                      <div 
-                        key={request.id} 
-                        className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                          request.status === 'pending' ? 'bg-white border-gray-100 shadow-sm' : 'bg-gray-50 border-transparent opacity-75'
-                        }`}
-                      >
-                        <div className="flex items-center gap-4">
-                          <Link to={`/profile/${request.fromUid}`}>
-                            <img src={request.fromPhoto} className="w-12 h-12 rounded-xl object-cover" alt="" />
-                          </Link>
-                          <div>
-                            <Link to={`/profile/${request.fromUid}`} className="font-bold text-gray-900 hover:text-teal-600 transition-colors">
-                              {request.fromName}
-                            </Link>
-                            <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                              <Clock size={12} />
-                              {new Date(request.createdAt).toLocaleDateString()}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {request.status === 'pending' ? (
-                            <>
-                              <button
-                                onClick={() => handleAccept(request)}
-                                className="px-4 py-2 bg-teal-600 text-white text-sm font-bold rounded-xl hover:bg-teal-700 transition-all flex items-center gap-2"
-                              >
-                                <Check size={16} />
-                                Accept
-                              </button>
-                              <button
-                                onClick={() => handleReject(request)}
-                                className="px-4 py-2 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-200 transition-all flex items-center gap-2"
-                              >
-                                <X size={16} />
-                                Decline
-                              </button>
-                            </>
-                          ) : (
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
-                              request.status === 'accepted' ? 'bg-teal-100 text-teal-700' : 'bg-red-100 text-red-700'
-                            }`}>
-                              {request.status === 'accepted' ? <UserCheck size={14} /> : <UserX size={14} />}
-                              {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))
+                    incomingRequests.map((request) => <RequestCard key={request.id} request={request} direction="incoming" />)
                   )}
                 </motion.div>
               ) : (
                 <motion.div
                   key="outgoing"
-                  initial={{ opacity: 0, x: 10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  className="space-y-4"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="space-y-3 sm:space-y-4"
                 >
                   {outgoingRequests.length === 0 ? (
-                    <div className="text-center py-12">
-                      <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Send size={32} className="text-gray-300" />
-                      </div>
-                      <p className="text-gray-500">You haven't sent any requests yet.</p>
-                    </div>
+                    <EmptyState label="You have not sent any requests yet." icon={<Send size={30} className="text-gray-300" />} />
                   ) : (
-                    outgoingRequests.map((request) => (
-                      <div 
-                        key={request.id} 
-                        className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 bg-white shadow-sm"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-teal-50 rounded-xl flex items-center justify-center text-teal-600">
-                            <UserPlus size={24} />
-                          </div>
-                          <div>
-                            <p className="font-bold text-gray-900">Request to User</p>
-                            <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                              <Clock size={12} />
-                              Sent on {new Date(request.createdAt).toLocaleDateString()}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
-                            request.status === 'pending' ? 'bg-amber-100 text-amber-700' : 
-                            request.status === 'accepted' ? 'bg-teal-100 text-teal-700' : 'bg-red-100 text-red-700'
-                          }`}>
-                            {request.status === 'pending' ? <Clock size={14} /> : 
-                             request.status === 'accepted' ? <UserCheck size={14} /> : <UserX size={14} />}
-                            {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                          </span>
-                          {request.status === 'pending' && (
-                            <button
-                              onClick={() => handleCancel(request.id)}
-                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                              title="Cancel Request"
-                            >
-                              <X size={18} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))
+                    outgoingRequests.map((request) => <RequestCard key={request.id} request={request} direction="outgoing" />)
                   )}
                 </motion.div>
               )}
@@ -251,6 +314,15 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function EmptyState({ label, icon }: { label: string; icon: React.ReactNode }) {
+  return (
+    <div className="text-center py-12">
+      <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">{icon}</div>
+      <p className="text-gray-500">{label}</p>
     </div>
   );
 }

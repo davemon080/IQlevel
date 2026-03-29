@@ -2,12 +2,14 @@ export type UserRole = 'freelancer' | 'client';
 
 export interface UserProfile {
   uid: string;
+  publicId?: string;
   email: string;
   displayName: string;
   photoURL: string;
   coverPhotoURL?: string;
   role: UserRole;
   bio?: string;
+  phoneNumber?: string;
   status?: string;
   location?: string;
   skills?: string[];

@@ -3,12 +3,14 @@ import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, C
 
 type DbUserProfile = {
   uid: string;
+  public_id?: string | null;
   email: string;
   display_name: string;
   photo_url: string;
   cover_photo_url?: string | null;
   role: 'freelancer' | 'client' | 'admin';
   bio?: string | null;
+  phone_number?: string | null;
   status?: string | null;
   location?: string | null;
   skills?: string[] | null;
@@ -120,12 +122,14 @@ type DbWalletTransaction = {
 function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
   return {
     uid: row.uid,
+    publicId: row.public_id || undefined,
     email: row.email,
     displayName: row.display_name,
     photoURL: row.photo_url,
     coverPhotoURL: row.cover_photo_url || undefined,
     role: row.role === 'admin' ? 'client' : row.role,
     bio: row.bio || undefined,
+    phoneNumber: row.phone_number || undefined,
     status: row.status || undefined,
     location: row.location || undefined,
     skills: row.skills || undefined,
@@ -140,12 +144,14 @@ function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
 function mapUserProfileToDb(data: Partial<UserProfile>): Partial<DbUserProfile> {
   return {
     uid: data.uid,
+    public_id: data.publicId,
     email: data.email,
     display_name: data.displayName,
     photo_url: data.photoURL,
     cover_photo_url: data.coverPhotoURL ?? null,
     role: data.role as DbUserProfile['role'] | undefined,
     bio: data.bio ?? null,
+    phone_number: data.phoneNumber ?? null,
     status: data.status ?? null,
     location: data.location ?? null,
     skills: data.skills ?? null,
@@ -283,6 +289,14 @@ async function runQuery<T>(promise: any, context: string): Promise<T> {
   return data as T;
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function buildPublicId(uid: string) {
+  return `SL-${uid.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
+}
+
 function subscribeToTable<T>(
   table: string,
   fetcher: () => Promise<T>,
@@ -328,15 +342,64 @@ export const supabaseService = {
 
   // User Profile
   async getUserProfile(uid: string): Promise<UserProfile | null> {
+    const cached = this.profileCache.get(uid);
+    if (cached) return cached;
+
     const data = await runQuery<DbUserProfile | null>(
       supabase.from('users').select('*').eq('uid', uid).maybeSingle(),
       `getUserProfile:${uid}`
     );
-    return data ? mapUserProfileFromDb(data) : null;
+    const mapped = data ? mapUserProfileFromDb(data) : null;
+    if (mapped) this.profileCache.set(mapped.uid, mapped);
+    return mapped;
+  },
+
+  async getUsersByUids(uids: string[]): Promise<UserProfile[]> {
+    const uniqueUids = Array.from(new Set(uids.filter(Boolean)));
+    if (uniqueUids.length === 0) return [];
+
+    const cachedProfiles: UserProfile[] = [];
+    const missingUids: string[] = [];
+    uniqueUids.forEach((id) => {
+      const cached = this.profileCache.get(id);
+      if (cached) cachedProfiles.push(cached);
+      else missingUids.push(id);
+    });
+
+    if (missingUids.length === 0) {
+      const map = new Map(cachedProfiles.map((p) => [p.uid, p]));
+      return uniqueUids.map((id) => map.get(id)).filter((p): p is UserProfile => Boolean(p));
+    }
+
+    const rows = await runQuery<DbUserProfile[]>(
+      supabase.from('users').select('*').in('uid', missingUids),
+      'getUsersByUids'
+    );
+    const fetched = rows.map(mapUserProfileFromDb);
+    fetched.forEach((profile) => this.profileCache.set(profile.uid, profile));
+
+    const all = [...cachedProfiles, ...fetched];
+    const profileByUid = new Map(all.map((p) => [p.uid, p]));
+    return uniqueUids.map((id) => profileByUid.get(id)).filter((p): p is UserProfile => Boolean(p));
+  },
+
+  async getUserProfileByPublicId(publicId: string): Promise<UserProfile | null> {
+    const normalized = publicId.trim();
+    if (!normalized) return null;
+    const row = await runQuery<DbUserProfile | null>(
+      supabase.from('users').select('*').eq('public_id', normalized).maybeSingle(),
+      `getUserProfileByPublicId:${normalized}`
+    );
+    const mapped = row ? mapUserProfileFromDb(row) : null;
+    if (mapped) this.profileCache.set(mapped.uid, mapped);
+    return mapped;
   },
 
   async createUserProfile(profile: UserProfile): Promise<void> {
-    const payload = mapUserProfileToDb(profile) as DbUserProfile;
+    const payload = mapUserProfileToDb({
+      ...profile,
+      publicId: profile.publicId || buildPublicId(profile.uid),
+    }) as DbUserProfile;
     await runQuery(
       supabase.from('users').upsert(
         { ...payload, created_at: new Date().toISOString() },
@@ -344,6 +407,10 @@ export const supabaseService = {
       ),
       'createUserProfile'
     );
+    this.profileCache.set(profile.uid, {
+      ...profile,
+      publicId: profile.publicId || buildPublicId(profile.uid),
+    });
   },
 
   async updateUserProfile(uid: string, data: Partial<UserProfile>): Promise<void> {
@@ -352,6 +419,8 @@ export const supabaseService = {
       supabase.from('users').update(payload).eq('uid', uid),
       'updateUserProfile'
     );
+    const prev = this.profileCache.get(uid);
+    if (prev) this.profileCache.set(uid, { ...prev, ...data });
   },
 
   async getTopStudents(limitCount: number): Promise<UserProfile[]> {
@@ -364,7 +433,9 @@ export const supabaseService = {
         .limit(limitCount),
       'getTopStudents'
     );
-    return rows.map(mapUserProfileFromDb);
+    const profiles = rows.map(mapUserProfileFromDb);
+    profiles.forEach((profile) => this.profileCache.set(profile.uid, profile));
+    return profiles;
   },
 
   async getAllUsers(): Promise<UserProfile[]> {
@@ -372,7 +443,9 @@ export const supabaseService = {
       supabase.from('users').select('*'),
       'getAllUsers'
     );
-    return rows.map(mapUserProfileFromDb);
+    const profiles = rows.map(mapUserProfileFromDb);
+    profiles.forEach((profile) => this.profileCache.set(profile.uid, profile));
+    return profiles;
   },
 
   // Posts
@@ -712,11 +785,8 @@ export const supabaseService = {
     const otherUids = rows.map((r) => r.other_uid as string);
     if (otherUids.length === 0) return [];
 
-    const profiles = await runQuery<DbUserProfile[]>(
-      supabase.from('users').select('*').in('uid', otherUids),
-      'fetchActiveChatProfiles'
-    );
-    const profileMap = new Map(profiles.map((p) => [p.uid, mapUserProfileFromDb(p)]));
+    const profiles = await this.getUsersByUids(otherUids);
+    const profileMap = new Map(profiles.map((p) => [p.uid, p]));
 
     return rows
       .map((chat) => {
@@ -762,11 +832,8 @@ export const supabaseService = {
     const otherUids = Array.from(convoMap.keys());
     if (otherUids.length === 0) return [];
 
-    const profiles = await runQuery<DbUserProfile[]>(
-      supabase.from('users').select('*').in('uid', otherUids),
-      'getRecentConversations:profiles'
-    );
-    const profileMap = new Map(profiles.map((p) => [p.uid, mapUserProfileFromDb(p)]));
+    const profiles = await this.getUsersByUids(otherUids);
+    const profileMap = new Map(profiles.map((p) => [p.uid, p]));
 
     return otherUids
       .map((otherUid) => {
@@ -897,11 +964,7 @@ export const supabaseService = {
     );
     const otherUids = connections.flatMap((c) => c.uids.filter((id) => id !== uid));
     if (otherUids.length === 0) return [];
-    const rows = await runQuery<DbUserProfile[]>(
-      supabase.from('users').select('*').in('uid', otherUids),
-      'getFriends:users'
-    );
-    return rows.map(mapUserProfileFromDb);
+    return this.getUsersByUids(otherUids);
   },
 
   // Wallets
@@ -1009,20 +1072,27 @@ export const supabaseService = {
     );
   },
 
-  async transferByUserId(senderUid: string, recipientUid: string, currency: WalletCurrency, amount: number) {
-    if (!recipientUid.trim()) {
+  async transferByUserId(senderUid: string, recipientIdentifier: string, currency: WalletCurrency, amount: number) {
+    const normalizedRecipient = recipientIdentifier.trim();
+    if (!normalizedRecipient) {
       throw new Error('Recipient user ID is required.');
     }
-    if (senderUid === recipientUid) {
+    if (senderUid === normalizedRecipient) {
       throw new Error('You cannot transfer funds to yourself.');
     }
     if (amount <= 0) {
       throw new Error('Transfer amount must be greater than zero.');
     }
 
-    const recipientProfile = await this.getUserProfile(recipientUid);
+    const recipientProfile = isUuid(normalizedRecipient)
+      ? await this.getUserProfile(normalizedRecipient)
+      : await this.getUserProfileByPublicId(normalizedRecipient);
     if (!recipientProfile) {
-      throw new Error('Recipient user ID not found.');
+      throw new Error('Recipient user ID was not found.');
+    }
+    const recipientUid = recipientProfile.uid;
+    if (senderUid === recipientUid) {
+      throw new Error('You cannot transfer funds to yourself.');
     }
 
     const [senderWallet, recipientWallet] = await Promise.all([

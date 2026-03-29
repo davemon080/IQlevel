@@ -16,9 +16,10 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadedOnce, setLoadedOnce] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || loadedOnce) return;
     let active = true;
     setLoading(true);
 
@@ -32,6 +33,7 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
         setUsers(allUsers);
         setJobs(allJobs);
         setPosts(allPosts);
+        setLoadedOnce(true);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -40,7 +42,7 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
     return () => {
       active = false;
     };
-  }, [isOpen]);
+  }, [isOpen, loadedOnce]);
 
   const normalizedQuery = query.trim().toLowerCase();
 

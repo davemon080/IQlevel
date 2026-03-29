@@ -19,6 +19,7 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
     setLoading(true);
     const profile: UserProfile = {
       uid: user.id,
+      publicId: `SL-${user.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`,
       email: user.email || '',
       displayName: user.user_metadata?.full_name || user.user_metadata?.name || 'Anonymous',
       photoURL: user.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${user.user_metadata?.full_name || 'Anonymous'}`,

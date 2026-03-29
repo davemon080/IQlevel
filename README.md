@@ -402,3 +402,62 @@ END $$;
 
 COMMIT;
 ```
+
+## Profile + Performance Patch (Run After Main Script)
+
+Use this idempotent patch to support copyable public user IDs, richer profiles, and faster reads:
+
+```sql
+BEGIN;
+
+-- 1) Users profile upgrades
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS public_id TEXT,
+  ADD COLUMN IF NOT EXISTS phone_number TEXT,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+-- Backfill public_id for existing rows
+UPDATE users
+SET public_id = 'SL-' || UPPER(SUBSTRING(REPLACE(uid::text, '-', '') FROM 1 FOR 10))
+WHERE public_id IS NULL OR public_id = '';
+
+-- Ensure public_id uniqueness and fast lookup
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_public_id ON users(public_id);
+CREATE INDEX IF NOT EXISTS idx_users_display_name ON users(display_name);
+CREATE INDEX IF NOT EXISTS idx_users_role_created ON users(role, created_at DESC);
+
+-- Keep updated_at fresh
+CREATE OR REPLACE FUNCTION set_updated_at_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_users_set_updated_at ON users;
+CREATE TRIGGER trg_users_set_updated_at
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at_timestamp();
+
+-- 2) Friend request read-performance indexes
+CREATE INDEX IF NOT EXISTS idx_friend_requests_to_status_created
+  ON friend_requests(to_uid, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_friend_requests_from_status_created
+  ON friend_requests(from_uid, status, created_at DESC);
+
+-- 3) Post engagement read-performance indexes
+CREATE INDEX IF NOT EXISTS idx_post_comments_post_created_desc
+  ON post_comments(post_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_post_likes_post_user
+  ON post_likes(post_id, user_uid);
+
+-- 4) Wallet transfer lookup/index speed
+CREATE INDEX IF NOT EXISTS idx_wallets_user_uid_updated
+  ON wallets(user_uid, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_wallet_transactions_user_currency_created
+  ON wallet_transactions(user_uid, currency, created_at DESC);
+
+COMMIT;
+```
