@@ -182,6 +182,19 @@ export default function Feed({ profile }: FeedProps) {
     window.open(urls[platform], '_blank', 'noopener,noreferrer');
   };
 
+  const sharePlatforms: Array<{
+    key: 'whatsapp' | 'facebook' | 'x' | 'linkedin' | 'telegram' | 'email';
+    label: string;
+    icon: string;
+  }> = [
+    { key: 'whatsapp', label: 'WhatsApp', icon: 'https://cdn.simpleicons.org/whatsapp/25D366' },
+    { key: 'facebook', label: 'Facebook', icon: 'https://cdn.simpleicons.org/facebook/1877F2' },
+    { key: 'x', label: 'X', icon: 'https://cdn.simpleicons.org/x/111827' },
+    { key: 'linkedin', label: 'LinkedIn', icon: 'https://cdn.simpleicons.org/linkedin/0A66C2' },
+    { key: 'telegram', label: 'Telegram', icon: 'https://cdn.simpleicons.org/telegram/229ED9' },
+    { key: 'email', label: 'Gmail', icon: 'https://cdn.simpleicons.org/gmail/EA4335' },
+  ];
+
   const copyPostLink = async () => {
     if (!sharePost) return;
     await navigator.clipboard.writeText(getPostShareLink(sharePost));
@@ -426,19 +439,13 @@ export default function Feed({ profile }: FeedProps) {
                 <p className="text-xs text-gray-500 mb-4">Share to social platforms or copy post link.</p>
 
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
-                  {[
-                    { key: 'whatsapp', label: 'WhatsApp' },
-                    { key: 'facebook', label: 'Facebook' },
-                    { key: 'x', label: 'X' },
-                    { key: 'linkedin', label: 'LinkedIn' },
-                    { key: 'telegram', label: 'Telegram' },
-                    { key: 'email', label: 'Email' },
-                  ].map((item) => (
+                  {sharePlatforms.map((item) => (
                     <button
                       key={item.key}
                       onClick={() => shareTo(item.key as 'whatsapp' | 'facebook' | 'x' | 'linkedin' | 'telegram' | 'email')}
-                      className="p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-xs font-semibold text-gray-700"
+                      className="p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-xs font-semibold text-gray-700 flex flex-col items-center gap-1.5"
                     >
+                      <img src={item.icon} alt={item.label} className="w-5 h-5 object-contain" loading="lazy" />
                       {item.label}
                     </button>
                   ))}
