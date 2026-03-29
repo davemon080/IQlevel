@@ -42,9 +42,9 @@ export default function Feed({ profile }: FeedProps) {
     const unsubscribeComments = supabaseService.subscribeToAllPostComments(setComments);
 
     const fetchTopStudents = async () => {
-      const students = await supabaseService.getTopStudents(TOP_ACTIVE_LIMIT + 1);
-      setHasMoreTopStudents(students.length > TOP_ACTIVE_LIMIT);
-      setTopStudents(students.slice(0, TOP_ACTIVE_LIMIT));
+      const users = await supabaseService.listUsersPaginated(TOP_ACTIVE_LIMIT + 1, 0);
+      setHasMoreTopStudents(users.length > TOP_ACTIVE_LIMIT);
+      setTopStudents(users.slice(0, TOP_ACTIVE_LIMIT));
     };
     fetchTopStudents();
 
@@ -237,8 +237,8 @@ export default function Feed({ profile }: FeedProps) {
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
       <div className="lg:col-span-12 -mt-2">
         <div className="flex items-center justify-between mb-3 px-1">
-          <h3 className="text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wider">
-            Top Active Freelancers
+          <h3 className="text-xs sm:text-sm font-bold text-gray-900 tracking-wide">
+            Top active freelancers
           </h3>
           {hasMoreTopStudents && (
             <button

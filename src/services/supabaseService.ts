@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings } from '../types';
+import { getCartoonAvatar } from '../utils/avatar';
 
 type DbUserProfile = {
   uid: string;
@@ -149,12 +150,21 @@ const CHAT_READ_KEY_PREFIX = 'connect_chat_read_map_';
 const CHAT_READ_EVENT = 'connect:chat-read-updated';
 
 function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
+  const isLegacyLetterAvatar =
+    !!row.photo_url &&
+    (row.photo_url.includes('ui-avatars.com') || row.photo_url.includes('via.placeholder.com'));
+
+  const resolvedPhoto =
+    !row.photo_url || isLegacyLetterAvatar
+      ? getCartoonAvatar(row.display_name || row.uid)
+      : row.photo_url;
+
   return {
     uid: row.uid,
     publicId: row.public_id || undefined,
     email: row.email,
     displayName: row.display_name,
-    photoURL: row.photo_url,
+    photoURL: resolvedPhoto,
     coverPhotoURL: row.cover_photo_url || undefined,
     role: row.role === 'admin' ? 'client' : row.role,
     bio: row.bio || undefined,
