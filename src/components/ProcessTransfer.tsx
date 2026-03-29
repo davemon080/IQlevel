@@ -25,6 +25,7 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -124,6 +125,7 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
         pin
       );
       setSuccess('Transfer completed successfully.');
+      setToast('Transfer successful');
       setRecipientId('');
       setRecipientProfile(null);
       setAmount('');
@@ -131,6 +133,7 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
       setShowPinPad(false);
       const refreshed = await supabaseService.getOrCreateWallet(profile.uid);
       setWallet(refreshed);
+      setTimeout(() => navigate('/wallets'), 1200);
     } catch (e: any) {
       setError(e.message || 'Transfer failed.');
     } finally {
@@ -267,35 +270,17 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
                   ))}
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'back'].map((key) => {
-                    if (key === '') return <div key="blank" />;
-                    if (key === 'back') {
-                      return (
-                        <button
-                          key="back"
-                          type="button"
-                          onClick={() => setPin((prev) => prev.slice(0, -1))}
-                          className="h-12 rounded-xl bg-gray-100 font-bold text-gray-700"
-                          disabled={processing}
-                        >
-                          ⌫
-                        </button>
-                      );
-                    }
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setPin((prev) => (prev.length < 4 ? `${prev}${key}` : prev))}
-                        className="h-12 rounded-xl bg-gray-100 font-bold text-gray-900"
-                        disabled={processing}
-                      >
-                        {key}
-                      </button>
-                    );
-                  })}
-                </div>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoFocus
+                  pattern="\d{4}"
+                  maxLength={4}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="Enter 4-digit PIN"
+                  className="w-full px-4 py-3 rounded-xl bg-gray-100 text-center tracking-[0.6em] text-lg font-bold outline-none focus:ring-2 focus:ring-teal-500"
+                />
 
                 <button
                   type="button"
@@ -305,15 +290,23 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
                 >
                   {processing ? 'Processing Transfer...' : 'Complete Transfer'}
                 </button>
-                {processing === false && success && (
-                  <div className="flex items-center justify-center gap-1 text-emerald-700 text-xs font-semibold">
-                    <CheckCircle2 size={14} />
-                    Transfer successful
-                  </div>
-                )}
               </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] bg-emerald-600 text-white px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold inline-flex items-center gap-2"
+          >
+            <CheckCircle2 size={16} />
+            {toast}
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

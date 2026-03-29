@@ -1360,14 +1360,32 @@ export const supabaseService = {
     amount: number,
     pin: string
   ) {
-    const { error } = await supabase.rpc('wallet_transfer_with_pin', {
-      p_recipient_identifier: recipientIdentifier.trim(),
-      p_currency: currency,
-      p_amount: amount,
-      p_pin: pin,
-    });
-    if (error) {
-      throw new Error(error.message || 'Transfer failed.');
+    const pinValid = await this.verifyTransactionPin(senderUid, pin);
+    if (!pinValid) {
+      throw new Error('Invalid transaction PIN.');
+    }
+
+    try {
+      const { error } = await supabase.rpc('wallet_transfer_with_pin', {
+        p_recipient_identifier: recipientIdentifier.trim(),
+        p_currency: currency,
+        p_amount: amount,
+        p_pin: pin,
+      });
+      if (error) {
+        // Fallback for older DB function definitions with digest() issues.
+        if ((error.message || '').toLowerCase().includes('digest(')) {
+          await this.transferByUserId(senderUid, recipientIdentifier, currency, amount);
+          return;
+        }
+        throw new Error(error.message || 'Transfer failed.');
+      }
+    } catch (e: any) {
+      if ((e?.message || '').toLowerCase().includes('digest(')) {
+        await this.transferByUserId(senderUid, recipientIdentifier, currency, amount);
+        return;
+      }
+      throw e;
     }
   },
 

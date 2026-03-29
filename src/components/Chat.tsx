@@ -5,7 +5,6 @@ import { supabaseService } from '../services/supabaseService';
 import { Send, Search, MessageSquare, User, MoreVertical, Phone, Video, ArrowLeft, CheckCheck, Smile, PlusSquare, Lock, FileIcon, X, Download, Image as ImageIcon, Loader2, Clock3, Check } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
-import VirtualKeyboard from './VirtualKeyboard';
 
 interface ChatProps {
   profile: UserProfile;
@@ -28,7 +27,6 @@ export default function Chat({ profile }: ChatProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showChatOnMobile, setShowChatOnMobile] = useState(false);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
-  const [showVirtualKeyboard, setShowVirtualKeyboard] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [activeUploads, setActiveUploads] = useState(0);
   const uploading = activeUploads > 0;
@@ -420,8 +418,7 @@ export default function Chat({ profile }: ChatProps) {
       className={`h-full bg-white flex relative overflow-hidden ${isMobile && showChatOnMobile ? 'fixed inset-0 z-[60]' : ''}`}
       style={isMobile && showChatOnMobile ? { 
         height: `${viewportHeight}px`,
-        top: `${viewportOffsetTop}px`,
-        paddingBottom: showVirtualKeyboard ? '280px' : '0'
+        top: `${viewportOffsetTop}px`
       } : {}}
     >
       {/* Contacts Sidebar */}
@@ -772,8 +769,6 @@ export default function Chat({ profile }: ChatProps) {
                     rows={1}
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    onFocus={() => setShowVirtualKeyboard(true)}
-                    inputMode="none"
                     placeholder="Type a message"
                     className="w-full px-4 py-2.5 bg-white border-transparent focus:ring-0 rounded-xl text-base transition-all shadow-sm resize-none overflow-y-auto max-h-40"
                   />
@@ -820,72 +815,6 @@ export default function Chat({ profile }: ChatProps) {
           </div>
         )}
       </div>
-
-      {/* Virtual Keyboard */}
-      <VirtualKeyboard
-        isOpen={showVirtualKeyboard}
-        onClose={() => setShowVirtualKeyboard(false)}
-        onKeyPress={(key) => {
-          const start = inputRef.current?.selectionStart || newMessage.length;
-          const end = inputRef.current?.selectionEnd || newMessage.length;
-          const nextValue = newMessage.substring(0, start) + key + newMessage.substring(end);
-          setNewMessage(nextValue);
-          
-          // Re-focus and set cursor position after state update
-          setTimeout(() => {
-            if (inputRef.current) {
-              inputRef.current.focus();
-              inputRef.current.setSelectionRange(start + 1, start + 1);
-            }
-          }, 0);
-        }}
-        onBackspace={() => {
-          const start = inputRef.current?.selectionStart || 0;
-          const end = inputRef.current?.selectionEnd || 0;
-          
-          let nextValue = '';
-          let nextCursor = 0;
-          
-          if (start !== end) {
-            nextValue = newMessage.substring(0, start) + newMessage.substring(end);
-            nextCursor = start;
-          } else if (start > 0) {
-            nextValue = newMessage.substring(0, start - 1) + newMessage.substring(start);
-            nextCursor = start - 1;
-          } else {
-            return;
-          }
-          
-          setNewMessage(nextValue);
-          setTimeout(() => {
-            if (inputRef.current) {
-              inputRef.current.focus();
-              inputRef.current.setSelectionRange(nextCursor, nextCursor);
-            }
-          }, 0);
-        }}
-        onEnter={() => {
-          if (newMessage.trim()) {
-            const fakeEvent = {
-              preventDefault: () => {},
-            } as React.FormEvent;
-            handleSendMessage(fakeEvent);
-          }
-        }}
-        onSpace={() => {
-          const start = inputRef.current?.selectionStart || newMessage.length;
-          const end = inputRef.current?.selectionEnd || newMessage.length;
-          const nextValue = newMessage.substring(0, start) + ' ' + newMessage.substring(end);
-          setNewMessage(nextValue);
-          
-          setTimeout(() => {
-            if (inputRef.current) {
-              inputRef.current.focus();
-              inputRef.current.setSelectionRange(start + 1, start + 1);
-            }
-          }, 0);
-        }}
-      />
 
       {/* New Chat Modal */}
       <AnimatePresence>
