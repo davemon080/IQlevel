@@ -28,6 +28,8 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const amountInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -61,6 +63,22 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
       active = false;
     };
   }, [profile.uid, recipientIdentifier]);
+
+  React.useEffect(() => {
+    if (!window.visualViewport) return;
+    const vv = window.visualViewport;
+    const updateInset = () => {
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardInset(inset);
+    };
+    vv.addEventListener('resize', updateInset);
+    vv.addEventListener('scroll', updateInset);
+    updateInset();
+    return () => {
+      vv.removeEventListener('resize', updateInset);
+      vv.removeEventListener('scroll', updateInset);
+    };
+  }, []);
 
   const availableBalance = useMemo(() => {
     if (!wallet) return 0;
@@ -132,7 +150,7 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6" style={{ paddingBottom: `${keyboardInset + 24}px` }}>
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/wallets/transfer')} className="p-2 rounded-full hover:bg-gray-100">
           <ArrowLeft size={20} className="text-gray-600" />
@@ -176,11 +194,13 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
           <div className="space-y-1">
             <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Amount ({currency})</label>
             <input
+              ref={amountInputRef}
               type="number"
               min="0"
               step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              onFocus={() => amountInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
               className="w-full px-3 py-2.5 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-teal-500"
               required
             />
@@ -235,17 +255,32 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
                   ))}
                 </div>
 
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  autoFocus
-                  pattern="\d{4}"
-                  maxLength={4}
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="Enter 4-digit PIN"
-                  className="w-full px-4 py-3 rounded-xl bg-gray-100 text-center tracking-[0.6em] text-lg font-bold outline-none focus:ring-2 focus:ring-teal-500"
-                />
+                <div className="grid grid-cols-3 gap-2">
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'back'].map((key) => {
+                    const onClick = () => {
+                      if (key === 'clear') {
+                        setPin('');
+                        return;
+                      }
+                      if (key === 'back') {
+                        setPin((prev) => prev.slice(0, -1));
+                        return;
+                      }
+                      setPin((prev) => (prev.length < 4 ? `${prev}${key}` : prev));
+                    };
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={onClick}
+                        disabled={processing}
+                        className="h-12 rounded-xl bg-gray-100 font-bold text-gray-900 disabled:opacity-60"
+                      >
+                        {key === 'back' ? 'Del' : key === 'clear' ? 'Clear' : key}
+                      </button>
+                    );
+                  })}
+                </div>
 
                 <button
                   type="button"

@@ -19,6 +19,8 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
   const [verifyingRecipient, setVerifyingRecipient] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const recipientInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -39,6 +41,22 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
       active = false;
     };
   }, [profile.uid]);
+
+  React.useEffect(() => {
+    if (!window.visualViewport) return;
+    const vv = window.visualViewport;
+    const updateInset = () => {
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardInset(inset);
+    };
+    vv.addEventListener('resize', updateInset);
+    vv.addEventListener('scroll', updateInset);
+    updateInset();
+    return () => {
+      vv.removeEventListener('resize', updateInset);
+      vv.removeEventListener('scroll', updateInset);
+    };
+  }, []);
 
   const availableBalance = useMemo(() => {
     if (!wallet) return 0;
@@ -87,7 +105,7 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6" style={{ paddingBottom: `${keyboardInset + 24}px` }}>
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/wallets')} className="p-2 rounded-full hover:bg-gray-100">
           <ArrowLeft size={20} className="text-gray-600" />
@@ -118,9 +136,11 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
         <div className="space-y-1">
           <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Recipient ID</label>
           <input
+            ref={recipientInputRef}
             type="text"
             value={recipientId}
             onChange={(e) => setRecipientId(e.target.value)}
+            onFocus={() => recipientInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
             placeholder="Enter recipient public ID or UID"
             className="w-full px-3 py-2.5 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-teal-500"
             required
