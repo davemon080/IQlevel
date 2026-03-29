@@ -148,7 +148,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
         <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
       </div>
 
-      <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden">
+      <div className="space-y-6">
         <div className="relative h-48 bg-gradient-to-r from-teal-600 to-emerald-600">
           {(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) && (
             <img
@@ -170,7 +170,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
           )}
         </div>
 
-        <div className="p-6">
+        <div className="space-y-6">
           <div className="flex flex-col md:flex-row md:items-center gap-4">
             <div className="relative -mt-16">
               <img
@@ -236,7 +236,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             )}
           </div>
 
-          <div className="flex gap-4 mt-6 border-b border-gray-100">
+          <div className="flex gap-4 border-b border-gray-100">
             {(['about', 'portfolio', 'activity'] as const).map((value) => (
               <button
                 key={value}
@@ -367,7 +367,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
           )}
 
           {tab === 'activity' && (
-            <div className="mt-6 space-y-3">
+            <div className="space-y-3">
               {posts.length === 0 && <p className="text-sm text-gray-500">No activity yet.</p>}
               {posts.map((post) => (
                 <div key={post.id} className="p-4 border border-gray-100 rounded-2xl">

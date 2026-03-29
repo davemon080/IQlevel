@@ -62,75 +62,73 @@ export default function JobDetails({ profile }: JobDetailsProps) {
         <h1 className="text-2xl font-bold text-gray-900">Gig Details</h1>
       </div>
 
-      <div className="bg-white rounded-3xl border border-gray-200 p-6 md:p-8">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-widest font-bold text-teal-600 mb-2">{job.category}</p>
-            <h2 className="text-2xl font-bold text-gray-900">{job.title}</h2>
-          </div>
-          {isOwner && (
-            <Link
-              to={`/manage-gigs?jobId=${job.id}`}
-              className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700"
-              title="Manage this gig"
-            >
-              <Settings size={18} />
-            </Link>
-          )}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-widest font-bold text-teal-600 mb-2">{job.category}</p>
+          <h2 className="text-2xl font-bold text-gray-900">{job.title}</h2>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
-          <div className="p-3 bg-gray-50 rounded-xl text-sm font-semibold text-gray-700">
-            Budget: {formatMoneyFromUSD(job.budget, currency)}
-          </div>
-          <div className="p-3 bg-gray-50 rounded-xl text-sm text-gray-700 flex items-center gap-2">
-            <MapPin size={15} /> {job.isRemote ? 'Remote' : 'On-site'}
-          </div>
-          <div className="p-3 bg-gray-50 rounded-xl text-sm text-gray-700 flex items-center gap-2">
-            <Clock size={15} /> {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
-          </div>
-        </div>
-
-        <p className="text-gray-700 text-sm leading-relaxed mt-6 whitespace-pre-wrap">{job.description}</p>
-
-        {client && (
-          <div className="mt-8 p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
-            <p className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Posted by</p>
-            <Link to={`/profile/${client.uid}`} className="flex items-center gap-3 hover:opacity-80">
-              <img src={client.photoURL} alt={client.displayName} className="w-12 h-12 rounded-xl object-cover" />
-              <div>
-                <p className="text-sm font-bold text-gray-900">{client.displayName}</p>
-                <p className="text-xs text-gray-500 capitalize">{client.role}</p>
-              </div>
-            </Link>
-          </div>
-        )}
-
-        {!isOwner && profile.role === 'freelancer' && (
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              to={`/jobs/${job.id}/apply`}
-              className={`px-6 py-3 rounded-xl font-bold text-sm ${
-                hasApplied ? 'bg-gray-200 text-gray-600 pointer-events-none' : 'bg-teal-700 text-white hover:bg-teal-800'
-              }`}
-            >
-              {hasApplied ? 'Application Submitted' : 'Apply for Gig'}
-            </Link>
-            <Link
-              to={`/messages?uid=${job.clientUid}`}
-              className="px-6 py-3 rounded-xl font-bold text-sm bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
-            >
-              Message Client
-            </Link>
-          </div>
-        )}
-
-        {!isOwner && profile.role !== 'freelancer' && (
-          <div className="mt-8 p-4 bg-amber-50 border border-amber-100 rounded-xl text-sm text-amber-800">
-            Only freelancer accounts can apply to gigs.
-          </div>
+        {isOwner && (
+          <Link
+            to={`/manage-gigs?jobId=${job.id}`}
+            className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700"
+            title="Manage this gig"
+          >
+            <Settings size={18} />
+          </Link>
         )}
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="p-3 bg-gray-50 rounded-xl text-sm font-semibold text-gray-700">
+          Budget: {formatMoneyFromUSD(job.budget, currency)}
+        </div>
+        <div className="p-3 bg-gray-50 rounded-xl text-sm text-gray-700 flex items-center gap-2">
+          <MapPin size={15} /> {job.isRemote ? 'Remote' : 'On-site'}
+        </div>
+        <div className="p-3 bg-gray-50 rounded-xl text-sm text-gray-700 flex items-center gap-2">
+          <Clock size={15} /> {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
+        </div>
+      </div>
+
+      <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">{job.description}</p>
+
+      {client && (
+        <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
+          <p className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Posted by</p>
+          <Link to={`/profile/${client.uid}`} className="flex items-center gap-3 hover:opacity-80">
+            <img src={client.photoURL} alt={client.displayName} className="w-12 h-12 rounded-xl object-cover" />
+            <div>
+              <p className="text-sm font-bold text-gray-900">{client.displayName}</p>
+              <p className="text-xs text-gray-500 capitalize">{client.role}</p>
+            </div>
+          </Link>
+        </div>
+      )}
+
+      {!isOwner && profile.role === 'freelancer' && (
+        <div className="flex flex-wrap gap-3">
+          <Link
+            to={`/jobs/${job.id}/apply`}
+            className={`px-6 py-3 rounded-xl font-bold text-sm ${
+              hasApplied ? 'bg-gray-200 text-gray-600 pointer-events-none' : 'bg-teal-700 text-white hover:bg-teal-800'
+            }`}
+          >
+            {hasApplied ? 'Application Submitted' : 'Apply for Gig'}
+          </Link>
+          <Link
+            to={`/messages?uid=${job.clientUid}`}
+            className="px-6 py-3 rounded-xl font-bold text-sm bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
+          >
+            Message Client
+          </Link>
+        </div>
+      )}
+
+      {!isOwner && profile.role !== 'freelancer' && (
+        <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl text-sm text-amber-800">
+          Only freelancer accounts can apply to gigs.
+        </div>
+      )}
     </div>
   );
 }
