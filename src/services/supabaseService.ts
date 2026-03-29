@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings } from '../types';
 
 type DbUserProfile = {
   uid: string;
@@ -125,6 +125,28 @@ type DbWalletSecurity = {
   updated_at: string;
   created_at: string;
 };
+
+type DbPostLikeNotificationRow = {
+  id: string;
+  post_id: string;
+  user_uid: string;
+  created_at: string;
+  posts: { author_uid: string } | { author_uid: string }[] | null;
+};
+
+type DbPostCommentNotificationRow = {
+  id: string;
+  post_id: string;
+  user_uid: string;
+  author_name: string;
+  content: string;
+  created_at: string;
+  posts: { author_uid: string } | { author_uid: string }[] | null;
+};
+
+const NOTIFICATION_SETTINGS_KEY_PREFIX = 'connect_notification_settings_';
+const CHAT_READ_KEY_PREFIX = 'connect_chat_read_map_';
+const CHAT_READ_EVENT = 'connect:chat-read-updated';
 
 function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
   return {
@@ -314,6 +336,17 @@ async function hashPin(pin: string) {
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+function loadJsonFromStorage<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 function subscribeToTable<T>(
   table: string,
   fetcher: () => Promise<T>,
@@ -356,6 +389,58 @@ function subscribeToTable<T>(
 
 export const supabaseService = {
   profileCache: new Map<string, UserProfile>(),
+
+  getNotificationSettings(uid: string): NotificationSettings {
+    const defaults: NotificationSettings = {
+      wallet: true,
+      gigs: true,
+      feed: true,
+      friendRequests: true,
+    };
+    return {
+      ...defaults,
+      ...loadJsonFromStorage<Partial<NotificationSettings>>(`${NOTIFICATION_SETTINGS_KEY_PREFIX}${uid}`, {}),
+    };
+  },
+
+  updateNotificationSettings(uid: string, updates: Partial<NotificationSettings>): NotificationSettings {
+    const next = { ...this.getNotificationSettings(uid), ...updates };
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(`${NOTIFICATION_SETTINGS_KEY_PREFIX}${uid}`, JSON.stringify(next));
+    }
+    return next;
+  },
+
+  getChatReadMap(uid: string): Record<string, string> {
+    return loadJsonFromStorage<Record<string, string>>(`${CHAT_READ_KEY_PREFIX}${uid}`, {});
+  },
+
+  markChatAsRead(uid: string, otherUid: string, readAt: string = new Date().toISOString()) {
+    const readMap = this.getChatReadMap(uid);
+    readMap[otherUid] = readAt;
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(`${CHAT_READ_KEY_PREFIX}${uid}`, JSON.stringify(readMap));
+      window.dispatchEvent(new CustomEvent(CHAT_READ_EVENT, { detail: { uid, otherUid, readAt } }));
+    }
+  },
+
+  computeUnreadChatCount(
+    uid: string,
+    chats: Array<{ otherUid: string; updatedAt: string }>
+  ): number {
+    const readMap = this.getChatReadMap(uid);
+    return chats.filter((chat) => {
+      const lastReadAt = readMap[chat.otherUid];
+      if (!lastReadAt) return true;
+      return new Date(chat.updatedAt).getTime() > new Date(lastReadAt).getTime();
+    }).length;
+  },
+
+  onChatReadUpdated(handler: (event: Event) => void) {
+    if (typeof window === 'undefined') return () => undefined;
+    window.addEventListener(CHAT_READ_EVENT, handler);
+    return () => window.removeEventListener(CHAT_READ_EVENT, handler);
+  },
 
   // User Profile
   async getUserProfile(uid: string): Promise<UserProfile | null> {
@@ -423,6 +508,14 @@ export const supabaseService = {
     const mapped = row ? mapUserProfileFromDb(row) : null;
     if (mapped) this.profileCache.set(mapped.uid, mapped);
     return mapped;
+  },
+
+  async resolveUserByIdentifier(identifier: string): Promise<UserProfile | null> {
+    const normalized = identifier.trim();
+    if (!normalized) return null;
+    return isUuid(normalized)
+      ? this.getUserProfile(normalized)
+      : this.getUserProfileByPublicId(normalized);
   },
 
   async createUserProfile(profile: UserProfile): Promise<void> {
@@ -1188,9 +1281,7 @@ export const supabaseService = {
       throw new Error('Transfer amount must be greater than zero.');
     }
 
-    const recipientProfile = isUuid(normalizedRecipient)
-      ? await this.getUserProfile(normalizedRecipient)
-      : await this.getUserProfileByPublicId(normalizedRecipient);
+    const recipientProfile = await this.resolveUserByIdentifier(normalizedRecipient);
     if (!recipientProfile) {
       throw new Error('Recipient user ID was not found.');
     }
@@ -1269,15 +1360,15 @@ export const supabaseService = {
     amount: number,
     pin: string
   ) {
-    const hasPin = await this.hasTransactionPin(senderUid);
-    if (!hasPin) {
-      throw new Error('Set a transaction PIN in wallet security first.');
+    const { error } = await supabase.rpc('wallet_transfer_with_pin', {
+      p_recipient_identifier: recipientIdentifier.trim(),
+      p_currency: currency,
+      p_amount: amount,
+      p_pin: pin,
+    });
+    if (error) {
+      throw new Error(error.message || 'Transfer failed.');
     }
-    const isValid = await this.verifyTransactionPin(senderUid, pin);
-    if (!isValid) {
-      throw new Error('Invalid transaction PIN.');
-    }
-    await this.transferByUserId(senderUid, recipientIdentifier, currency, amount);
   },
 
   // Client Job Management
@@ -1361,14 +1452,12 @@ export const supabaseService = {
   },
 
   async getNotifications(uid: string): Promise<AppNotification[]> {
-    const [incomingRequests, activeChats, proposals, myJobs] = await Promise.all([
+    const settings = this.getNotificationSettings(uid);
+
+    const [incomingRequests, proposals, myJobs, walletTransactions, feedLikes, feedComments] = await Promise.all([
       runQuery<DbFriendRequest[]>(
         supabase.from('friend_requests').select('*').eq('to_uid', uid).order('created_at', { ascending: false }).limit(20),
         'notifications:friendRequests'
-      ),
-      runQuery<any[]>(
-        supabase.from('active_chats').select('*').eq('user_uid', uid).order('updated_at', { ascending: false }).limit(20),
-        'notifications:activeChats'
       ),
       runQuery<DbProposal[]>(
         supabase.from('proposals').select('*').order('created_at', { ascending: false }).limit(30),
@@ -1378,40 +1467,118 @@ export const supabaseService = {
         supabase.from('jobs').select('*').eq('client_uid', uid),
         'notifications:myJobs'
       ),
+      runQuery<DbWalletTransaction[]>(
+        supabase
+          .from('wallet_transactions')
+          .select('*')
+          .eq('user_uid', uid)
+          .order('created_at', { ascending: false })
+          .limit(20),
+        'notifications:walletTransactions'
+      ),
+      settings.feed
+        ? runQuery<DbPostLikeNotificationRow[]>(
+            supabase
+              .from('post_likes')
+              .select('id,post_id,user_uid,created_at,posts!inner(author_uid)')
+              .eq('posts.author_uid', uid)
+              .neq('user_uid', uid)
+              .order('created_at', { ascending: false })
+              .limit(20),
+            'notifications:feedLikes'
+          )
+        : Promise.resolve([]),
+      settings.feed
+        ? runQuery<DbPostCommentNotificationRow[]>(
+            supabase
+              .from('post_comments')
+              .select('id,post_id,user_uid,author_name,content,created_at,posts!inner(author_uid)')
+              .eq('posts.author_uid', uid)
+              .neq('user_uid', uid)
+              .order('created_at', { ascending: false })
+              .limit(20),
+            'notifications:feedComments'
+          )
+        : Promise.resolve([]),
     ]);
 
     const myJobIds = new Set(myJobs.map((j) => j.id));
-    const appNotifications = proposals
+    const gigNotifications = settings.gigs
+      ? proposals
       .filter((p) => myJobIds.has(p.job_id))
       .slice(0, 20)
       .map<AppNotification>((p) => ({
         id: `proposal-${p.id}`,
-        type: 'application',
+        type: 'gig',
         title: 'New job application received',
         body: p.content.slice(0, 110),
         createdAt: p.created_at,
         link: '/manage-gigs',
-      }));
+      }))
+      : [];
 
-    const requestNotifications = incomingRequests.slice(0, 20).map<AppNotification>((r) => ({
-      id: `friend-${r.id}`,
-      type: 'friend_request',
-      title: `${r.from_name} sent you a request`,
-      body: r.status === 'pending' ? 'Tap to review connection request.' : `Request ${r.status}.`,
-      createdAt: r.created_at,
-      link: '/requests',
+    const requestNotifications = settings.friendRequests
+      ? incomingRequests.slice(0, 20).map<AppNotification>((r) => ({
+          id: `friend-${r.id}`,
+          type: 'friend_request',
+          title: `${r.from_name} sent you a request`,
+          body: r.status === 'pending' ? 'Tap to review connection request.' : `Request ${r.status}.`,
+          createdAt: r.created_at,
+          link: '/requests',
+        }))
+      : [];
+
+    const walletNotifications = settings.wallet
+      ? walletTransactions.map<AppNotification>((tx) => {
+          const isTransferOut = tx.reference?.startsWith('transfer_out:');
+          const isTransferIn = tx.reference?.startsWith('transfer_in:');
+          const counterpartyUid = tx.reference?.split(':')[1];
+          const title = isTransferIn
+            ? 'Funds received'
+            : isTransferOut
+            ? 'Transfer sent'
+            : tx.type === 'topup'
+            ? 'Wallet funded'
+            : 'Withdrawal completed';
+          const body = isTransferIn || isTransferOut
+            ? `${tx.amount} ${tx.currency} ${isTransferIn ? 'from' : 'to'} user ${counterpartyUid || ''}`.trim()
+            : `${tx.amount} ${tx.currency} via ${tx.method}`;
+          return {
+            id: `wallet-${tx.id}`,
+            type: 'wallet',
+            title,
+            body,
+            createdAt: tx.created_at,
+            link: '/wallets',
+          };
+        })
+      : [];
+
+    const feedLikeNotifications = feedLikes.map<AppNotification>((like) => ({
+      id: `feed-like-${like.id}`,
+      type: 'feed',
+      title: 'New like on your post',
+      body: 'Someone liked your post.',
+      createdAt: like.created_at,
+      link: `/comments/${like.post_id}`,
     }));
 
-    const messageNotifications = activeChats.slice(0, 20).map<AppNotification>((c) => ({
-      id: `chat-${c.user_uid}-${c.other_uid}-${c.updated_at}`,
-      type: 'message',
-      title: 'New chat activity',
-      body: c.last_message || 'You have a new message.',
-      createdAt: c.updated_at,
-      link: `/messages?uid=${c.other_uid}`,
+    const feedCommentNotifications = feedComments.map<AppNotification>((comment) => ({
+      id: `feed-comment-${comment.id}`,
+      type: 'feed',
+      title: 'New comment on your post',
+      body: `${comment.author_name}: ${comment.content.slice(0, 90)}`,
+      createdAt: comment.created_at,
+      link: `/comments/${comment.post_id}`,
     }));
 
-    return [...requestNotifications, ...messageNotifications, ...appNotifications].sort(
+    return [
+      ...requestNotifications,
+      ...gigNotifications,
+      ...walletNotifications,
+      ...feedLikeNotifications,
+      ...feedCommentNotifications,
+    ].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   },
@@ -1436,11 +1603,6 @@ export const supabaseService = {
         { event: '*', schema: 'public', table: 'friend_requests' },
         refresh
       ),
-      supabase.channel(`realtime:active_chats:${uid}`).on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'active_chats', filter: `user_uid=eq.${uid}` },
-        refresh
-      ),
       supabase.channel(`realtime:proposals:${uid}`).on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'proposals' },
@@ -1449,6 +1611,21 @@ export const supabaseService = {
       supabase.channel(`realtime:jobs:${uid}`).on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'jobs' },
+        refresh
+      ),
+      supabase.channel(`realtime:wallet_transactions:${uid}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'wallet_transactions', filter: `user_uid=eq.${uid}` },
+        refresh
+      ),
+      supabase.channel(`realtime:post_likes:${uid}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'post_likes' },
+        refresh
+      ),
+      supabase.channel(`realtime:post_comments:${uid}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'post_comments' },
         refresh
       ),
     ];

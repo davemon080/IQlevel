@@ -25,6 +25,7 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
   const targetUid = searchParams.get('uid');
   const [isSearchOpen, setIsSearchOpen] = React.useState(false);
   const [unreadNotifications, setUnreadNotifications] = React.useState(0);
+  const [unreadMessages, setUnreadMessages] = React.useState(0);
 
   const navItems = [
     { icon: Home, label: 'Feed', path: '/' },
@@ -45,6 +46,39 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
     });
     return () => unsubscribe();
   }, [profile.uid]);
+
+  React.useEffect(() => {
+    const refreshUnreadMessages = (chats: Array<{ otherUid: string; updatedAt: string }>) => {
+      setUnreadMessages(supabaseService.computeUnreadChatCount(profile.uid, chats));
+    };
+
+    const unsubscribeChats = supabaseService.subscribeToActiveChats(profile.uid, (chats) => {
+      const simplified = chats.map((chat) => ({
+        otherUid: chat.otherUid as string,
+        updatedAt: chat.updatedAt as string,
+      }));
+      refreshUnreadMessages(simplified);
+    });
+
+    const unsubscribeChatReadEvents = supabaseService.onChatReadUpdated(() => {
+      supabaseService.fetchActiveChats(profile.uid).then((chats) => {
+        const simplified = chats.map((chat) => ({
+          otherUid: chat.otherUid as string,
+          updatedAt: chat.updatedAt as string,
+        }));
+        refreshUnreadMessages(simplified);
+      });
+    });
+
+    if (location.pathname === '/messages' && targetUid) {
+      supabaseService.markChatAsRead(profile.uid, targetUid);
+    }
+
+    return () => {
+      unsubscribeChats();
+      unsubscribeChatReadEvents();
+    };
+  }, [location.pathname, profile.uid, targetUid]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
@@ -188,7 +222,14 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
                   : "text-gray-500"
               )}
             >
-              <item.icon size={22} />
+              <div className="relative">
+                <item.icon size={22} />
+                {item.path === '/messages' && unreadMessages > 0 && (
+                  <span className="absolute -top-1.5 -right-2 min-w-[16px] h-[16px] px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                    {unreadMessages > 9 ? '9+' : unreadMessages}
+                  </span>
+                )}
+              </div>
               <span className="text-[10px] font-medium">{item.label}</span>
             </Link>
           ))}

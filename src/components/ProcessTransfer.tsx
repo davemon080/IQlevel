@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowLeft, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ShieldCheck, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile, Wallet, WalletCurrency } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatAmount } from '../utils/currency';
+import { AnimatePresence, motion } from 'motion/react';
 
 interface ProcessTransferProps {
   profile: UserProfile;
@@ -16,8 +17,11 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [loading, setLoading] = useState(true);
   const [recipientId, setRecipientId] = useState('');
-  const [amount, setAmount] = useState(0);
+  const [recipientProfile, setRecipientProfile] = useState<UserProfile | null>(null);
+  const [verifyingRecipient, setVerifyingRecipient] = useState(false);
+  const [amount, setAmount] = useState('');
   const [pin, setPin] = useState('');
+  const [showPinPad, setShowPinPad] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -49,31 +53,82 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
     return wallet.eurBalance;
   }, [wallet, currency]);
 
-  const submitTransfer = async (e: React.FormEvent) => {
+  const amountNumber = useMemo(() => {
+    const parsed = parseFloat(amount);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [amount]);
+
+  const verifyRecipient = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-
     if (!recipientId.trim()) {
       setError('Recipient ID is required.');
       return;
     }
-    if (amount <= 0) {
+
+    setVerifyingRecipient(true);
+    try {
+      const recipient = await supabaseService.resolveUserByIdentifier(recipientId.trim());
+      if (!recipient) {
+        setError('Recipient user ID was not found.');
+        return;
+      }
+      if (recipient.uid === profile.uid) {
+        setError('You cannot transfer funds to yourself.');
+        return;
+      }
+      setRecipientProfile(recipient);
+      setSuccess('Recipient verified. Enter amount to continue.');
+    } catch (e: any) {
+      setError(e.message || 'Failed to verify recipient.');
+    } finally {
+      setVerifyingRecipient(false);
+    }
+  };
+
+  const openPinPad = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!recipientProfile) {
+      setError('Verify recipient first.');
+      return;
+    }
+    if (amountNumber <= 0) {
       setError('Amount must be greater than zero.');
       return;
     }
+    if (amountNumber > availableBalance) {
+      setError('Insufficient balance.');
+      return;
+    }
+    setPin('');
+    setShowPinPad(true);
+  };
+
+  const submitTransfer = async () => {
+    if (!recipientProfile) return;
     if (!/^\d{4}$/.test(pin)) {
       setError('Enter your 4-digit transaction PIN.');
       return;
     }
-
     setProcessing(true);
+    setError(null);
+    setSuccess(null);
     try {
-      await supabaseService.transferByUserIdWithPin(profile.uid, recipientId.trim(), currency, amount, pin);
+      await supabaseService.transferByUserIdWithPin(
+        profile.uid,
+        recipientProfile.publicId || recipientProfile.uid,
+        currency,
+        amountNumber,
+        pin
+      );
       setSuccess('Transfer completed successfully.');
       setRecipientId('');
-      setAmount(0);
+      setRecipientProfile(null);
+      setAmount('');
       setPin('');
+      setShowPinPad(false);
       const refreshed = await supabaseService.getOrCreateWallet(profile.uid);
       setWallet(refreshed);
     } catch (e: any) {
@@ -99,7 +154,7 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
         </button>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Process Transfer</h1>
-          <p className="text-sm text-gray-500">Complete wallet transfer securely with transaction PIN.</p>
+          <p className="text-sm text-gray-500">Verify recipient, enter amount, then confirm with your 4-digit PIN.</p>
         </div>
       </div>
 
@@ -117,7 +172,7 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
         </select>
       </div>
 
-      <form onSubmit={submitTransfer} className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
+      <form onSubmit={verifyRecipient} className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
         <div className="space-y-1">
           <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Recipient ID</label>
           <input
@@ -129,46 +184,138 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
             required
           />
         </div>
-        <div className="space-y-1">
-          <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Amount ({currency})</label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={amount}
-            onChange={(e) => setAmount(parseFloat(e.target.value))}
-            className="w-full px-3 py-2.5 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-teal-500"
-            required
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-bold uppercase tracking-wider text-gray-500 inline-flex items-center gap-1">
-            <ShieldCheck size={12} />
-            Transaction PIN
-          </label>
-          <input
-            type="password"
-            inputMode="numeric"
-            pattern="\d{4}"
-            maxLength={4}
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-            placeholder="Enter 4-digit PIN"
-            className="w-full px-3 py-2.5 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-teal-500"
-            required
-          />
-        </div>
         <button
           type="submit"
-          disabled={processing}
+          disabled={verifyingRecipient}
           className="w-full py-2.5 rounded-xl bg-teal-700 text-white font-bold hover:bg-teal-800 disabled:opacity-70"
         >
-          {processing ? 'Processing...' : 'Complete Transfer'}
+          {verifyingRecipient ? 'Verifying...' : 'Verify User ID'}
         </button>
       </form>
 
+      {recipientProfile && (
+        <form onSubmit={openPinPad} className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-100">
+            <UserCheck size={20} className="text-emerald-600" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-emerald-900 truncate">{recipientProfile.displayName}</p>
+              <p className="text-xs text-emerald-700 truncate">
+                {recipientProfile.publicId || recipientProfile.uid}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Amount ({currency})</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-teal-500"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-2.5 rounded-xl bg-teal-700 text-white font-bold hover:bg-teal-800"
+          >
+            Send Now
+          </button>
+        </form>
+      )}
+
       {error && <div className="p-3 rounded-xl bg-red-50 text-red-700 text-sm font-semibold">{error}</div>}
       {success && <div className="p-3 rounded-xl bg-emerald-50 text-emerald-700 text-sm font-semibold">{success}</div>}
+
+      <AnimatePresence>
+        {showPinPad && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-40"
+              onClick={() => !processing && setShowPinPad(false)}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+              className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl p-5 border-t border-gray-200"
+            >
+              <div className="max-w-md mx-auto space-y-4">
+                <div className="text-center">
+                  <p className="text-sm font-bold text-gray-900 inline-flex items-center gap-1">
+                    <ShieldCheck size={14} />
+                    Enter Transaction PIN
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Sending {formatAmount(amountNumber, currency)} to {recipientProfile?.displayName}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-center gap-2">
+                  {Array.from({ length: 4 }).map((_, idx) => (
+                    <span
+                      key={idx}
+                      className={`w-3 h-3 rounded-full ${idx < pin.length ? 'bg-teal-600' : 'bg-gray-300'}`}
+                    />
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'back'].map((key) => {
+                    if (key === '') return <div key="blank" />;
+                    if (key === 'back') {
+                      return (
+                        <button
+                          key="back"
+                          type="button"
+                          onClick={() => setPin((prev) => prev.slice(0, -1))}
+                          className="h-12 rounded-xl bg-gray-100 font-bold text-gray-700"
+                          disabled={processing}
+                        >
+                          ⌫
+                        </button>
+                      );
+                    }
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setPin((prev) => (prev.length < 4 ? `${prev}${key}` : prev))}
+                        className="h-12 rounded-xl bg-gray-100 font-bold text-gray-900"
+                        disabled={processing}
+                      >
+                        {key}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={submitTransfer}
+                  disabled={processing || pin.length !== 4}
+                  className="w-full py-3 rounded-xl bg-teal-700 text-white font-bold disabled:opacity-70"
+                >
+                  {processing ? 'Processing Transfer...' : 'Complete Transfer'}
+                </button>
+                {processing === false && success && (
+                  <div className="flex items-center justify-center gap-1 text-emerald-700 text-xs font-semibold">
+                    <CheckCircle2 size={14} />
+                    Transfer successful
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

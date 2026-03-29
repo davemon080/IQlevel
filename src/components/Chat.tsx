@@ -220,6 +220,11 @@ export default function Chat({ profile }: ChatProps) {
   }, [profile.uid, selectedContact]);
 
   useEffect(() => {
+    if (!selectedContact) return;
+    supabaseService.markChatAsRead(profile.uid, selectedContact.uid);
+  }, [profile.uid, selectedContact, messages.length]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 

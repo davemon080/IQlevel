@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { UserProfile } from '../types';
+import { NotificationSettings, UserProfile } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { supabase } from '../supabase';
 import {
@@ -41,6 +41,17 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
+    wallet: true,
+    gigs: true,
+    feed: true,
+    friendRequests: true,
+  });
+  const [savingNotifications, setSavingNotifications] = useState(false);
+
+  React.useEffect(() => {
+    setNotificationSettings(supabaseService.getNotificationSettings(profile.uid));
+  }, [profile.uid]);
 
   const handleUpdateProfile = async () => {
     setLoading(true);
@@ -100,6 +111,18 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
       setPhotoURL(url);
     } finally {
       setUploadingPhoto(false);
+    }
+  };
+
+  const handleSaveNotificationSettings = () => {
+    setSavingNotifications(true);
+    setMessage(null);
+    try {
+      supabaseService.updateNotificationSettings(profile.uid, notificationSettings);
+      setMessage({ type: 'success', text: 'Notification preferences updated.' });
+      setTimeout(() => setActiveSection('main'), 1000);
+    } finally {
+      setSavingNotifications(false);
     }
   };
 
@@ -394,28 +417,51 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
 
               <div className="space-y-2">
                 {[
-                  { label: "Direct Messages", desc: "When someone sends you a message" },
-                  { label: "Job Alerts", desc: "When a new job matches your skills" },
-                  { label: "Application Updates", desc: "When a client reviews or accepts your application" },
-                  { label: "Network Activity", desc: "When someone follows you or views your profile" }
-                ].map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                  { key: 'wallet', label: 'Wallet Activity', desc: 'Transfers, withdrawals and top-ups.' },
+                  { key: 'gigs', label: 'Gig Activity', desc: 'Applications and updates on your gigs.' },
+                  { key: 'feed', label: 'Feed Activity', desc: 'Likes and comments on your posts.' },
+                  { key: 'friendRequests', label: 'Friend Requests', desc: 'New connection requests.' }
+                ].map((item) => (
+                  <div key={item.key} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
                     <div>
                       <p className="text-sm font-bold text-gray-900">{item.label}</p>
                       <p className="text-xs text-gray-500">{item.desc}</p>
                     </div>
-                    <div className="w-12 h-6 bg-teal-600 rounded-full relative p-1 cursor-pointer">
-                      <div className="w-4 h-4 bg-white rounded-full absolute right-1"></div>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNotificationSettings((prev) => ({
+                          ...prev,
+                          [item.key]: !prev[item.key as keyof NotificationSettings],
+                        }))
+                      }
+                      className={`w-12 h-6 rounded-full relative p-1 transition-all ${
+                        notificationSettings[item.key as keyof NotificationSettings] ? 'bg-teal-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${
+                          notificationSettings[item.key as keyof NotificationSettings] ? 'right-1' : 'left-1'
+                        }`}
+                      />
+                    </button>
                   </div>
                 ))}
               </div>
 
+              {message && (
+                <div className={`p-4 rounded-xl flex items-center gap-3 text-sm ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                  {message.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}
+                  {message.text}
+                </div>
+              )}
+
               <button 
-                onClick={() => setActiveSection('main')}
-                className="w-full bg-teal-700 text-white font-bold py-4 rounded-2xl hover:bg-teal-800 transition-all shadow-lg shadow-teal-100"
+                onClick={handleSaveNotificationSettings}
+                disabled={savingNotifications}
+                className="w-full bg-teal-700 text-white font-bold py-4 rounded-2xl hover:bg-teal-800 transition-all shadow-lg shadow-teal-100 disabled:opacity-70"
               >
-                Save Preferences
+                {savingNotifications ? 'Saving...' : 'Save Preferences'}
               </button>
             </motion.div>
           )}

@@ -134,12 +134,19 @@ export interface WalletTransaction {
 
 export interface AppNotification {
   id: string;
-  type: 'message' | 'friend_request' | 'application' | 'job' | 'system';
+  type: 'message' | 'friend_request' | 'application' | 'job' | 'system' | 'wallet' | 'feed' | 'gig';
   title: string;
   body: string;
   createdAt: string;
   read?: boolean;
   link?: string;
+}
+
+export interface NotificationSettings {
+  wallet: boolean;
+  gigs: boolean;
+  feed: boolean;
+  friendRequests: boolean;
 }
 
 export interface PostLike {
