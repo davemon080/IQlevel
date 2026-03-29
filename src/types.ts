@@ -129,3 +129,13 @@ export interface WalletTransaction {
   createdAt: string;
   reference?: string;
 }
+
+export interface AppNotification {
+  id: string;
+  type: 'message' | 'friend_request' | 'application' | 'job' | 'system';
+  title: string;
+  body: string;
+  createdAt: string;
+  read?: boolean;
+  link?: string;
+}

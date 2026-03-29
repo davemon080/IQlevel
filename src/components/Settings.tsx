@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { UserProfile } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { supabase } from '../supabase';
-import { 
+import {
   User, 
   Lock, 
   Bell, 
@@ -35,6 +35,7 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [bio, setBio] = useState(profile.bio || '');
   const [photoURL, setPhotoURL] = useState(profile.photoURL);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   // Security Form State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -92,6 +93,16 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
     }
   };
 
+  const handlePhotoUpload = async (file: File) => {
+    setUploadingPhoto(true);
+    try {
+      const url = await supabaseService.uploadUserAsset(file, 'profile/avatar');
+      setPhotoURL(url);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const SettingItem = ({ icon: Icon, label, sublabel, onClick, color = "text-gray-600" }: any) => (
     <button 
       onClick={onClick}
@@ -108,6 +119,24 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
       </div>
       <ChevronRight size={18} className="text-gray-300" />
     </button>
+  );
+
+  const SettingLink = ({ icon: Icon, label, sublabel, to, color = "text-gray-600" }: any) => (
+    <Link
+      to={to}
+      className="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0"
+    >
+      <div className="flex items-center gap-4">
+        <div className={`p-2 rounded-xl bg-gray-50 ${color}`}>
+          <Icon size={20} />
+        </div>
+        <div className="text-left">
+          <p className="text-sm font-bold text-gray-900">{label}</p>
+          {sublabel && <p className="text-xs text-gray-500">{sublabel}</p>}
+        </div>
+      </div>
+      <ChevronRight size={18} className="text-gray-300" />
+    </Link>
   );
 
   return (
@@ -169,14 +198,13 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
                   onClick={() => setActiveSection('notifications')}
                   color="text-blue-600"
                 />
-                <Link to="/wallets">
-                  <SettingItem 
-                    icon={Wallet} 
-                    label="Wallets" 
-                    sublabel="Balances, top-ups, withdrawals"
-                    color="text-emerald-600"
-                  />
-                </Link>
+                <SettingLink
+                  to="/wallets"
+                  icon={Wallet}
+                  label="Wallets"
+                  sublabel="Balances, top-ups, withdrawals"
+                  color="text-emerald-600"
+                />
               </div>
 
               <div className="py-2 border-t border-gray-100">
@@ -218,10 +246,17 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
               <div className="flex flex-col items-center gap-4">
                 <div className="relative group">
                   <img src={photoURL} alt="Profile" className="w-32 h-32 rounded-3xl object-cover shadow-xl" />
-                  <button className="absolute bottom-2 right-2 p-2 bg-teal-600 text-white rounded-xl shadow-lg hover:bg-teal-700 transition-all">
+                  <label className="absolute bottom-2 right-2 p-2 bg-teal-600 text-white rounded-xl shadow-lg hover:bg-teal-700 transition-all cursor-pointer">
                     <Camera size={18} />
-                  </button>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => e.target.files?.[0] && handlePhotoUpload(e.target.files[0])}
+                    />
+                  </label>
                 </div>
+                {uploadingPhoto && <p className="text-xs text-gray-500">Uploading photo...</p>}
                 <div className="w-full space-y-2">
                   <label className="text-xs font-bold text-gray-500 uppercase">Profile Picture URL</label>
                   <input 
@@ -361,7 +396,7 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
                 {[
                   { label: "Direct Messages", desc: "When someone sends you a message" },
                   { label: "Job Alerts", desc: "When a new job matches your skills" },
-                  { label: "Proposal Updates", desc: "When a client views or accepts your proposal" },
+                  { label: "Application Updates", desc: "When a client reviews or accepts your application" },
                   { label: "Network Activity", desc: "When someone follows you or views your profile" }
                 ].map((item, idx) => (
                   <div key={idx} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">

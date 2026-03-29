@@ -1,10 +1,12 @@
 import React from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { Home, Users, PlusSquare, Briefcase, MessageSquare, User, LogOut, Search, Settings as SettingsIcon, Link2 } from 'lucide-react';
+import { Home, Users, Briefcase, MessageSquare, LogOut, Search, Settings as SettingsIcon, Link2, Bell } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { UserProfile } from '../types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { supabaseService } from '../services/supabaseService';
+import GlobalSearch from './GlobalSearch';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -21,6 +23,8 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const targetUid = searchParams.get('uid');
+  const [isSearchOpen, setIsSearchOpen] = React.useState(false);
+  const [unreadNotifications, setUnreadNotifications] = React.useState(0);
 
   const navItems = [
     { icon: Home, label: 'Feed', path: '/' },
@@ -31,6 +35,16 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
   ];
 
   const isMessagesPage = location.pathname === '/messages';
+
+  React.useEffect(() => {
+    const readKey = `connect_read_notifications_${profile.uid}`;
+    const unsubscribe = supabaseService.subscribeToNotifications(profile.uid, (items) => {
+      const readIds = new Set<string>(JSON.parse(localStorage.getItem(readKey) || '[]'));
+      const unread = items.filter((item) => !readIds.has(item.id)).length;
+      setUnreadNotifications(unread);
+    });
+    return () => unsubscribe();
+  }, [profile.uid]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
@@ -107,13 +121,20 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
               <input
                 type="text"
                 placeholder="Search for students, jobs, or skills..."
+                readOnly
+                onClick={() => setIsSearchOpen(true)}
                 className="w-full pl-10 pr-4 py-2 bg-gray-100 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
               />
             </div>
             <div className="flex items-center gap-4">
-              <button className="bg-teal-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-teal-700 transition-colors">
-                Post a Gig
-              </button>
+              <Link to="/notifications" className="relative p-2 rounded-xl hover:bg-gray-100 transition-colors text-gray-600">
+                <Bell size={20} />
+                {unreadNotifications > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                  </span>
+                )}
+              </Link>
             </div>
           </header>
         )}
@@ -127,9 +148,19 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
             </span>
             Connect
           </span>
-          <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-full">
-            <Search size={20} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setIsSearchOpen(true)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-full">
+              <Search size={20} />
+            </button>
+            <Link to="/notifications" className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-full">
+              <Bell size={20} />
+              {unreadNotifications > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                </span>
+              )}
+            </Link>
+          </div>
         </header>
         )}
 
@@ -163,6 +194,7 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
           ))}
         </nav>
       )}
+      <GlobalSearch isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
     </div>
   );
 }

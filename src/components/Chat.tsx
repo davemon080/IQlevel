@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { UserProfile, Message, Attachment } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { Send, Search, MessageSquare, User, MoreVertical, Phone, Video, ArrowLeft, Check, CheckCheck, Smile, Paperclip, PlusSquare, Lock, Keyboard as KeyboardIcon, FileIcon, X, Download, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Send, Search, MessageSquare, User, MoreVertical, Phone, Video, ArrowLeft, CheckCheck, Smile, Paperclip, PlusSquare, Lock, Keyboard as KeyboardIcon, FileIcon, X, Download, Image as ImageIcon, Loader2, Clock3, Check } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import VirtualKeyboard from './VirtualKeyboard';
@@ -11,12 +11,14 @@ interface ChatProps {
   profile: UserProfile;
 }
 
+type LocalMessage = Message & { localStatus?: 'pending' | 'sent' | 'failed' };
+
 export default function Chat({ profile }: ChatProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const targetUid = searchParams.get('uid');
   
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [activeChats, setActiveChats] = useState<any[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
@@ -185,7 +187,16 @@ export default function Chat({ profile }: ChatProps) {
         profile.uid,
         selectedContact.uid,
         (msgs) => {
-          setMessages(msgs);
+          setMessages((prev) => {
+            const pendingOrFailed = prev.filter((m) => m.id.startsWith('temp-') || m.localStatus === 'failed');
+            const serverMessages: LocalMessage[] = msgs.map((m) => ({ ...m, localStatus: 'sent' }));
+            const merged = [...serverMessages, ...pendingOrFailed];
+            const unique = new Map<string, LocalMessage>();
+            merged.forEach((msg) => unique.set(msg.id, msg));
+            return Array.from(unique.values()).sort(
+              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            );
+          });
           setMessagesLoading(false);
         },
         (err) => {
@@ -220,6 +231,23 @@ export default function Chat({ profile }: ChatProps) {
     // Clear inputs immediately for smooth UX
     setNewMessage('');
     setSelectedFiles([]);
+
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const optimisticMessage: LocalMessage = {
+      id: tempId,
+      senderUid: profile.uid,
+      receiverUid: selectedContact.uid,
+      content: messageText,
+      attachments: files.map((file) => ({
+        name: file.name,
+        url: '',
+        type: file.type,
+        size: file.size,
+      })),
+      createdAt: new Date().toISOString(),
+      localStatus: 'pending',
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
     
     // Increment active uploads if there are files
     if (files.length > 0) {
@@ -244,10 +272,23 @@ export default function Chat({ profile }: ChatProps) {
         messageData.attachments = attachments;
       }
 
-      await supabaseService.sendMessage(messageData);
+      const inserted = await supabaseService.sendMessage(messageData);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === tempId
+            ? {
+                ...inserted,
+                localStatus: 'sent',
+              }
+            : msg
+        )
+      );
     } catch (err) {
       console.error('Error sending message:', err);
       setError(files.length > 0 ? 'Failed to send message with attachments' : 'Failed to send message');
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === tempId ? { ...msg, localStatus: 'failed' } : msg))
+      );
       // Restore text if it failed
       if (messageText && !newMessage) {
         setNewMessage(messageText);
@@ -572,7 +613,18 @@ export default function Chat({ profile }: ChatProps) {
                             <span className="text-[9px] text-gray-500 font-medium">
                               {format(msgDate, 'HH:mm')}
                             </span>
-                            {isMe && <CheckCheck size={12} className="text-blue-500" />}
+                            {isMe && (
+                              <>
+                                {msg.localStatus === 'pending' && <Clock3 size={11} className="text-gray-400" />}
+                                {msg.localStatus === 'failed' && <X size={11} className="text-red-500" />}
+                                {(!msg.localStatus || msg.localStatus === 'sent') && (
+                                  <span className="inline-flex items-center gap-0.5">
+                                    <Check size={11} className="text-blue-500" />
+                                    <Check size={11} className="-ml-1 text-blue-500" />
+                                  </span>
+                                )}
+                              </>
+                            )}
                           </div>
                         </div>
                       </motion.div>

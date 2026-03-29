@@ -5,12 +5,15 @@ import { supabaseService } from '../services/supabaseService';
 import { Image, Send, Briefcase, Star, MapPin, DollarSign, Plus, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
+import { useCurrency } from '../context/CurrencyContext';
+import { formatMoneyFromUSD } from '../utils/currency';
 
 interface FeedProps {
   profile: UserProfile;
 }
 
 export default function Feed({ profile }: FeedProps) {
+  const { currency } = useCurrency();
   const [posts, setPosts] = useState<Post[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [newPostContent, setNewPostContent] = useState('');
@@ -43,6 +46,16 @@ export default function Feed({ profile }: FeedProps) {
     e.preventDefault();
     if (!newPostContent.trim()) return;
     setIsPosting(true);
+    const optimistic: Post = {
+      id: `temp-${Date.now()}`,
+      authorUid: profile.uid,
+      authorName: profile.displayName,
+      authorPhoto: profile.photoURL,
+      content: newPostContent,
+      type: 'social',
+      createdAt: new Date().toISOString(),
+    };
+    setPosts((prev) => [optimistic, ...prev]);
     await supabaseService.createPost({
       authorUid: profile.uid,
       authorName: profile.displayName,
@@ -211,7 +224,7 @@ export default function Feed({ profile }: FeedProps) {
               <div key={job.id} className="p-3 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer border border-transparent hover:border-gray-100">
                 <p className="text-sm font-bold text-gray-900 mb-1">{job.title}</p>
                 <div className="flex items-center gap-3 text-[10px] text-gray-500 font-medium">
-                  <span className="flex items-center gap-1"><DollarSign size={10} /> {job.budget}</span>
+                  <span className="flex items-center gap-1"><DollarSign size={10} /> {formatMoneyFromUSD(job.budget, currency)}</span>
                   <span className="flex items-center gap-1"><MapPin size={10} /> {job.isRemote ? 'Remote' : 'On-site'}</span>
                 </div>
               </div>

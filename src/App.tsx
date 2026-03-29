@@ -18,6 +18,9 @@ import Settings from './components/Settings';
 import FriendRequests from './components/FriendRequests';
 import ManageGigs from './components/ManageGigs';
 import Wallets from './components/Wallets';
+import JobDetails from './components/JobDetails';
+import JobApply from './components/JobApply';
+import Notifications from './components/Notifications';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -217,9 +220,12 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Feed profile={profile} />} />
           <Route path="/jobs" element={<JobBoard profile={profile} />} />
+          <Route path="/jobs/:jobId" element={<JobDetails profile={profile} />} />
+          <Route path="/jobs/:jobId/apply" element={<JobApply profile={profile} />} />
           <Route path="/network" element={<Network profile={profile} />} />
           <Route path="/requests" element={<FriendRequests profile={profile} />} />
           <Route path="/manage-gigs" element={<ManageGigs profile={profile} />} />
+          <Route path="/notifications" element={<Notifications profile={profile} />} />
           <Route path="/profile/:uid" element={<Profile profile={profile} />} />
           <Route path="/messages" element={<Chat profile={profile} />} />
           <Route path="/wallets" element={<Wallets profile={profile} />} />

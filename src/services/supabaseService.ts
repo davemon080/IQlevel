@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification } from '../types';
 
 type DbUserProfile = {
   uid: string;
@@ -236,7 +236,7 @@ function mapWalletTransactionFromDb(row: DbWalletTransaction): WalletTransaction
   };
 }
 
-async function runQuery<T>(promise: Promise<{ data: T | null; error: any }>, context: string): Promise<T> {
+async function runQuery<T>(promise: any, context: string): Promise<T> {
   const { data, error } = await promise;
   if (error) {
     console.error(`Supabase error (${context}):`, error);
@@ -354,6 +354,14 @@ export const supabaseService = {
     );
   },
 
+  async listPosts(limitCount: number = 100): Promise<Post[]> {
+    const rows = await runQuery<DbPost[]>(
+      supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(limitCount),
+      'listPosts'
+    );
+    return rows.map(mapPostFromDb);
+  },
+
   subscribeToPosts(callback: (posts: Post[]) => void) {
     const fetcher = async () => {
       const rows = await runQuery<DbPost[]>(
@@ -399,6 +407,22 @@ export const supabaseService = {
     );
   },
 
+  async listJobs(): Promise<Job[]> {
+    const rows = await runQuery<DbJob[]>(
+      supabase.from('jobs').select('*').order('created_at', { ascending: false }),
+      'listJobs'
+    );
+    return rows.map(mapJobFromDb);
+  },
+
+  async getJobById(jobId: string): Promise<Job | null> {
+    const row = await runQuery<DbJob | null>(
+      supabase.from('jobs').select('*').eq('id', jobId).maybeSingle(),
+      'getJobById'
+    );
+    return row ? mapJobFromDb(row) : null;
+  },
+
   subscribeToJobs(callback: (jobs: Job[]) => void) {
     const fetcher = async () => {
       const rows = await runQuery<DbJob[]>(
@@ -430,16 +454,35 @@ export const supabaseService = {
     };
   },
 
-  async sendMessage(message: Omit<Message, 'id' | 'createdAt'>): Promise<void> {
-    const createdAt = new Date().toISOString();
+  async uploadUserAsset(file: File, folder: string = 'profile'): Promise<string> {
+    const safeName = file.name.replace(/\s+/g, '_');
+    const filePath = `${folder}/${Date.now()}_${safeName}`;
     await runQuery(
-      supabase.from('messages').insert({
-        sender_uid: message.senderUid,
-        receiver_uid: message.receiverUid,
-        content: message.content || null,
-        attachments: message.attachments || null,
-        created_at: createdAt,
+      supabase.storage.from('chat-attachments').upload(filePath, file, {
+        contentType: file.type,
+        upsert: false,
       }),
+      'uploadUserAsset'
+    );
+
+    const { data } = supabase.storage.from('chat-attachments').getPublicUrl(filePath);
+    return data.publicUrl;
+  },
+
+  async sendMessage(message: Omit<Message, 'id' | 'createdAt'>): Promise<Message> {
+    const createdAt = new Date().toISOString();
+    const inserted = await runQuery<DbMessage>(
+      supabase
+        .from('messages')
+        .insert({
+          sender_uid: message.senderUid,
+          receiver_uid: message.receiverUid,
+          content: message.content || null,
+          attachments: message.attachments || null,
+          created_at: createdAt,
+        })
+        .select('*')
+        .single(),
       'sendMessage'
     );
 
@@ -466,6 +509,8 @@ export const supabaseService = {
       ),
       'updateActiveChats'
     );
+
+    return mapMessageFromDb(inserted);
   },
 
   subscribeToMessages(
@@ -864,5 +909,128 @@ export const supabaseService = {
       }),
       'createProposal'
     );
+  },
+
+  async updateProposalStatus(proposalId: string, status: 'pending' | 'accepted' | 'rejected') {
+    await runQuery(
+      supabase.from('proposals').update({ status }).eq('id', proposalId),
+      'updateProposalStatus'
+    );
+  },
+
+  async hasAppliedToJob(jobId: string, freelancerUid: string): Promise<boolean> {
+    const row = await runQuery<DbProposal | null>(
+      supabase
+        .from('proposals')
+        .select('*')
+        .eq('job_id', jobId)
+        .eq('freelancer_uid', freelancerUid)
+        .maybeSingle(),
+      'hasAppliedToJob'
+    );
+    return !!row;
+  },
+
+  async getNotifications(uid: string): Promise<AppNotification[]> {
+    const [incomingRequests, activeChats, proposals, myJobs] = await Promise.all([
+      runQuery<DbFriendRequest[]>(
+        supabase.from('friend_requests').select('*').eq('to_uid', uid).order('created_at', { ascending: false }).limit(20),
+        'notifications:friendRequests'
+      ),
+      runQuery<any[]>(
+        supabase.from('active_chats').select('*').eq('user_uid', uid).order('updated_at', { ascending: false }).limit(20),
+        'notifications:activeChats'
+      ),
+      runQuery<DbProposal[]>(
+        supabase.from('proposals').select('*').order('created_at', { ascending: false }).limit(30),
+        'notifications:proposals'
+      ),
+      runQuery<DbJob[]>(
+        supabase.from('jobs').select('*').eq('client_uid', uid),
+        'notifications:myJobs'
+      ),
+    ]);
+
+    const myJobIds = new Set(myJobs.map((j) => j.id));
+    const appNotifications = proposals
+      .filter((p) => myJobIds.has(p.job_id))
+      .slice(0, 20)
+      .map<AppNotification>((p) => ({
+        id: `proposal-${p.id}`,
+        type: 'application',
+        title: 'New job application received',
+        body: p.content.slice(0, 110),
+        createdAt: p.created_at,
+        link: '/manage-gigs',
+      }));
+
+    const requestNotifications = incomingRequests.slice(0, 20).map<AppNotification>((r) => ({
+      id: `friend-${r.id}`,
+      type: 'friend_request',
+      title: `${r.from_name} sent you a request`,
+      body: r.status === 'pending' ? 'Tap to review connection request.' : `Request ${r.status}.`,
+      createdAt: r.created_at,
+      link: '/requests',
+    }));
+
+    const messageNotifications = activeChats.slice(0, 20).map<AppNotification>((c) => ({
+      id: `chat-${c.user_uid}-${c.other_uid}-${c.updated_at}`,
+      type: 'message',
+      title: 'New chat activity',
+      body: c.last_message || 'You have a new message.',
+      createdAt: c.updated_at,
+      link: `/messages?uid=${c.other_uid}`,
+    }));
+
+    return [...requestNotifications, ...messageNotifications, ...appNotifications].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  },
+
+  subscribeToNotifications(uid: string, callback: (items: AppNotification[]) => void, onError?: (error: any) => void) {
+    let active = true;
+
+    const refresh = async () => {
+      try {
+        const items = await this.getNotifications(uid);
+        if (active) callback(items);
+      } catch (error) {
+        if (onError) onError(error);
+      }
+    };
+
+    refresh();
+
+    const channels = [
+      supabase.channel(`realtime:friend_requests:${uid}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'friend_requests' },
+        refresh
+      ),
+      supabase.channel(`realtime:active_chats:${uid}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'active_chats', filter: `user_uid=eq.${uid}` },
+        refresh
+      ),
+      supabase.channel(`realtime:proposals:${uid}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'proposals' },
+        refresh
+      ),
+      supabase.channel(`realtime:jobs:${uid}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'jobs' },
+        refresh
+      ),
+    ];
+
+    channels.forEach((channel) => channel.subscribe());
+    const interval = setInterval(refresh, 30000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+      channels.forEach((channel) => supabase.removeChannel(channel));
+    };
   },
 };

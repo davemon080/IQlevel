@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Job } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { Search, Filter, Briefcase, MapPin, DollarSign, Clock, CheckCircle, Plus, Settings } from 'lucide-react';
+import { Search, Filter, Briefcase, MapPin, Clock, CheckCircle, Plus, Settings } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
+import { useCurrency } from '../context/CurrencyContext';
+import { formatMoneyFromUSD } from '../utils/currency';
 
 interface JobBoardProps {
   profile: UserProfile;
 }
 
 export default function JobBoard({ profile }: JobBoardProps) {
+  const { currency } = useCurrency();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,24 +76,6 @@ export default function JobBoard({ profile }: JobBoardProps) {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Job Board</h1>
           <p className="text-sm sm:text-base text-gray-500">Find the perfect gig or hire top talent.</p>
         </div>
-        {profile.role === 'client' && (
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <Link
-              to="/manage-gigs"
-              className="flex-1 sm:flex-none bg-white border border-gray-200 text-gray-700 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-50 transition-all shadow-sm"
-            >
-              <Settings size={20} />
-              Manage My Gigs
-            </Link>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="flex-1 sm:flex-none bg-teal-700 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-teal-800 transition-all shadow-lg shadow-teal-100"
-            >
-              <Plus size={20} />
-              Post a New Gig
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Filters & Search Bar */}
@@ -163,7 +148,7 @@ export default function JobBoard({ profile }: JobBoardProps) {
                     <Briefcase size={24} />
                   </div>
                   <div className="text-right">
-                    <p className="text-xl font-bold text-teal-700">${job.budget}</p>
+                    <p className="text-xl font-bold text-teal-700">{formatMoneyFromUSD(job.budget, currency)}</p>
                     <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Fixed Price</p>
                   </div>
                 </div>
@@ -185,9 +170,23 @@ export default function JobBoard({ profile }: JobBoardProps) {
                   )}
                 </div>
 
-                <button className="w-full bg-gray-900 text-white font-bold py-3 px-4 rounded-2xl hover:bg-teal-700 transition-all text-sm sm:text-base">
-                  View Details & Apply
-                </button>
+                <div className="flex items-center gap-2">
+                  <Link
+                    to={`/jobs/${job.id}`}
+                    className="flex-1 text-center bg-gray-900 text-white font-bold py-3 px-4 rounded-2xl hover:bg-teal-700 transition-all text-sm sm:text-base"
+                  >
+                    View Details & Apply
+                  </Link>
+                  {profile.role === 'client' && profile.uid === job.clientUid && (
+                    <Link
+                      to={`/manage-gigs?jobId=${job.id}`}
+                      className="p-3 rounded-2xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-700"
+                      title="Manage this gig"
+                    >
+                      <Settings size={18} />
+                    </Link>
+                  )}
+                </div>
               </motion.div>
             ))
           ) : (
@@ -302,6 +301,16 @@ export default function JobBoard({ profile }: JobBoardProps) {
             </form>
           </motion.div>
         </div>
+      )}
+
+      {profile.role === 'client' && (
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="fixed bottom-24 md:bottom-8 right-6 z-30 w-14 h-14 rounded-full bg-teal-600 text-white shadow-xl hover:bg-teal-700 transition-all flex items-center justify-center"
+          aria-label="Post new gig"
+        >
+          <Plus size={24} />
+        </button>
       )}
     </div>
   );
