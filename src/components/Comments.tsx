@@ -42,9 +42,21 @@ export default function Comments({ profile }: CommentsProps) {
     e.preventDefault();
     if (!postId || !newComment.trim()) return;
     setSubmitting(true);
+    const optimistic: PostComment = {
+      id: `temp-comment-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      postId,
+      userUid: profile.uid,
+      authorName: profile.displayName,
+      authorPhoto: profile.photoURL,
+      content: newComment.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    setComments((prev) => [...prev, optimistic]);
     try {
       await supabaseService.addPostComment(postId, profile, newComment.trim());
       setNewComment('');
+    } catch {
+      setComments((prev) => prev.filter((item) => item.id !== optimistic.id));
     } finally {
       setSubmitting(false);
     }

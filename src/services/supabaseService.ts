@@ -377,19 +377,24 @@ export const supabaseService = {
   },
 
   // Posts
-  async createPost(post: Omit<Post, 'id' | 'createdAt'>): Promise<void> {
-    await runQuery(
-      supabase.from('posts').insert({
-        author_uid: post.authorUid,
-        author_name: post.authorName,
-        author_photo: post.authorPhoto,
-        content: post.content,
-        image_url: post.imageUrl || null,
-        type: post.type,
-        created_at: new Date().toISOString(),
-      }),
+  async createPost(post: Omit<Post, 'id' | 'createdAt'>): Promise<Post> {
+    const row = await runQuery<DbPost>(
+      supabase
+        .from('posts')
+        .insert({
+          author_uid: post.authorUid,
+          author_name: post.authorName,
+          author_photo: post.authorPhoto,
+          content: post.content,
+          image_url: post.imageUrl || null,
+          type: post.type,
+          created_at: new Date().toISOString(),
+        })
+        .select('*')
+        .single(),
       'createPost'
     );
+    return mapPostFromDb(row);
   },
 
   async listPosts(limitCount: number = 100): Promise<Post[]> {

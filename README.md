@@ -1,250 +1,282 @@
-# StudentLink - Database Schema
+# StudentLink - Full Database Migration SQL (PostgreSQL / Supabase)
 
-This document outlines the database schema for the StudentLink application. While the application currently uses **Firebase Firestore** (NoSQL), the following SQL schema represents the equivalent relational structure for reference or migration purposes.
+Run this script directly in your Supabase SQL editor.
 
-## SQL Schema (PostgreSQL/Standard SQL)
+What it does:
+- Creates missing tables
+- Adds missing columns
+- Aligns important column types where safe
+- Skips objects that already match
+- Rebuilds `post_likes` and `post_comments` using the actual runtime types of `posts.id` and `users.uid`
 
-You can use the following SQL commands to create the necessary tables.
-
-```sql
--- Users Table
-CREATE TABLE users (
-    uid VARCHAR(255) PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    display_name VARCHAR(255) NOT NULL,
-    photo_url TEXT,
-    cover_photo_url TEXT,
-    role VARCHAR(50) CHECK (role IN ('freelancer', 'client', 'admin')) NOT NULL,
-    bio TEXT,
-    status VARCHAR(255),
-    location VARCHAR(255),
-    skills JSONB, -- Array of strings
-    education JSONB, -- Object: {university, degree, year, verified}
-    experience JSONB, -- Array of objects: [{title, company, type, period, description}]
-    social_links JSONB, -- Object: {linkedin, github, twitter, website}
-    portfolio JSONB, -- Array of objects: [{title, imageUrl, link}]
-    company_info JSONB, -- Object: {name, about}
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Posts Table
-CREATE TABLE posts (
-    id VARCHAR(255) PRIMARY KEY,
-    author_uid VARCHAR(255) REFERENCES users(uid),
-    author_name VARCHAR(255),
-    author_photo TEXT,
-    content TEXT NOT NULL,
-    image_url TEXT,
-    type VARCHAR(50) CHECK (type IN ('social', 'job')) NOT NULL,
-    created_at TIMESTAMP NOT NULL
-);
-
--- Jobs Table
-CREATE TABLE jobs (
-    id VARCHAR(255) PRIMARY KEY,
-    client_uid VARCHAR(255) REFERENCES users(uid),
-    title VARCHAR(255) NOT NULL,
-    description TEXT NOT NULL,
-    budget DECIMAL(10, 2) NOT NULL,
-    category VARCHAR(100),
-    is_student_friendly BOOLEAN DEFAULT TRUE,
-    is_remote BOOLEAN DEFAULT FALSE,
-    status VARCHAR(50) CHECK (status IN ('open', 'closed')) DEFAULT 'open',
-    created_at TIMESTAMP NOT NULL
-);
-
--- Proposals Table
-CREATE TABLE proposals (
-    id VARCHAR(255) PRIMARY KEY,
-    freelancer_uid VARCHAR(255) REFERENCES users(uid),
-    job_id VARCHAR(255) REFERENCES jobs(id),
-    content TEXT NOT NULL,
-    budget DECIMAL(10, 2) NOT NULL,
-    status VARCHAR(50) CHECK (status IN ('pending', 'accepted', 'rejected')) DEFAULT 'pending',
-    created_at TIMESTAMP NOT NULL
-);
-
--- Messages Table
-CREATE TABLE messages (
-    id VARCHAR(255) PRIMARY KEY,
-    sender_uid VARCHAR(255) REFERENCES users(uid),
-    receiver_uid VARCHAR(255) REFERENCES users(uid),
-    content TEXT,
-    attachments JSONB, -- Array of objects: [{name, url, type, size}]
-    created_at TIMESTAMP NOT NULL
-);
-
--- Active Chats (Summary table for quick access)
-CREATE TABLE active_chats (
-    user_uid VARCHAR(255) REFERENCES users(uid),
-    other_uid VARCHAR(255) REFERENCES users(uid),
-    last_message TEXT,
-    updated_at TIMESTAMP NOT NULL,
-    PRIMARY KEY (user_uid, other_uid)
-);
-
--- Friend Requests Table
-CREATE TABLE friend_requests (
-    id SERIAL PRIMARY KEY,
-    from_uid VARCHAR(255) REFERENCES users(uid),
-    from_name VARCHAR(255),
-    from_photo TEXT,
-    to_uid VARCHAR(255) REFERENCES users(uid),
-    status VARCHAR(50) CHECK (status IN ('pending', 'accepted', 'rejected')) DEFAULT 'pending',
-    created_at TIMESTAMP NOT NULL
-);
-
--- Connections Table
-CREATE TABLE connections (
-    id SERIAL PRIMARY KEY,
-    uids JSONB NOT NULL, -- Array containing exactly two user UIDs
-    created_at TIMESTAMP NOT NULL
-);
-
--- Indexes for performance
-CREATE INDEX idx_posts_author ON posts(author_uid);
-CREATE INDEX idx_jobs_client ON jobs(client_uid);
-CREATE INDEX idx_proposals_job ON proposals(job_id);
-CREATE INDEX idx_messages_conversation ON messages(sender_uid, receiver_uid);
-```
-
-## Data Structure Notes
-
-1.  **JSONB Fields:** In modern SQL databases like PostgreSQL, `JSONB` is used to store arrays and nested objects (like skills, education, and portfolio) while maintaining searchability.
-2.  **UIDs:** The `uid` is the primary identifier provided by Firebase Authentication.
-3.  **Relationships:** Foreign keys are used to maintain referential integrity between users, posts, jobs, and messages.
-
-## How to Run
-
-1.  Ensure you have a SQL-compatible database (e.g., PostgreSQL, MySQL, or SQLite).
-2.  Copy the SQL code above.
-3.  Execute the script in your database management tool (e.g., pgAdmin, DBeaver, or via CLI).
-
-## Extended SQL For Current App Features (Append-Only)
-
-The following SQL keeps your existing schema and adds missing tables/columns for all features currently in the app (wallet operations, transfers, post likes, and comments).
+Note:
+- Rebuilding `post_likes` and `post_comments` drops old data in those two tables.
+- Script is idempotent (safe to rerun).
 
 ```sql
--- =========================
--- Core Extension Safety
--- =========================
--- Use IF NOT EXISTS / conditional ALTER to avoid breaking existing deployments.
-
--- =========================
--- Wallets
--- =========================
-CREATE TABLE IF NOT EXISTS wallets (
-    id BIGSERIAL PRIMARY KEY,
-    user_uid VARCHAR(255) NOT NULL UNIQUE REFERENCES users(uid) ON DELETE CASCADE,
-    usd_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
-    ngn_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
-    eur_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS wallet_transactions (
-    id BIGSERIAL PRIMARY KEY,
-    user_uid VARCHAR(255) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
-    currency VARCHAR(3) NOT NULL CHECK (currency IN ('USD', 'NGN', 'EUR')),
-    type VARCHAR(20) NOT NULL CHECK (type IN ('topup', 'withdraw')),
-    method VARCHAR(20) NOT NULL CHECK (method IN ('card', 'transfer')),
-    amount NUMERIC(14,2) NOT NULL CHECK (amount > 0),
-    status VARCHAR(20) NOT NULL CHECK (status IN ('completed', 'pending', 'failed')),
-    reference TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_wallet_transactions_user_created
-  ON wallet_transactions(user_uid, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_wallet_transactions_reference
-  ON wallet_transactions(reference);
-
--- =========================
--- Post Likes
--- =========================
-CREATE TABLE IF NOT EXISTS post_likes (
-    id BIGSERIAL PRIMARY KEY,
-    post_id VARCHAR(255) NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-    user_uid VARCHAR(255) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_post_like UNIQUE (post_id, user_uid)
-);
-
-CREATE INDEX IF NOT EXISTS idx_post_likes_post
-  ON post_likes(post_id);
-
-CREATE INDEX IF NOT EXISTS idx_post_likes_user
-  ON post_likes(user_uid);
-
--- =========================
--- Post Comments
--- =========================
-CREATE TABLE IF NOT EXISTS post_comments (
-    id BIGSERIAL PRIMARY KEY,
-    post_id VARCHAR(255) NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-    user_uid VARCHAR(255) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
-    author_name VARCHAR(255) NOT NULL,
-    author_photo TEXT,
-    content TEXT NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_post_comments_post_created
-  ON post_comments(post_id, created_at ASC);
-
-CREATE INDEX IF NOT EXISTS idx_post_comments_user
-  ON post_comments(user_uid);
-
--- =========================
--- Optional Hardening / Compatibility
--- =========================
--- Ensure messages table supports attachments JSONB in case older schema differs.
-DO $$
-BEGIN
-  IF NOT EXISTS (
-      SELECT 1
-      FROM information_schema.columns
-      WHERE table_name = 'messages' AND column_name = 'attachments'
-  ) THEN
-      ALTER TABLE messages ADD COLUMN attachments JSONB;
-  END IF;
-END $$;
-
--- Ensure wallet_transactions has reference column for transfer traceability.
-DO $$
-BEGIN
-  IF NOT EXISTS (
-      SELECT 1
-      FROM information_schema.columns
-      WHERE table_name = 'wallet_transactions' AND column_name = 'reference'
-  ) THEN
-      ALTER TABLE wallet_transactions ADD COLUMN reference TEXT;
-  END IF;
-END $$;
-
--- =========================
--- Recommended Transfer Reference Format (used by app)
--- =========================
--- transfer_out:<recipient_uid>:<transfer_ref>
--- transfer_in:<sender_uid>:<transfer_ref>
-```
-
-## Clean SQL Fix For UUID-Based Supabase Projects
-
-If your existing `posts.id` (and `users.uid`) are `UUID`, use this clean script.  
-This resolves errors like:
-`foreign key constraint ... cannot be implemented ... incompatible types character varying and uuid`.
-
-```sql
--- ======================================
--- UUID-safe schema for new app features
--- ======================================
--- Run in PostgreSQL / Supabase SQL editor.
+BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- 1) Ensure wallets tables use UUID user references
+-- =========================================
+-- 1) USERS
+-- =========================================
+CREATE TABLE IF NOT EXISTS users (
+    uid UUID PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    display_name TEXT NOT NULL,
+    photo_url TEXT,
+    cover_photo_url TEXT,
+    role TEXT NOT NULL DEFAULT 'freelancer',
+    bio TEXT,
+    status TEXT,
+    location TEXT,
+    skills JSONB,
+    education JSONB,
+    experience JSONB,
+    social_links JSONB,
+    portfolio JSONB,
+    company_info JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email TEXT,
+  ADD COLUMN IF NOT EXISTS display_name TEXT,
+  ADD COLUMN IF NOT EXISTS photo_url TEXT,
+  ADD COLUMN IF NOT EXISTS cover_photo_url TEXT,
+  ADD COLUMN IF NOT EXISTS role TEXT,
+  ADD COLUMN IF NOT EXISTS bio TEXT,
+  ADD COLUMN IF NOT EXISTS status TEXT,
+  ADD COLUMN IF NOT EXISTS location TEXT,
+  ADD COLUMN IF NOT EXISTS skills JSONB,
+  ADD COLUMN IF NOT EXISTS education JSONB,
+  ADD COLUMN IF NOT EXISTS experience JSONB,
+  ADD COLUMN IF NOT EXISTS social_links JSONB,
+  ADD COLUMN IF NOT EXISTS portfolio JSONB,
+  ADD COLUMN IF NOT EXISTS company_info JSONB,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
+
+UPDATE users SET role = 'freelancer' WHERE role IS NULL;
+ALTER TABLE users ALTER COLUMN role SET DEFAULT 'freelancer';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'users_role_check'
+  ) THEN
+    ALTER TABLE users
+      ADD CONSTRAINT users_role_check CHECK (role IN ('freelancer','client','admin'));
+  END IF;
+END $$;
+
+-- =========================================
+-- 2) POSTS
+-- =========================================
+CREATE TABLE IF NOT EXISTS posts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    author_uid UUID REFERENCES users(uid) ON DELETE SET NULL,
+    author_name TEXT,
+    author_photo TEXT,
+    content TEXT NOT NULL,
+    image_url TEXT,
+    type TEXT NOT NULL DEFAULT 'social',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE posts
+  ADD COLUMN IF NOT EXISTS author_uid UUID,
+  ADD COLUMN IF NOT EXISTS author_name TEXT,
+  ADD COLUMN IF NOT EXISTS author_photo TEXT,
+  ADD COLUMN IF NOT EXISTS content TEXT,
+  ADD COLUMN IF NOT EXISTS image_url TEXT,
+  ADD COLUMN IF NOT EXISTS type TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'posts_type_check'
+  ) THEN
+    ALTER TABLE posts
+      ADD CONSTRAINT posts_type_check CHECK (type IN ('social','job'));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_posts_author_uid ON posts(author_uid);
+CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC);
+
+-- =========================================
+-- 3) JOBS
+-- =========================================
+CREATE TABLE IF NOT EXISTS jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_uid UUID REFERENCES users(uid) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    budget NUMERIC(14,2) NOT NULL DEFAULT 0,
+    category TEXT,
+    is_student_friendly BOOLEAN NOT NULL DEFAULT TRUE,
+    is_remote BOOLEAN NOT NULL DEFAULT FALSE,
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE jobs
+  ADD COLUMN IF NOT EXISTS client_uid UUID,
+  ADD COLUMN IF NOT EXISTS title TEXT,
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS budget NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS category TEXT,
+  ADD COLUMN IF NOT EXISTS is_student_friendly BOOLEAN,
+  ADD COLUMN IF NOT EXISTS is_remote BOOLEAN,
+  ADD COLUMN IF NOT EXISTS status TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
+
+UPDATE jobs SET is_student_friendly = TRUE WHERE is_student_friendly IS NULL;
+UPDATE jobs SET is_remote = FALSE WHERE is_remote IS NULL;
+UPDATE jobs SET status = 'open' WHERE status IS NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'jobs_status_check'
+  ) THEN
+    ALTER TABLE jobs
+      ADD CONSTRAINT jobs_status_check CHECK (status IN ('open','closed'));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_jobs_client_uid ON jobs(client_uid);
+CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at DESC);
+
+-- =========================================
+-- 4) PROPOSALS (APPLICATIONS)
+-- =========================================
+CREATE TABLE IF NOT EXISTS proposals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    freelancer_uid UUID REFERENCES users(uid) ON DELETE CASCADE,
+    job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    budget NUMERIC(14,2) NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE proposals
+  ADD COLUMN IF NOT EXISTS freelancer_uid UUID,
+  ADD COLUMN IF NOT EXISTS job_id UUID,
+  ADD COLUMN IF NOT EXISTS content TEXT,
+  ADD COLUMN IF NOT EXISTS budget NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS status TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
+
+UPDATE proposals SET status = 'pending' WHERE status IS NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'proposals_status_check'
+  ) THEN
+    ALTER TABLE proposals
+      ADD CONSTRAINT proposals_status_check CHECK (status IN ('pending','accepted','rejected'));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_proposals_job_id ON proposals(job_id);
+CREATE INDEX IF NOT EXISTS idx_proposals_freelancer_uid ON proposals(freelancer_uid);
+
+-- =========================================
+-- 5) MESSAGES + ACTIVE CHATS
+-- =========================================
+CREATE TABLE IF NOT EXISTS messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sender_uid UUID REFERENCES users(uid) ON DELETE CASCADE,
+    receiver_uid UUID REFERENCES users(uid) ON DELETE CASCADE,
+    content TEXT,
+    attachments JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE messages
+  ADD COLUMN IF NOT EXISTS sender_uid UUID,
+  ADD COLUMN IF NOT EXISTS receiver_uid UUID,
+  ADD COLUMN IF NOT EXISTS content TEXT,
+  ADD COLUMN IF NOT EXISTS attachments JSONB,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
+
+CREATE INDEX IF NOT EXISTS idx_messages_pair_time
+  ON messages(sender_uid, receiver_uid, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS active_chats (
+    user_uid UUID NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+    other_uid UUID NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+    last_message TEXT,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_uid, other_uid)
+);
+
+ALTER TABLE active_chats
+  ADD COLUMN IF NOT EXISTS user_uid UUID,
+  ADD COLUMN IF NOT EXISTS other_uid UUID,
+  ADD COLUMN IF NOT EXISTS last_message TEXT,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;
+
+CREATE INDEX IF NOT EXISTS idx_active_chats_user_updated
+  ON active_chats(user_uid, updated_at DESC);
+
+-- =========================================
+-- 6) FRIEND REQUESTS + CONNECTIONS
+-- =========================================
+CREATE TABLE IF NOT EXISTS friend_requests (
+    id BIGSERIAL PRIMARY KEY,
+    from_uid UUID REFERENCES users(uid) ON DELETE CASCADE,
+    from_name TEXT,
+    from_photo TEXT,
+    to_uid UUID REFERENCES users(uid) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE friend_requests
+  ADD COLUMN IF NOT EXISTS from_uid UUID,
+  ADD COLUMN IF NOT EXISTS from_name TEXT,
+  ADD COLUMN IF NOT EXISTS from_photo TEXT,
+  ADD COLUMN IF NOT EXISTS to_uid UUID,
+  ADD COLUMN IF NOT EXISTS status TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
+
+UPDATE friend_requests SET status = 'pending' WHERE status IS NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'friend_requests_status_check'
+  ) THEN
+    ALTER TABLE friend_requests
+      ADD CONSTRAINT friend_requests_status_check CHECK (status IN ('pending','accepted','rejected'));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_friend_requests_to_uid ON friend_requests(to_uid);
+CREATE INDEX IF NOT EXISTS idx_friend_requests_from_uid ON friend_requests(from_uid);
+
+CREATE TABLE IF NOT EXISTS connections (
+    id BIGSERIAL PRIMARY KEY,
+    uids JSONB NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE connections
+  ADD COLUMN IF NOT EXISTS uids JSONB,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
+
+CREATE INDEX IF NOT EXISTS idx_connections_uids_gin ON connections USING GIN (uids);
+
+-- =========================================
+-- 7) WALLETS + WALLET TRANSACTIONS
+-- =========================================
 CREATE TABLE IF NOT EXISTS wallets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_uid UUID NOT NULL UNIQUE REFERENCES users(uid) ON DELETE CASCADE,
@@ -254,74 +286,119 @@ CREATE TABLE IF NOT EXISTS wallets (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE wallets
+  ADD COLUMN IF NOT EXISTS user_uid UUID,
+  ADD COLUMN IF NOT EXISTS usd_balance NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS ngn_balance NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS eur_balance NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;
+
+UPDATE wallets SET usd_balance = 0 WHERE usd_balance IS NULL;
+UPDATE wallets SET ngn_balance = 0 WHERE ngn_balance IS NULL;
+UPDATE wallets SET eur_balance = 0 WHERE eur_balance IS NULL;
+
+ALTER TABLE wallets
+  ALTER COLUMN usd_balance SET DEFAULT 0,
+  ALTER COLUMN ngn_balance SET DEFAULT 0,
+  ALTER COLUMN eur_balance SET DEFAULT 0;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wallets_user_uid ON wallets(user_uid);
+
 CREATE TABLE IF NOT EXISTS wallet_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_uid UUID NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
-    currency VARCHAR(3) NOT NULL CHECK (currency IN ('USD', 'NGN', 'EUR')),
-    type VARCHAR(20) NOT NULL CHECK (type IN ('topup', 'withdraw')),
-    method VARCHAR(20) NOT NULL CHECK (method IN ('card', 'transfer')),
+    currency VARCHAR(3) NOT NULL CHECK (currency IN ('USD','NGN','EUR')),
+    type VARCHAR(20) NOT NULL CHECK (type IN ('topup','withdraw')),
+    method VARCHAR(20) NOT NULL CHECK (method IN ('card','transfer')),
     amount NUMERIC(14,2) NOT NULL CHECK (amount > 0),
-    status VARCHAR(20) NOT NULL CHECK (status IN ('completed', 'pending', 'failed')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('completed','pending','failed')),
     reference TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE wallet_transactions
+  ADD COLUMN IF NOT EXISTS user_uid UUID,
+  ADD COLUMN IF NOT EXISTS currency VARCHAR(3),
+  ADD COLUMN IF NOT EXISTS type VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS method VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS amount NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS status VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS reference TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
 
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_user_created
   ON wallet_transactions(user_uid, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_reference
   ON wallet_transactions(reference);
 
--- 2) Recreate post_likes and post_comments with UUID columns (safe if old wrong types exist)
-DROP TABLE IF EXISTS post_likes CASCADE;
-DROP TABLE IF EXISTS post_comments CASCADE;
-
-CREATE TABLE post_likes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-    user_uid UUID NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_post_like UNIQUE (post_id, user_uid)
-);
-
-CREATE INDEX idx_post_likes_post ON post_likes(post_id);
-CREATE INDEX idx_post_likes_user ON post_likes(user_uid);
-
-CREATE TABLE post_comments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-    user_uid UUID NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
-    author_name VARCHAR(255) NOT NULL,
-    author_photo TEXT,
-    content TEXT NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_post_comments_post_created
-  ON post_comments(post_id, created_at ASC);
-CREATE INDEX idx_post_comments_user
-  ON post_comments(user_uid);
-
--- 3) Optional: ensure messages.attachments exists
+-- =========================================
+-- 8) POST LIKES + POST COMMENTS
+--    (rebuild with dynamic FK types)
+-- =========================================
 DO $$
+DECLARE
+  post_id_type TEXT;
+  user_uid_type TEXT;
 BEGIN
-  IF NOT EXISTS (
-      SELECT 1
-      FROM information_schema.columns
-      WHERE table_name = 'messages' AND column_name = 'attachments'
-  ) THEN
-      ALTER TABLE messages ADD COLUMN attachments JSONB;
+  SELECT format_type(a.atttypid, a.atttypmod)
+    INTO post_id_type
+  FROM pg_attribute a
+  JOIN pg_class c ON c.oid = a.attrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public'
+    AND c.relname = 'posts'
+    AND a.attname = 'id'
+    AND a.attnum > 0
+    AND NOT a.attisdropped;
+
+  SELECT format_type(a.atttypid, a.atttypmod)
+    INTO user_uid_type
+  FROM pg_attribute a
+  JOIN pg_class c ON c.oid = a.attrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public'
+    AND c.relname = 'users'
+    AND a.attname = 'uid'
+    AND a.attnum > 0
+    AND NOT a.attisdropped;
+
+  IF post_id_type IS NULL OR user_uid_type IS NULL THEN
+    RAISE EXCEPTION 'posts.id or users.uid not found. Ensure core tables exist first.';
   END IF;
+
+  DROP TABLE IF EXISTS post_likes CASCADE;
+  DROP TABLE IF EXISTS post_comments CASCADE;
+
+  EXECUTE format(
+    'CREATE TABLE post_likes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      post_id %s NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+      user_uid %s NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT uq_post_like UNIQUE (post_id, user_uid)
+    )',
+    post_id_type, user_uid_type
+  );
+
+  EXECUTE 'CREATE INDEX idx_post_likes_post ON post_likes(post_id)';
+  EXECUTE 'CREATE INDEX idx_post_likes_user ON post_likes(user_uid)';
+
+  EXECUTE format(
+    'CREATE TABLE post_comments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      post_id %s NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+      user_uid %s NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+      author_name VARCHAR(255) NOT NULL,
+      author_photo TEXT,
+      content TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )',
+    post_id_type, user_uid_type
+  );
+
+  EXECUTE 'CREATE INDEX idx_post_comments_post_created ON post_comments(post_id, created_at ASC)';
+  EXECUTE 'CREATE INDEX idx_post_comments_user ON post_comments(user_uid)';
 END $$;
 
--- 4) Optional: ensure wallet_transactions.reference exists
-DO $$
-BEGIN
-  IF NOT EXISTS (
-      SELECT 1
-      FROM information_schema.columns
-      WHERE table_name = 'wallet_transactions' AND column_name = 'reference'
-  ) THEN
-      ALTER TABLE wallet_transactions ADD COLUMN reference TEXT;
-  END IF;
-END $$;
+COMMIT;
 ```

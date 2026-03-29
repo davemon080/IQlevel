@@ -62,7 +62,7 @@ export default function Feed({ profile }: FeedProps) {
     }
 
     const optimistic: Post = {
-      id: `temp-${Date.now()}`,
+      id: `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       authorUid: profile.uid,
       authorName: profile.displayName,
       authorPhoto: profile.photoURL,
@@ -73,7 +73,7 @@ export default function Feed({ profile }: FeedProps) {
     };
     setPosts((prev) => [optimistic, ...prev]);
 
-    await supabaseService.createPost({
+    const inserted = await supabaseService.createPost({
       authorUid: profile.uid,
       authorName: profile.displayName,
       authorPhoto: profile.photoURL,
@@ -81,6 +81,7 @@ export default function Feed({ profile }: FeedProps) {
       imageUrl,
       type: 'social',
     });
+    setPosts((prev) => prev.map((p) => (p.id === optimistic.id ? inserted : p)));
 
     setNewPostContent('');
     setPostImageFile(null);
@@ -103,10 +104,39 @@ export default function Feed({ profile }: FeedProps) {
 
   const handleToggleLike = async (postId: string) => {
     if (postId.startsWith('temp-')) return;
-    await supabaseService.togglePostLike(postId, profile.uid);
+    const alreadyLiked = likedPostIds.has(postId);
+    const tempLikeId = `temp-like-${postId}-${profile.uid}`;
+
+    if (alreadyLiked) {
+      setLikes((prev) => prev.filter((like) => !(like.postId === postId && like.userUid === profile.uid)));
+    } else {
+      setLikes((prev) => [
+        ...prev,
+        {
+          id: tempLikeId,
+          postId,
+          userUid: profile.uid,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }
+
+    try {
+      await supabaseService.togglePostLike(postId, profile.uid);
+    } catch {
+      const refreshed = await supabaseService.listPostLikes();
+      setLikes(refreshed);
+    }
   };
 
-  const getPostShareLink = (post: Post) => `${window.location.origin}/comments/${post.id}`;
+  const getPostShareLink = (post: Post) => `${window.location.origin}/?comments=${post.id}`;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sharedPostId = params.get('comments');
+    if (!sharedPostId) return;
+    navigate(`/comments/${sharedPostId}`);
+  }, [navigate]);
 
   const openShareSheet = (post: Post) => {
     setCopied(false);
@@ -206,16 +236,25 @@ export default function Feed({ profile }: FeedProps) {
               <div className="px-4 sm:px-6 py-3 sm:py-4 bg-gray-50 border-t border-gray-100 flex items-center gap-4 sm:gap-6">
                 <button
                   onClick={() => handleToggleLike(post.id)}
+                  disabled={post.id.startsWith('temp-')}
                   className={`text-[10px] sm:text-xs font-bold transition-colors inline-flex items-center gap-1 ${likedPostIds.has(post.id) ? 'text-rose-600' : 'text-gray-500 hover:text-teal-700'}`}
                 >
                   <Heart size={14} className={likedPostIds.has(post.id) ? 'fill-current' : ''} />
                   Like ({likeCountMap[post.id] || 0})
                 </button>
-                <button onClick={() => navigate(`/comments/${post.id}`)} className="text-[10px] sm:text-xs font-bold text-gray-500 hover:text-teal-700 transition-colors inline-flex items-center gap-1">
+                <button
+                  onClick={() => !post.id.startsWith('temp-') && navigate(`/comments/${post.id}`)}
+                  disabled={post.id.startsWith('temp-')}
+                  className="text-[10px] sm:text-xs font-bold text-gray-500 hover:text-teal-700 transition-colors inline-flex items-center gap-1 disabled:opacity-50"
+                >
                   <MessageCircle size={14} />
                   Comment ({commentCountMap[post.id] || 0})
                 </button>
-                <button onClick={() => openShareSheet(post)} className="text-[10px] sm:text-xs font-bold text-gray-500 hover:text-teal-700 transition-colors inline-flex items-center gap-1">
+                <button
+                  onClick={() => !post.id.startsWith('temp-') && openShareSheet(post)}
+                  disabled={post.id.startsWith('temp-')}
+                  className="text-[10px] sm:text-xs font-bold text-gray-500 hover:text-teal-700 transition-colors inline-flex items-center gap-1 disabled:opacity-50"
+                >
                   <Share2 size={14} />
                   Share
                 </button>
