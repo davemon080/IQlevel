@@ -111,6 +111,15 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribe = supabaseService.subscribeToUserProfile(user.id, (nextProfile) => {
+      if (!nextProfile) return;
+      setProfile(nextProfile);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
   const handleGoogleLogin = async () => {
     try {
       setError('');

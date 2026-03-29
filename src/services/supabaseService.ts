@@ -354,6 +354,19 @@ export const supabaseService = {
     return mapped;
   },
 
+  subscribeToUserProfile(uid: string, callback: (profile: UserProfile | null) => void, onError?: (error: any) => void) {
+    const fetcher = async () => {
+      const row = await runQuery<DbUserProfile | null>(
+        supabase.from('users').select('*').eq('uid', uid).maybeSingle(),
+        `subscribeToUserProfile:${uid}`
+      );
+      const mapped = row ? mapUserProfileFromDb(row) : null;
+      if (mapped) this.profileCache.set(mapped.uid, mapped);
+      return mapped;
+    };
+    return subscribeToTable('users', fetcher, callback, `uid=eq.${uid}`, onError);
+  },
+
   async getUsersByUids(uids: string[]): Promise<UserProfile[]> {
     const uniqueUids = Array.from(new Set(uids.filter(Boolean)));
     if (uniqueUids.length === 0) return [];

@@ -125,7 +125,7 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
 
   const RequestCard = ({ request, direction }: { request: FriendRequest; direction: RequestTab }) => {
     const user = direction === 'incoming' ? profileByUid[request.fromUid] : profileByUid[request.toUid];
-    const avatar = direction === 'incoming' ? request.fromPhoto : user?.photoURL;
+    const avatar = user?.photoURL || (direction === 'incoming' ? request.fromPhoto : undefined);
     const name = direction === 'incoming' ? request.fromName : user?.displayName || 'User';
     const publicUserId = user?.publicId || user?.uid;
     const targetUid = direction === 'incoming' ? request.fromUid : request.toUid;

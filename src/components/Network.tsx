@@ -19,6 +19,7 @@ export default function Network({ profile }: NetworkProps) {
   const [loading, setLoading] = useState(true);
   const [showRequests, setShowRequests] = useState(false);
   const [activeTab, setActiveTab] = useState<'suggested' | 'discover'>('suggested');
+  const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>({});
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -62,6 +63,30 @@ export default function Network({ profile }: NetworkProps) {
       unsubscribeConnections();
     };
   }, [profile.uid]);
+
+  useEffect(() => {
+    const uids = Array.from(new Set(highlights.map((post) => post.authorUid).filter(Boolean)));
+    if (uids.length === 0) return;
+    let active = true;
+    supabaseService
+      .getUsersByUids(uids)
+      .then((profiles) => {
+        if (!active) return;
+        setProfileByUid((prev) => {
+          const next = { ...prev };
+          profiles.forEach((item) => {
+            next[item.uid] = item;
+          });
+          return next;
+        });
+      })
+      .catch(() => {
+        // Keep fallback photos if fetch fails.
+      });
+    return () => {
+      active = false;
+    };
+  }, [highlights]);
 
   const sendFriendRequest = async (targetUser: UserProfile) => {
     try {
@@ -279,7 +304,7 @@ export default function Network({ profile }: NetworkProps) {
               className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-all"
             >
               <div className="p-4 flex items-center gap-3 border-b border-gray-50">
-                <img src={post.authorPhoto} className="w-10 h-10 rounded-xl object-cover" alt="" />
+                <img src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto} className="w-10 h-10 rounded-xl object-cover" alt="" />
                 <div>
                   <p className="font-bold text-gray-900 text-sm">{post.authorName}</p>
                   <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Recent Highlight</p>

@@ -29,6 +29,7 @@ export default function Feed({ profile }: FeedProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [topStudents, setTopStudents] = useState<UserProfile[]>([]);
+  const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>({});
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -50,6 +51,30 @@ export default function Feed({ profile }: FeedProps) {
       unsubscribeComments();
     };
   }, []);
+
+  useEffect(() => {
+    const authorUids = Array.from(new Set(posts.map((post) => post.authorUid).filter(Boolean)));
+    if (authorUids.length === 0) return;
+    let active = true;
+    supabaseService
+      .getUsersByUids(authorUids)
+      .then((profiles) => {
+        if (!active) return;
+        setProfileByUid((prev) => {
+          const next = { ...prev };
+          profiles.forEach((item) => {
+            next[item.uid] = item;
+          });
+          return next;
+        });
+      })
+      .catch(() => {
+        // Keep existing avatars if fetch fails.
+      });
+    return () => {
+      active = false;
+    };
+  }, [posts]);
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -253,7 +278,7 @@ export default function Feed({ profile }: FeedProps) {
               <div className="p-4 sm:p-6">
                 <div className="flex items-center justify-between mb-3 sm:mb-4">
                   <div className="flex items-center gap-2 sm:gap-3">
-                    <img src={post.authorPhoto} alt={post.authorName} className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-cover" />
+                    <img src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto} alt={post.authorName} className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-cover" />
                     <div>
                       <h4 className="text-xs sm:text-sm font-bold text-gray-900">{post.authorName}</h4>
                       <p className="text-[10px] sm:text-xs text-gray-500">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>

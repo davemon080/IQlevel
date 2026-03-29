@@ -17,6 +17,7 @@ export default function Comments({ profile }: CommentsProps) {
   const [newComment, setNewComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>({});
 
   useEffect(() => {
     if (!postId) return;
@@ -47,6 +48,35 @@ export default function Comments({ profile }: CommentsProps) {
       unsubscribe();
     };
   }, [postId]);
+
+  useEffect(() => {
+    const uids = Array.from(
+      new Set([
+        ...(post ? [post.authorUid] : []),
+        ...comments.map((comment) => comment.userUid),
+      ])
+    ).filter(Boolean);
+    if (uids.length === 0) return;
+    let active = true;
+    supabaseService
+      .getUsersByUids(uids)
+      .then((profiles) => {
+        if (!active) return;
+        setProfileByUid((prev) => {
+          const next = { ...prev };
+          profiles.forEach((item) => {
+            next[item.uid] = item;
+          });
+          return next;
+        });
+      })
+      .catch(() => {
+        // Keep current avatars if lookup fails.
+      });
+    return () => {
+      active = false;
+    };
+  }, [comments, post]);
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,7 +113,7 @@ export default function Comments({ profile }: CommentsProps) {
           {post && (
             <div className="bg-white border border-gray-200 rounded-2xl p-4">
               <div className="flex items-center gap-3 mb-3">
-                <img src={post.authorPhoto} alt={post.authorName} className="w-9 h-9 rounded-lg object-cover" />
+                <img src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto} alt={post.authorName} className="w-9 h-9 rounded-lg object-cover" />
                 <div>
                   <p className="text-sm font-bold text-gray-900">{post.authorName}</p>
                   <p className="text-xs text-gray-500">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
@@ -117,7 +147,7 @@ export default function Comments({ profile }: CommentsProps) {
               comments.map((comment) => (
                 <div key={comment.id} className="bg-white border border-gray-200 rounded-2xl p-3">
                   <div className="flex items-center gap-3 mb-2">
-                    <img src={comment.authorPhoto} alt={comment.authorName} className="w-8 h-8 rounded-lg object-cover" />
+                    <img src={profileByUid[comment.userUid]?.photoURL || comment.authorPhoto} alt={comment.authorName} className="w-8 h-8 rounded-lg object-cover" />
                     <div>
                       <p className="text-sm font-bold text-gray-900">{comment.authorName}</p>
                       <p className="text-xs text-gray-500">
