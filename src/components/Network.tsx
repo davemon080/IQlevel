@@ -328,6 +328,9 @@ export default function Network({ profile }: NetworkProps) {
                 <img src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto} loading="lazy" className="w-10 h-10 rounded-xl object-cover" alt="" />
                 <div>
                   <p className="font-bold text-gray-900 text-sm">{post.authorName}</p>
+                  <p className="text-[10px] text-teal-600 font-semibold">
+                    {profileByUid[post.authorUid]?.skills?.[0] || profileByUid[post.authorUid]?.role || 'Freelancer'}
+                  </p>
                   <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Recent Highlight</p>
                 </div>
               </div>

@@ -266,6 +266,9 @@ export default function Feed({ profile }: FeedProps) {
                 <span className="text-[10px] sm:text-xs font-semibold text-gray-700 text-center truncate w-20 sm:w-24">
                   {student.displayName}
                 </span>
+                <span className="text-[9px] sm:text-[10px] text-teal-600 font-medium text-center truncate w-20 sm:w-24">
+                  {student.skills?.[0] || student.role}
+                </span>
               </button>
             ))
           ) : (

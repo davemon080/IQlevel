@@ -16,7 +16,8 @@ import {
   Globe,
   Moon,
   Smartphone,
-  Wallet
+  Wallet,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -48,6 +49,7 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
     friendRequests: true,
   });
   const [savingNotifications, setSavingNotifications] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
 
   React.useEffect(() => {
     setNotificationSettings(supabaseService.getNotificationSettings(profile.uid));
@@ -126,6 +128,13 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
     }
   };
 
+  const handleCopyUserId = async () => {
+    const value = profile.publicId || profile.uid;
+    await navigator.clipboard.writeText(value);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 1200);
+  };
+
   const SettingItem = ({ icon: Icon, label, sublabel, onClick, color = "text-gray-600" }: any) => (
     <button 
       onClick={onClick}
@@ -185,6 +194,14 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
                     <div>
                       <h2 className="text-lg font-bold text-gray-900">{profile.displayName}</h2>
                       <p className="text-sm text-gray-500">{profile.email}</p>
+                      <button
+                        type="button"
+                        onClick={handleCopyUserId}
+                        className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700 hover:text-teal-800"
+                      >
+                        <Copy size={12} />
+                        {copiedId ? 'Copied' : `ID: ${profile.publicId || profile.uid}`}
+                      </button>
                     </div>
                   </div>
                   <Link 
