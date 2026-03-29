@@ -119,3 +119,209 @@ CREATE INDEX idx_messages_conversation ON messages(sender_uid, receiver_uid);
 1.  Ensure you have a SQL-compatible database (e.g., PostgreSQL, MySQL, or SQLite).
 2.  Copy the SQL code above.
 3.  Execute the script in your database management tool (e.g., pgAdmin, DBeaver, or via CLI).
+
+## Extended SQL For Current App Features (Append-Only)
+
+The following SQL keeps your existing schema and adds missing tables/columns for all features currently in the app (wallet operations, transfers, post likes, and comments).
+
+```sql
+-- =========================
+-- Core Extension Safety
+-- =========================
+-- Use IF NOT EXISTS / conditional ALTER to avoid breaking existing deployments.
+
+-- =========================
+-- Wallets
+-- =========================
+CREATE TABLE IF NOT EXISTS wallets (
+    id BIGSERIAL PRIMARY KEY,
+    user_uid VARCHAR(255) NOT NULL UNIQUE REFERENCES users(uid) ON DELETE CASCADE,
+    usd_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
+    ngn_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
+    eur_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS wallet_transactions (
+    id BIGSERIAL PRIMARY KEY,
+    user_uid VARCHAR(255) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+    currency VARCHAR(3) NOT NULL CHECK (currency IN ('USD', 'NGN', 'EUR')),
+    type VARCHAR(20) NOT NULL CHECK (type IN ('topup', 'withdraw')),
+    method VARCHAR(20) NOT NULL CHECK (method IN ('card', 'transfer')),
+    amount NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('completed', 'pending', 'failed')),
+    reference TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_transactions_user_created
+  ON wallet_transactions(user_uid, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_transactions_reference
+  ON wallet_transactions(reference);
+
+-- =========================
+-- Post Likes
+-- =========================
+CREATE TABLE IF NOT EXISTS post_likes (
+    id BIGSERIAL PRIMARY KEY,
+    post_id VARCHAR(255) NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    user_uid VARCHAR(255) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_post_like UNIQUE (post_id, user_uid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_post_likes_post
+  ON post_likes(post_id);
+
+CREATE INDEX IF NOT EXISTS idx_post_likes_user
+  ON post_likes(user_uid);
+
+-- =========================
+-- Post Comments
+-- =========================
+CREATE TABLE IF NOT EXISTS post_comments (
+    id BIGSERIAL PRIMARY KEY,
+    post_id VARCHAR(255) NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    user_uid VARCHAR(255) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+    author_name VARCHAR(255) NOT NULL,
+    author_photo TEXT,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_post_comments_post_created
+  ON post_comments(post_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_post_comments_user
+  ON post_comments(user_uid);
+
+-- =========================
+-- Optional Hardening / Compatibility
+-- =========================
+-- Ensure messages table supports attachments JSONB in case older schema differs.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_name = 'messages' AND column_name = 'attachments'
+  ) THEN
+      ALTER TABLE messages ADD COLUMN attachments JSONB;
+  END IF;
+END $$;
+
+-- Ensure wallet_transactions has reference column for transfer traceability.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_name = 'wallet_transactions' AND column_name = 'reference'
+  ) THEN
+      ALTER TABLE wallet_transactions ADD COLUMN reference TEXT;
+  END IF;
+END $$;
+
+-- =========================
+-- Recommended Transfer Reference Format (used by app)
+-- =========================
+-- transfer_out:<recipient_uid>:<transfer_ref>
+-- transfer_in:<sender_uid>:<transfer_ref>
+```
+
+## Clean SQL Fix For UUID-Based Supabase Projects
+
+If your existing `posts.id` (and `users.uid`) are `UUID`, use this clean script.  
+This resolves errors like:
+`foreign key constraint ... cannot be implemented ... incompatible types character varying and uuid`.
+
+```sql
+-- ======================================
+-- UUID-safe schema for new app features
+-- ======================================
+-- Run in PostgreSQL / Supabase SQL editor.
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- 1) Ensure wallets tables use UUID user references
+CREATE TABLE IF NOT EXISTS wallets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_uid UUID NOT NULL UNIQUE REFERENCES users(uid) ON DELETE CASCADE,
+    usd_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
+    ngn_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
+    eur_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS wallet_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_uid UUID NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+    currency VARCHAR(3) NOT NULL CHECK (currency IN ('USD', 'NGN', 'EUR')),
+    type VARCHAR(20) NOT NULL CHECK (type IN ('topup', 'withdraw')),
+    method VARCHAR(20) NOT NULL CHECK (method IN ('card', 'transfer')),
+    amount NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('completed', 'pending', 'failed')),
+    reference TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_transactions_user_created
+  ON wallet_transactions(user_uid, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_wallet_transactions_reference
+  ON wallet_transactions(reference);
+
+-- 2) Recreate post_likes and post_comments with UUID columns (safe if old wrong types exist)
+DROP TABLE IF EXISTS post_likes CASCADE;
+DROP TABLE IF EXISTS post_comments CASCADE;
+
+CREATE TABLE post_likes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    user_uid UUID NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_post_like UNIQUE (post_id, user_uid)
+);
+
+CREATE INDEX idx_post_likes_post ON post_likes(post_id);
+CREATE INDEX idx_post_likes_user ON post_likes(user_uid);
+
+CREATE TABLE post_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    user_uid UUID NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+    author_name VARCHAR(255) NOT NULL,
+    author_photo TEXT,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_post_comments_post_created
+  ON post_comments(post_id, created_at ASC);
+CREATE INDEX idx_post_comments_user
+  ON post_comments(user_uid);
+
+-- 3) Optional: ensure messages.attachments exists
+DO $$
+BEGIN
+  IF NOT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_name = 'messages' AND column_name = 'attachments'
+  ) THEN
+      ALTER TABLE messages ADD COLUMN attachments JSONB;
+  END IF;
+END $$;
+
+-- 4) Optional: ensure wallet_transactions.reference exists
+DO $$
+BEGIN
+  IF NOT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_name = 'wallet_transactions' AND column_name = 'reference'
+  ) THEN
+      ALTER TABLE wallet_transactions ADD COLUMN reference TEXT;
+  END IF;
+END $$;
+```

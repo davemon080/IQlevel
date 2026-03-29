@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment } from '../types';
 
 type DbUserProfile = {
   uid: string;
@@ -28,6 +28,23 @@ type DbPost = {
   content: string;
   image_url?: string | null;
   type: 'social' | 'job';
+  created_at: string;
+};
+
+type DbPostLike = {
+  id: string;
+  post_id: string;
+  user_uid: string;
+  created_at: string;
+};
+
+type DbPostComment = {
+  id: string;
+  post_id: string;
+  user_uid: string;
+  author_name: string;
+  author_photo: string;
+  content: string;
   created_at: string;
 };
 
@@ -149,6 +166,27 @@ function mapPostFromDb(row: DbPost): Post {
     content: row.content,
     imageUrl: row.image_url || undefined,
     type: row.type,
+    createdAt: row.created_at,
+  };
+}
+
+function mapPostLikeFromDb(row: DbPostLike): PostLike {
+  return {
+    id: row.id,
+    postId: row.post_id,
+    userUid: row.user_uid,
+    createdAt: row.created_at,
+  };
+}
+
+function mapPostCommentFromDb(row: DbPostComment): PostComment {
+  return {
+    id: row.id,
+    postId: row.post_id,
+    userUid: row.user_uid,
+    authorName: row.author_name,
+    authorPhoto: row.author_photo,
+    content: row.content,
     createdAt: row.created_at,
   };
 }
@@ -362,6 +400,14 @@ export const supabaseService = {
     return rows.map(mapPostFromDb);
   },
 
+  async getPostById(postId: string): Promise<Post | null> {
+    const row = await runQuery<DbPost | null>(
+      supabase.from('posts').select('*').eq('id', postId).maybeSingle(),
+      'getPostById'
+    );
+    return row ? mapPostFromDb(row) : null;
+  },
+
   subscribeToPosts(callback: (posts: Post[]) => void) {
     const fetcher = async () => {
       const rows = await runQuery<DbPost[]>(
@@ -387,6 +433,101 @@ export const supabaseService = {
       'getHighlights'
     );
     return rows.map(mapPostFromDb);
+  },
+
+  async listPostLikes(): Promise<PostLike[]> {
+    const rows = await runQuery<DbPostLike[]>(
+      supabase.from('post_likes').select('*'),
+      'listPostLikes'
+    );
+    return rows.map(mapPostLikeFromDb);
+  },
+
+  subscribeToPostLikes(callback: (likes: PostLike[]) => void) {
+    const fetcher = async () => {
+      const rows = await runQuery<DbPostLike[]>(
+        supabase.from('post_likes').select('*'),
+        'subscribeToPostLikes'
+      );
+      return rows.map(mapPostLikeFromDb);
+    };
+    return subscribeToTable('post_likes', fetcher, callback);
+  },
+
+  async togglePostLike(postId: string, userUid: string): Promise<void> {
+    const existing = await runQuery<DbPostLike | null>(
+      supabase.from('post_likes').select('*').eq('post_id', postId).eq('user_uid', userUid).maybeSingle(),
+      'togglePostLike:check'
+    );
+
+    if (existing) {
+      await runQuery(
+        supabase.from('post_likes').delete().eq('id', existing.id),
+        'togglePostLike:delete'
+      );
+      return;
+    }
+
+    await runQuery(
+      supabase.from('post_likes').insert({
+        post_id: postId,
+        user_uid: userUid,
+        created_at: new Date().toISOString(),
+      }),
+      'togglePostLike:create'
+    );
+  },
+
+  async listPostComments(postId: string): Promise<PostComment[]> {
+    const rows = await runQuery<DbPostComment[]>(
+      supabase.from('post_comments').select('*').eq('post_id', postId).order('created_at', { ascending: true }),
+      'listPostComments'
+    );
+    return rows.map(mapPostCommentFromDb);
+  },
+
+  async listAllPostComments(): Promise<PostComment[]> {
+    const rows = await runQuery<DbPostComment[]>(
+      supabase.from('post_comments').select('*'),
+      'listAllPostComments'
+    );
+    return rows.map(mapPostCommentFromDb);
+  },
+
+  subscribeToAllPostComments(callback: (comments: PostComment[]) => void) {
+    const fetcher = async () => {
+      const rows = await runQuery<DbPostComment[]>(
+        supabase.from('post_comments').select('*'),
+        'subscribeToAllPostComments'
+      );
+      return rows.map(mapPostCommentFromDb);
+    };
+    return subscribeToTable('post_comments', fetcher, callback);
+  },
+
+  subscribeToPostComments(postId: string, callback: (comments: PostComment[]) => void) {
+    const fetcher = async () => {
+      const rows = await runQuery<DbPostComment[]>(
+        supabase.from('post_comments').select('*').eq('post_id', postId).order('created_at', { ascending: true }),
+        'subscribeToPostComments'
+      );
+      return rows.map(mapPostCommentFromDb);
+    };
+    return subscribeToTable('post_comments', fetcher, callback, `post_id=eq.${postId}`);
+  },
+
+  async addPostComment(postId: string, author: UserProfile, content: string): Promise<void> {
+    await runQuery(
+      supabase.from('post_comments').insert({
+        post_id: postId,
+        user_uid: author.uid,
+        author_name: author.displayName,
+        author_photo: author.photoURL,
+        content,
+        created_at: new Date().toISOString(),
+      }),
+      'addPostComment'
+    );
   },
 
   // Jobs

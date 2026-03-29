@@ -139,3 +139,20 @@ export interface AppNotification {
   read?: boolean;
   link?: string;
 }
+
+export interface PostLike {
+  id: string;
+  postId: string;
+  userUid: string;
+  createdAt: string;
+}
+
+export interface PostComment {
+  id: string;
+  postId: string;
+  userUid: string;
+  authorName: string;
+  authorPhoto: string;
+  content: string;
+  createdAt: string;
+}

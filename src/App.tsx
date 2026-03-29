@@ -21,6 +21,7 @@ import Wallets from './components/Wallets';
 import JobDetails from './components/JobDetails';
 import JobApply from './components/JobApply';
 import Notifications from './components/Notifications';
+import Comments from './components/Comments';
 
 export default function App() {
   const ONBOARDING_KEY = 'connect_onboarding_uid';
@@ -301,6 +302,7 @@ export default function App() {
           <Route path="/profile/:uid" element={<Profile profile={profile} />} />
           <Route path="/messages" element={<Chat profile={profile} />} />
           <Route path="/wallets" element={<Wallets profile={profile} />} />
+          <Route path="/comments/:postId" element={<Comments profile={profile} />} />
           <Route path="/settings" element={<Settings profile={profile} onLogout={handleLogout} onProfileUpdate={setProfile} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
