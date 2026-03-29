@@ -4,6 +4,7 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { supabaseService } from './services/supabaseService';
 import { UserProfile } from './types';
+import { getCartoonAvatar } from './utils/avatar';
 import { Mail, Lock, User as UserIcon, LogIn, UserPlus, Link2, Eye, EyeOff } from 'lucide-react';
 
 // Components
@@ -49,7 +50,7 @@ export default function App() {
         displayName: sessionUser.user_metadata?.full_name || sessionUser.user_metadata?.name || 'Anonymous',
         photoURL:
           sessionUser.user_metadata?.avatar_url ||
-          `https://ui-avatars.com/api/?name=${sessionUser.user_metadata?.full_name || 'Anonymous'}`,
+          getCartoonAvatar(sessionUser.user_metadata?.full_name || sessionUser.id),
         role: 'freelancer',
         bio: '',
         skills: [],

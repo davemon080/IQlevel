@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabaseService } from '../services/supabaseService';
 import { UserProfile, FriendRequest } from '../types';
+import { resolveAvatar } from '../utils/avatar';
 import { Check, X, Clock, UserPlus, ArrowLeft, UserCheck, UserX, Send, Copy, MapPin } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -125,17 +126,20 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
 
   const RequestCard = ({ request, direction }: { request: FriendRequest; direction: RequestTab }) => {
     const user = direction === 'incoming' ? profileByUid[request.fromUid] : profileByUid[request.toUid];
-    const avatar = user?.photoURL || (direction === 'incoming' ? request.fromPhoto : undefined);
     const name = direction === 'incoming' ? request.fromName : user?.displayName || 'User';
     const publicUserId = user?.publicId || user?.uid;
     const targetUid = direction === 'incoming' ? request.fromUid : request.toUid;
+    const avatar = resolveAvatar(
+      user?.photoURL || (direction === 'incoming' ? request.fromPhoto : undefined),
+      name || targetUid
+    );
 
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm">
         <div className="flex items-start gap-3 sm:gap-4">
           <Link to={`/profile/${targetUid}`} className="shrink-0">
             <img
-              src={avatar || 'https://via.placeholder.com/96?text=U'}
+              src={avatar}
               className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-gray-100"
               alt={name}
             />

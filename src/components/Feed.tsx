@@ -13,6 +13,7 @@ interface FeedProps {
 }
 
 export default function Feed({ profile }: FeedProps) {
+  const TOP_ACTIVE_LIMIT = 15;
   const { currency } = useCurrency();
   const [posts, setPosts] = useState<Post[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -30,6 +31,7 @@ export default function Feed({ profile }: FeedProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [topStudents, setTopStudents] = useState<UserProfile[]>([]);
+  const [hasMoreTopStudents, setHasMoreTopStudents] = useState(false);
   const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>({});
   const navigate = useNavigate();
 
@@ -40,8 +42,9 @@ export default function Feed({ profile }: FeedProps) {
     const unsubscribeComments = supabaseService.subscribeToAllPostComments(setComments);
 
     const fetchTopStudents = async () => {
-      const students = await supabaseService.getTopStudents(5);
-      setTopStudents(students.slice(0, 10));
+      const students = await supabaseService.getTopStudents(TOP_ACTIVE_LIMIT + 1);
+      setHasMoreTopStudents(students.length > TOP_ACTIVE_LIMIT);
+      setTopStudents(students.slice(0, TOP_ACTIVE_LIMIT));
     };
     fetchTopStudents();
 
@@ -237,12 +240,14 @@ export default function Feed({ profile }: FeedProps) {
           <h3 className="text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wider">
             Top Active Freelancers
           </h3>
-          <button
-            onClick={() => navigate('/network')}
-            className="text-[10px] sm:text-xs font-semibold text-teal-700 hover:text-teal-800"
-          >
-            View more
-          </button>
+          {hasMoreTopStudents && (
+            <button
+              onClick={() => navigate('/network')}
+              className="text-[10px] sm:text-xs font-semibold text-teal-700 hover:text-teal-800"
+            >
+              View more
+            </button>
+          )}
         </div>
         <div className="flex items-start gap-5 sm:gap-6 overflow-x-auto px-1 pb-2">
           {topStudents.length > 0 ? (
@@ -266,6 +271,12 @@ export default function Feed({ profile }: FeedProps) {
           ) : (
             <p className="text-xs text-gray-400 italic">No active freelancers yet.</p>
           )}
+        </div>
+      </div>
+
+      <div className="lg:col-span-12 px-2 -mt-2">
+        <div className="mx-auto w-[92%] sm:w-[88%] h-px bg-gradient-to-r from-transparent via-teal-300/70 to-transparent relative">
+          <span className="absolute left-1/2 -translate-x-1/2 -top-[2px] w-1.5 h-1.5 rounded-full bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.5)]" />
         </div>
       </div>
 
