@@ -18,6 +18,7 @@ export default function Feed({ profile }: FeedProps) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [likes, setLikes] = useState<PostLike[]>([]);
   const [comments, setComments] = useState<PostComment[]>([]);
+  const [likingPostIds, setLikingPostIds] = useState<string[]>([]);
   const [newPostContent, setNewPostContent] = useState('');
   const [isPosting, setIsPosting] = useState(false);
   const [showComposer, setShowComposer] = useState(false);
@@ -104,28 +105,17 @@ export default function Feed({ profile }: FeedProps) {
 
   const handleToggleLike = async (postId: string) => {
     if (postId.startsWith('temp-')) return;
-    const alreadyLiked = likedPostIds.has(postId);
-    const tempLikeId = `temp-like-${postId}-${profile.uid}`;
-
-    if (alreadyLiked) {
-      setLikes((prev) => prev.filter((like) => !(like.postId === postId && like.userUid === profile.uid)));
-    } else {
-      setLikes((prev) => [
-        ...prev,
-        {
-          id: tempLikeId,
-          postId,
-          userUid: profile.uid,
-          createdAt: new Date().toISOString(),
-        },
-      ]);
-    }
-
+    if (likingPostIds.includes(postId)) return;
+    const shouldLike = !likedPostIds.has(postId);
+    setLikingPostIds((prev) => [...prev, postId]);
     try {
-      await supabaseService.togglePostLike(postId, profile.uid);
-    } catch {
+      await supabaseService.setPostLike(postId, profile.uid, shouldLike);
       const refreshed = await supabaseService.listPostLikes();
       setLikes(refreshed);
+    } catch {
+      // Keep previous stable state if request fails.
+    } finally {
+      setLikingPostIds((prev) => prev.filter((id) => id !== postId));
     }
   };
 
@@ -236,7 +226,7 @@ export default function Feed({ profile }: FeedProps) {
               <div className="px-4 sm:px-6 py-3 sm:py-4 bg-gray-50 border-t border-gray-100 flex items-center gap-4 sm:gap-6">
                 <button
                   onClick={() => handleToggleLike(post.id)}
-                  disabled={post.id.startsWith('temp-')}
+                  disabled={post.id.startsWith('temp-') || likingPostIds.includes(post.id)}
                   className={`text-[10px] sm:text-xs font-bold transition-colors inline-flex items-center gap-1 ${likedPostIds.has(post.id) ? 'text-rose-600' : 'text-gray-500 hover:text-teal-700'}`}
                 >
                   <Heart size={14} className={likedPostIds.has(post.id) ? 'fill-current' : ''} />

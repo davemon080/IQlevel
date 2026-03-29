@@ -459,27 +459,27 @@ export const supabaseService = {
     return subscribeToTable('post_likes', fetcher, callback);
   },
 
-  async togglePostLike(postId: string, userUid: string): Promise<void> {
-    const existing = await runQuery<DbPostLike | null>(
-      supabase.from('post_likes').select('*').eq('post_id', postId).eq('user_uid', userUid).maybeSingle(),
-      'togglePostLike:check'
-    );
-
-    if (existing) {
+  async setPostLike(postId: string, userUid: string, shouldLike: boolean): Promise<void> {
+    if (shouldLike) {
       await runQuery(
-        supabase.from('post_likes').delete().eq('id', existing.id),
-        'togglePostLike:delete'
+        supabase.from('post_likes').upsert(
+          {
+            post_id: postId,
+            user_uid: userUid,
+            created_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'post_id,user_uid',
+          }
+        ),
+        'setPostLike:create'
       );
       return;
     }
 
     await runQuery(
-      supabase.from('post_likes').insert({
-        post_id: postId,
-        user_uid: userUid,
-        created_at: new Date().toISOString(),
-      }),
-      'togglePostLike:create'
+      supabase.from('post_likes').delete().eq('post_id', postId).eq('user_uid', userUid),
+      'setPostLike:delete'
     );
   },
 
