@@ -19,6 +19,7 @@ import FriendRequests from './components/FriendRequests';
 import ManageGigs from './components/ManageGigs';
 import Wallets from './components/Wallets';
 import ProcessTransfer from './components/ProcessTransfer';
+import ProcessTransferDetails from './components/ProcessTransferDetails';
 import JobDetails from './components/JobDetails';
 import JobApply from './components/JobApply';
 import Notifications from './components/Notifications';
@@ -314,6 +315,7 @@ export default function App() {
           <Route path="/messages" element={<Chat profile={profile} />} />
           <Route path="/wallets" element={<Wallets profile={profile} />} />
           <Route path="/wallets/transfer" element={<ProcessTransfer profile={profile} />} />
+          <Route path="/wallets/transfer/details" element={<ProcessTransferDetails profile={profile} />} />
           <Route path="/comments/:postId" element={<Comments profile={profile} />} />
           <Route path="/settings" element={<Settings profile={profile} onLogout={handleLogout} onProfileUpdate={setProfile} />} />
           <Route path="*" element={<Navigate to="/" />} />

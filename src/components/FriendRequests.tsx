@@ -240,79 +240,79 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="grid grid-cols-2 border-b border-gray-100">
-          <button
-            onClick={() => setActiveTab('incoming')}
-            className={`py-4 text-sm font-bold transition-all relative ${
-              activeTab === 'incoming' ? 'text-teal-600' : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            <div className="flex items-center justify-center gap-2">
-              <UserPlus size={17} />
-              Received
-              {pendingIncomingCount > 0 && (
-                <span className="bg-teal-600 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingIncomingCount}</span>
-              )}
-            </div>
-            {activeTab === 'incoming' && <motion.div layoutId="requestTab" className="absolute bottom-0 left-0 right-0 h-1 bg-teal-600" />}
-          </button>
-          <button
-            onClick={() => setActiveTab('outgoing')}
-            className={`py-4 text-sm font-bold transition-all relative ${
-              activeTab === 'outgoing' ? 'text-teal-600' : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            <div className="flex items-center justify-center gap-2">
-              <Send size={17} />
-              Sent
-              {pendingOutgoingCount > 0 && (
-                <span className="bg-gray-400 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingOutgoingCount}</span>
-              )}
-            </div>
-            {activeTab === 'outgoing' && <motion.div layoutId="requestTab" className="absolute bottom-0 left-0 right-0 h-1 bg-teal-600" />}
-          </button>
-        </div>
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4 sm:mb-6">
+        <button
+          onClick={() => setActiveTab('incoming')}
+          className={`py-3.5 px-3 text-sm font-bold transition-all rounded-2xl border relative ${
+            activeTab === 'incoming'
+              ? 'text-teal-700 bg-teal-50 border-teal-200'
+              : 'text-gray-500 bg-white border-gray-200 hover:text-gray-700'
+          }`}
+        >
+          <div className="flex items-center justify-center gap-2">
+            <UserPlus size={17} />
+            Received
+            {pendingIncomingCount > 0 && (
+              <span className="bg-teal-600 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingIncomingCount}</span>
+            )}
+          </div>
+        </button>
+        <button
+          onClick={() => setActiveTab('outgoing')}
+          className={`py-3.5 px-3 text-sm font-bold transition-all rounded-2xl border relative ${
+            activeTab === 'outgoing'
+              ? 'text-teal-700 bg-teal-50 border-teal-200'
+              : 'text-gray-500 bg-white border-gray-200 hover:text-gray-700'
+          }`}
+        >
+          <div className="flex items-center justify-center gap-2">
+            <Send size={17} />
+            Sent
+            {pendingOutgoingCount > 0 && (
+              <span className="bg-gray-400 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingOutgoingCount}</span>
+            )}
+          </div>
+        </button>
+      </div>
 
-        <div className="p-4 sm:p-6">
-          {loading ? (
-            <div className="flex justify-center py-14">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600" />
-            </div>
-          ) : (
-            <AnimatePresence mode="wait">
-              {activeTab === 'incoming' ? (
-                <motion.div
-                  key="incoming"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  className="space-y-3 sm:space-y-4"
-                >
-                  {incomingRequests.length === 0 ? (
-                    <EmptyState label="No incoming requests yet." icon={<UserPlus size={30} className="text-gray-300" />} />
-                  ) : (
-                    incomingRequests.map((request) => <RequestCard key={request.id} request={request} direction="incoming" />)
-                  )}
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="outgoing"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  className="space-y-3 sm:space-y-4"
-                >
-                  {outgoingRequests.length === 0 ? (
-                    <EmptyState label="You have not sent any requests yet." icon={<Send size={30} className="text-gray-300" />} />
-                  ) : (
-                    outgoingRequests.map((request) => <RequestCard key={request.id} request={request} direction="outgoing" />)
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          )}
-        </div>
+      <div>
+        {loading ? (
+          <div className="flex justify-center py-14">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600" />
+          </div>
+        ) : (
+          <AnimatePresence mode="wait">
+            {activeTab === 'incoming' ? (
+              <motion.div
+                key="incoming"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="space-y-3 sm:space-y-4"
+              >
+                {incomingRequests.length === 0 ? (
+                  <EmptyState label="No incoming requests yet." icon={<UserPlus size={30} className="text-gray-300" />} />
+                ) : (
+                  incomingRequests.map((request) => <RequestCard key={request.id} request={request} direction="incoming" />)
+                )}
+              </motion.div>
+            ) : (
+              <motion.div
+                key="outgoing"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="space-y-3 sm:space-y-4"
+              >
+                {outgoingRequests.length === 0 ? (
+                  <EmptyState label="You have not sent any requests yet." icon={<Send size={30} className="text-gray-300" />} />
+                ) : (
+                  outgoingRequests.map((request) => <RequestCard key={request.id} request={request} direction="outgoing" />)
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
       </div>
     </div>
   );

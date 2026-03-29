@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { UserProfile, Post, Job, PostLike, PostComment } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { Image, Send, Briefcase, Star, MapPin, DollarSign, Plus, X, Heart, MessageCircle, Share2, Copy, Link as LinkIcon } from 'lucide-react';
@@ -286,7 +286,14 @@ export default function Feed({ profile }: FeedProps) {
               <div className="p-4 sm:p-6">
                 <div className="flex items-center justify-between mb-3 sm:mb-4">
                   <div className="flex items-center gap-2 sm:gap-3">
-                    <img src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto} alt={post.authorName} loading="lazy" className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-cover" />
+                    <Link to={`/profile/${post.authorUid}`} className="shrink-0">
+                      <img
+                        src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto}
+                        alt={post.authorName}
+                        loading="lazy"
+                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-cover"
+                      />
+                    </Link>
                     <div>
                       <h4 className="text-xs sm:text-sm font-bold text-gray-900">{post.authorName}</h4>
                       <p className="text-[10px] sm:text-xs text-gray-500">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
