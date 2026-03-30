@@ -110,17 +110,14 @@ export default function Chat({ profile }: ChatProps) {
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
     if (isMobile && showChatOnMobile) {
       document.body.style.overflow = 'hidden';
-      document.body.style.position = 'fixed';
-      document.body.style.width = '100%';
+      document.body.style.overscrollBehavior = 'none';
     } else {
       document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
+      document.body.style.overscrollBehavior = '';
     }
     return () => {
       document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
+      document.body.style.overscrollBehavior = '';
     };
   }, [showChatOnMobile]);
 
@@ -532,11 +529,13 @@ export default function Chat({ profile }: ChatProps) {
 
   return (
     <div 
-      className={`h-full bg-white flex relative overflow-hidden ${isMobile && showChatOnMobile ? 'fixed inset-0 z-[60]' : ''}`}
-      style={isMobile && showChatOnMobile ? { 
-        height: `${viewportHeight}px`,
-        top: `${viewportOffsetTop}px`
-      } : {}}
+      className={`h-full min-h-0 bg-white flex relative overflow-hidden ${isMobile && showChatOnMobile ? 'z-[60]' : ''}`}
+      style={isMobile && showChatOnMobile
+        ? {
+            height: `${viewportHeight}px`,
+            marginTop: `${viewportOffsetTop}px`,
+          }
+        : undefined}
     >
       {/* Contacts Sidebar */}
       <div className={`w-full md:w-96 border-r border-gray-200 flex flex-col bg-white transition-all duration-300 ${showChatOnMobile ? 'hidden md:flex' : 'flex'}`}>
@@ -632,7 +631,12 @@ export default function Chat({ profile }: ChatProps) {
       {/* Chat Area */}
       <div
         className={`flex-1 flex flex-col bg-[#efeae2] transition-all duration-300 overflow-hidden ${!showChatOnMobile ? 'hidden md:flex' : 'flex'}`}
-        style={shouldLiftForKeyboard ? { transform: `translateY(-${chatViewportLift}px)` } : undefined}
+        style={shouldLiftForKeyboard
+          ? {
+              transform: `translateY(-${chatViewportLift}px)`,
+              paddingBottom: `${chatViewportLift}px`,
+            }
+          : undefined}
       >
         {selectedContact ? (
           <>
