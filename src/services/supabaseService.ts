@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
+import { hasCloudinaryConfig, inferImageKindFromFolder, toCloudinaryCdnUrl, uploadImageToCloudinary } from '../utils/cloudinary';
 
 type DbUserProfile = {
   uid: string;
@@ -149,6 +150,22 @@ type DbPostCommentNotificationRow = {
 const NOTIFICATION_SETTINGS_KEY_PREFIX = 'connect_notification_settings_';
 const CHAT_READ_KEY_PREFIX = 'connect_chat_read_map_';
 const CHAT_READ_EVENT = 'connect:chat-read-updated';
+const APP_CACHE_PREFIX = 'connect_app_cache_v1:';
+
+const CACHE_TTL = {
+  users: 1000 * 60 * 10,
+  posts: 1000 * 60 * 3,
+  jobs: 1000 * 60 * 3,
+  interactions: 1000 * 60,
+  chats: 1000 * 60,
+  wallet: 1000 * 30,
+  notifications: 1000 * 30,
+} as const;
+
+type CacheEntry<T> = {
+  data: T;
+  updatedAt: number;
+};
 
 function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
   const isLegacyLetterAvatar =
@@ -165,8 +182,8 @@ function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
     publicId: row.public_id || undefined,
     email: row.email,
     displayName: row.display_name,
-    photoURL: resolvedPhoto,
-    coverPhotoURL: row.cover_photo_url || undefined,
+    photoURL: toCloudinaryCdnUrl(resolvedPhoto, 'profile') || resolvedPhoto,
+    coverPhotoURL: toCloudinaryCdnUrl(row.cover_photo_url || undefined, 'cover') || row.cover_photo_url || undefined,
     role: row.role === 'admin' ? 'client' : row.role,
     bio: row.bio || undefined,
     phoneNumber: row.phone_number || undefined,
@@ -177,7 +194,10 @@ function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
     education: row.education || undefined,
     experience: row.experience || undefined,
     socialLinks: row.social_links || undefined,
-    portfolio: row.portfolio || undefined,
+    portfolio: row.portfolio?.map((item) => ({
+      ...item,
+      imageUrl: toCloudinaryCdnUrl(item.imageUrl, 'post') || item.imageUrl,
+    })) || undefined,
     companyInfo: row.company_info || undefined,
   };
 }
@@ -188,8 +208,8 @@ function mapUserProfileToDb(data: Partial<UserProfile>): Partial<DbUserProfile> 
     public_id: data.publicId,
     email: data.email,
     display_name: data.displayName,
-    photo_url: data.photoURL,
-    cover_photo_url: data.coverPhotoURL ?? null,
+    photo_url: toCloudinaryCdnUrl(data.photoURL, 'profile') || data.photoURL,
+    cover_photo_url: toCloudinaryCdnUrl(data.coverPhotoURL, 'cover') || data.coverPhotoURL || null,
     role: data.role as DbUserProfile['role'] | undefined,
     bio: data.bio ?? null,
     phone_number: data.phoneNumber ?? null,
@@ -200,7 +220,10 @@ function mapUserProfileToDb(data: Partial<UserProfile>): Partial<DbUserProfile> 
     education: data.education ?? null,
     experience: data.experience ?? null,
     social_links: data.socialLinks ?? null,
-    portfolio: data.portfolio ?? null,
+    portfolio: data.portfolio?.map((item) => ({
+      ...item,
+      imageUrl: toCloudinaryCdnUrl(item.imageUrl, 'post') || item.imageUrl,
+    })) ?? null,
     company_info: data.companyInfo ?? null,
   };
 }
@@ -210,9 +233,9 @@ function mapPostFromDb(row: DbPost): Post {
     id: row.id,
     authorUid: row.author_uid,
     authorName: row.author_name,
-    authorPhoto: row.author_photo,
+    authorPhoto: toCloudinaryCdnUrl(row.author_photo, 'profile') || row.author_photo,
     content: row.content,
-    imageUrl: row.image_url || undefined,
+    imageUrl: toCloudinaryCdnUrl(row.image_url || undefined, 'post') || row.image_url || undefined,
     type: row.type,
     createdAt: row.created_at,
   };
@@ -233,7 +256,7 @@ function mapPostCommentFromDb(row: DbPostComment): PostComment {
     postId: row.post_id,
     userUid: row.user_uid,
     authorName: row.author_name,
-    authorPhoto: row.author_photo,
+    authorPhoto: toCloudinaryCdnUrl(row.author_photo, 'profile') || row.author_photo,
     content: row.content,
     createdAt: row.created_at,
   };
@@ -255,13 +278,20 @@ function mapJobFromDb(row: DbJob): Job {
 }
 
 function mapMessageFromDb(row: DbMessage): Message {
+  const attachments = (row.attachments || undefined)?.map((item) => ({
+    ...item,
+    url: item.type?.startsWith('image/')
+      ? (toCloudinaryCdnUrl(item.url, 'generic') || item.url)
+      : item.url,
+  }));
+
   return {
     id: row.id,
     senderUid: row.sender_uid,
     receiverUid: row.receiver_uid,
     content: row.content || '',
     createdAt: row.created_at,
-    attachments: row.attachments || undefined,
+    attachments,
   };
 }
 
@@ -282,7 +312,7 @@ function mapFriendRequestFromDb(row: DbFriendRequest): FriendRequest {
     id: row.id,
     fromUid: row.from_uid,
     fromName: row.from_name,
-    fromPhoto: row.from_photo,
+    fromPhoto: toCloudinaryCdnUrl(row.from_photo, 'profile') || row.from_photo,
     toUid: row.to_uid,
     status: row.status,
     createdAt: row.created_at,
@@ -360,21 +390,82 @@ function loadJsonFromStorage<T>(key: string, fallback: T): T {
   }
 }
 
+function readCache<T>(key: string, maxAgeMs: number): T | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(`${APP_CACHE_PREFIX}${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CacheEntry<T>;
+    if (!parsed || typeof parsed.updatedAt !== 'number') return null;
+    if (Date.now() - parsed.updatedAt > maxAgeMs) return null;
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+function readCacheAnyAge<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(`${APP_CACHE_PREFIX}${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CacheEntry<T>;
+    return parsed?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache<T>(key: string, data: T): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const payload: CacheEntry<T> = {
+      data,
+      updatedAt: Date.now(),
+    };
+    window.localStorage.setItem(`${APP_CACHE_PREFIX}${key}`, JSON.stringify(payload));
+  } catch {
+    // Ignore quota / serialization errors and continue with network-first behavior.
+  }
+}
+
+async function uploadToSupabaseStorage(file: File, folder: string): Promise<string> {
+  const safeName = file.name.replace(/\s+/g, '_');
+  const filePath = `${folder}/${Date.now()}_${safeName}`;
+  await runQuery(
+    supabase.storage.from('chat-attachments').upload(filePath, file, {
+      contentType: file.type,
+      upsert: false,
+    }),
+    'uploadToSupabaseStorage'
+  );
+
+  const { data } = supabase.storage.from('chat-attachments').getPublicUrl(filePath);
+  return data.publicUrl;
+}
+
 function subscribeToTable<T>(
   table: string,
   fetcher: () => Promise<T>,
   callback: (data: T) => void,
   filter?: string,
-  onError?: (error: any) => void
+  onError?: (error: any) => void,
+  cacheKey?: string
 ) {
   let active = true;
   let fetchVersion = 0;
+
+  if (cacheKey) {
+    const cached = readCacheAnyAge<T>(cacheKey);
+    if (cached) callback(cached);
+  }
 
   const refresh = () => {
     const currentVersion = ++fetchVersion;
     fetcher()
       .then((data) => {
         // Prevent stale fetch responses from overwriting newer state.
+        if (cacheKey) writeCache(cacheKey, data);
         if (active && currentVersion === fetchVersion) callback(data);
       })
       .catch((error) => {
@@ -460,12 +551,21 @@ export const supabaseService = {
     const cached = this.profileCache.get(uid);
     if (cached) return cached;
 
+    const persisted = readCache<UserProfile | null>(`user:${uid}`, CACHE_TTL.users);
+    if (persisted) {
+      this.profileCache.set(uid, persisted);
+      return persisted;
+    }
+
     const data = await runQuery<DbUserProfile | null>(
       supabase.from('users').select('*').eq('uid', uid).maybeSingle(),
       `getUserProfile:${uid}`
     );
     const mapped = data ? mapUserProfileFromDb(data) : null;
-    if (mapped) this.profileCache.set(mapped.uid, mapped);
+    if (mapped) {
+      this.profileCache.set(mapped.uid, mapped);
+      writeCache(`user:${uid}`, mapped);
+    }
     return mapped;
   },
 
@@ -479,7 +579,7 @@ export const supabaseService = {
       if (mapped) this.profileCache.set(mapped.uid, mapped);
       return mapped;
     };
-    return subscribeToTable('users', fetcher, callback, `uid=eq.${uid}`, onError);
+    return subscribeToTable('users', fetcher, callback, `uid=eq.${uid}`, onError, `user:${uid}`);
   },
 
   async getUsersByUids(uids: string[]): Promise<UserProfile[]> {
@@ -590,16 +690,24 @@ export const supabaseService = {
   },
 
   async getAllUsers(): Promise<UserProfile[]> {
+    const cached = readCache<UserProfile[]>('users:all', CACHE_TTL.users);
+    if (cached) return cached;
+
     const rows = await runQuery<DbUserProfile[]>(
       supabase.from('users').select('*'),
       'getAllUsers'
     );
     const profiles = rows.map(mapUserProfileFromDb);
     profiles.forEach((profile) => this.profileCache.set(profile.uid, profile));
+    writeCache('users:all', profiles);
     return profiles;
   },
 
   async listUsersPaginated(limitCount: number, offsetCount: number, excludeUid?: string): Promise<UserProfile[]> {
+    const cacheKey = `users:page:${limitCount}:${offsetCount}:${excludeUid || 'none'}`;
+    const cached = readCache<UserProfile[]>(cacheKey, CACHE_TTL.users);
+    if (cached) return cached;
+
     let query = supabase
       .from('users')
       .select('*')
@@ -616,6 +724,7 @@ export const supabaseService = {
     );
     const profiles = rows.map(mapUserProfileFromDb);
     profiles.forEach((profile) => this.profileCache.set(profile.uid, profile));
+    writeCache(cacheKey, profiles);
     return profiles;
   },
 
@@ -627,9 +736,9 @@ export const supabaseService = {
         .insert({
           author_uid: post.authorUid,
           author_name: post.authorName,
-          author_photo: post.authorPhoto,
+          author_photo: toCloudinaryCdnUrl(post.authorPhoto, 'profile') || post.authorPhoto,
           content: post.content,
-          image_url: post.imageUrl || null,
+          image_url: toCloudinaryCdnUrl(post.imageUrl, 'post') || post.imageUrl || null,
           type: post.type,
           created_at: new Date().toISOString(),
         })
@@ -641,19 +750,30 @@ export const supabaseService = {
   },
 
   async listPosts(limitCount: number = 100): Promise<Post[]> {
+    const cacheKey = `posts:list:${limitCount}`;
+    const cached = readCache<Post[]>(cacheKey, CACHE_TTL.posts);
+    if (cached) return cached;
+
     const rows = await runQuery<DbPost[]>(
       supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(limitCount),
       'listPosts'
     );
-    return rows.map(mapPostFromDb);
+    const mapped = rows.map(mapPostFromDb);
+    writeCache(cacheKey, mapped);
+    return mapped;
   },
 
   async getPostById(postId: string): Promise<Post | null> {
+    const cached = readCache<Post | null>(`post:${postId}`, CACHE_TTL.posts);
+    if (cached) return cached;
+
     const row = await runQuery<DbPost | null>(
       supabase.from('posts').select('*').eq('id', postId).maybeSingle(),
       'getPostById'
     );
-    return row ? mapPostFromDb(row) : null;
+    const mapped = row ? mapPostFromDb(row) : null;
+    if (mapped) writeCache(`post:${postId}`, mapped);
+    return mapped;
   },
 
   subscribeToPosts(callback: (posts: Post[]) => void) {
@@ -664,31 +784,48 @@ export const supabaseService = {
       );
       return rows.map(mapPostFromDb);
     };
-    return subscribeToTable('posts', fetcher, callback);
+    return subscribeToTable('posts', fetcher, callback, undefined, undefined, 'posts:all');
   },
 
   async getPostsByUser(uid: string): Promise<Post[]> {
+    const cacheKey = `posts:user:${uid}`;
+    const cached = readCache<Post[]>(cacheKey, CACHE_TTL.posts);
+    if (cached) return cached;
+
     const rows = await runQuery<DbPost[]>(
       supabase.from('posts').select('*').eq('author_uid', uid).order('created_at', { ascending: false }),
       'getPostsByUser'
     );
-    return rows.map(mapPostFromDb);
+    const mapped = rows.map(mapPostFromDb);
+    writeCache(cacheKey, mapped);
+    return mapped;
   },
 
   async getHighlights(limitCount: number): Promise<Post[]> {
+    const cacheKey = `posts:highlights:${limitCount}`;
+    const cached = readCache<Post[]>(cacheKey, CACHE_TTL.posts);
+    if (cached) return cached;
+
     const rows = await runQuery<DbPost[]>(
       supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(limitCount),
       'getHighlights'
     );
-    return rows.map(mapPostFromDb);
+    const mapped = rows.map(mapPostFromDb);
+    writeCache(cacheKey, mapped);
+    return mapped;
   },
 
   async listPostLikes(): Promise<PostLike[]> {
+    const cached = readCache<PostLike[]>('posts:likes', CACHE_TTL.interactions);
+    if (cached) return cached;
+
     const rows = await runQuery<DbPostLike[]>(
       supabase.from('post_likes').select('*'),
       'listPostLikes'
     );
-    return rows.map(mapPostLikeFromDb);
+    const mapped = rows.map(mapPostLikeFromDb);
+    writeCache('posts:likes', mapped);
+    return mapped;
   },
 
   subscribeToPostLikes(callback: (likes: PostLike[]) => void) {
@@ -699,7 +836,7 @@ export const supabaseService = {
       );
       return rows.map(mapPostLikeFromDb);
     };
-    return subscribeToTable('post_likes', fetcher, callback);
+    return subscribeToTable('post_likes', fetcher, callback, undefined, undefined, 'posts:likes');
   },
 
   async setPostLike(postId: string, userUid: string, shouldLike: boolean): Promise<void> {
@@ -740,19 +877,30 @@ export const supabaseService = {
   },
 
   async listPostComments(postId: string): Promise<PostComment[]> {
+    const cacheKey = `posts:comments:${postId}`;
+    const cached = readCache<PostComment[]>(cacheKey, CACHE_TTL.interactions);
+    if (cached) return cached;
+
     const rows = await runQuery<DbPostComment[]>(
       supabase.from('post_comments').select('*').eq('post_id', postId).order('created_at', { ascending: true }),
       'listPostComments'
     );
-    return rows.map(mapPostCommentFromDb);
+    const mapped = rows.map(mapPostCommentFromDb);
+    writeCache(cacheKey, mapped);
+    return mapped;
   },
 
   async listAllPostComments(): Promise<PostComment[]> {
+    const cached = readCache<PostComment[]>('posts:comments:all', CACHE_TTL.interactions);
+    if (cached) return cached;
+
     const rows = await runQuery<DbPostComment[]>(
       supabase.from('post_comments').select('*'),
       'listAllPostComments'
     );
-    return rows.map(mapPostCommentFromDb);
+    const mapped = rows.map(mapPostCommentFromDb);
+    writeCache('posts:comments:all', mapped);
+    return mapped;
   },
 
   subscribeToAllPostComments(callback: (comments: PostComment[]) => void) {
@@ -763,7 +911,7 @@ export const supabaseService = {
       );
       return rows.map(mapPostCommentFromDb);
     };
-    return subscribeToTable('post_comments', fetcher, callback);
+    return subscribeToTable('post_comments', fetcher, callback, undefined, undefined, 'posts:comments:all');
   },
 
   subscribeToPostComments(postId: string, callback: (comments: PostComment[]) => void) {
@@ -774,7 +922,7 @@ export const supabaseService = {
       );
       return rows.map(mapPostCommentFromDb);
     };
-    return subscribeToTable('post_comments', fetcher, callback, `post_id=eq.${postId}`);
+    return subscribeToTable('post_comments', fetcher, callback, `post_id=eq.${postId}`, undefined, `posts:comments:${postId}`);
   },
 
   async addPostComment(postId: string, author: UserProfile, content: string): Promise<void> {
@@ -783,7 +931,7 @@ export const supabaseService = {
         post_id: postId,
         user_uid: author.uid,
         author_name: author.displayName,
-        author_photo: author.photoURL,
+        author_photo: toCloudinaryCdnUrl(author.photoURL, 'profile') || author.photoURL,
         content,
         created_at: new Date().toISOString(),
       }),
@@ -810,19 +958,29 @@ export const supabaseService = {
   },
 
   async listJobs(): Promise<Job[]> {
+    const cached = readCache<Job[]>('jobs:all', CACHE_TTL.jobs);
+    if (cached) return cached;
+
     const rows = await runQuery<DbJob[]>(
       supabase.from('jobs').select('*').order('created_at', { ascending: false }),
       'listJobs'
     );
-    return rows.map(mapJobFromDb);
+    const mapped = rows.map(mapJobFromDb);
+    writeCache('jobs:all', mapped);
+    return mapped;
   },
 
   async getJobById(jobId: string): Promise<Job | null> {
+    const cached = readCache<Job | null>(`job:${jobId}`, CACHE_TTL.jobs);
+    if (cached) return cached;
+
     const row = await runQuery<DbJob | null>(
       supabase.from('jobs').select('*').eq('id', jobId).maybeSingle(),
       'getJobById'
     );
-    return row ? mapJobFromDb(row) : null;
+    const mapped = row ? mapJobFromDb(row) : null;
+    if (mapped) writeCache(`job:${jobId}`, mapped);
+    return mapped;
   },
 
   subscribeToJobs(callback: (jobs: Job[]) => void) {
@@ -833,42 +991,29 @@ export const supabaseService = {
       );
       return rows.map(mapJobFromDb);
     };
-    return subscribeToTable('jobs', fetcher, callback);
+    return subscribeToTable('jobs', fetcher, callback, undefined, undefined, 'jobs:all');
   },
 
   // Messages
   async uploadFile(file: File, folder: string = 'chat'): Promise<Attachment> {
-    const filePath = `${folder}/${Date.now()}_${file.name}`;
-    await runQuery(
-      supabase.storage.from('chat-attachments').upload(filePath, file, {
-        contentType: file.type,
-        upsert: false,
-      }),
-      'uploadFile'
-    );
-
-    const { data } = supabase.storage.from('chat-attachments').getPublicUrl(filePath);
+    const isImage = file.type.startsWith('image/');
+    const url = isImage && hasCloudinaryConfig()
+      ? await uploadImageToCloudinary(file, { folder, kind: inferImageKindFromFolder(folder) })
+      : await uploadToSupabaseStorage(file, folder);
     return {
       name: file.name,
-      url: data.publicUrl,
+      url,
       type: file.type,
       size: file.size,
     };
   },
 
   async uploadUserAsset(file: File, folder: string = 'profile'): Promise<string> {
-    const safeName = file.name.replace(/\s+/g, '_');
-    const filePath = `${folder}/${Date.now()}_${safeName}`;
-    await runQuery(
-      supabase.storage.from('chat-attachments').upload(filePath, file, {
-        contentType: file.type,
-        upsert: false,
-      }),
-      'uploadUserAsset'
-    );
-
-    const { data } = supabase.storage.from('chat-attachments').getPublicUrl(filePath);
-    return data.publicUrl;
+    const isImage = file.type.startsWith('image/');
+    if (isImage && hasCloudinaryConfig()) {
+      return uploadImageToCloudinary(file, { folder, kind: inferImageKindFromFolder(folder) });
+    }
+    return uploadToSupabaseStorage(file, folder);
   },
 
   async sendMessage(message: Omit<Message, 'id' | 'createdAt'>): Promise<Message> {
@@ -939,10 +1084,14 @@ export const supabaseService = {
       }
     };
 
-    return subscribeToTable('messages', fetcher, callback, undefined);
+    return subscribeToTable('messages', fetcher, callback, undefined, onError, `messages:${uid}:${otherUid}`);
   },
 
   async fetchActiveChats(uid: string) {
+    const cacheKey = `chats:active:${uid}`;
+    const cached = readCache<any[]>(cacheKey, CACHE_TTL.chats);
+    if (cached) return cached;
+
     const rows = await runQuery<any[]>(
       supabase
         .from('active_chats')
@@ -959,7 +1108,7 @@ export const supabaseService = {
     const profiles = await this.getUsersByUids(otherUids);
     const profileMap = new Map(profiles.map((p) => [p.uid, p]));
 
-    return rows
+    const mapped = rows
       .map((chat) => {
         const user = profileMap.get(chat.other_uid);
         if (!user) return null;
@@ -971,14 +1120,20 @@ export const supabaseService = {
         };
       })
       .filter((c): c is any => c !== null);
+    writeCache(cacheKey, mapped);
+    return mapped;
   },
 
   subscribeToActiveChats(uid: string, callback: (chats: any[]) => void, onError?: (error: any) => void) {
     const fetcher = async () => this.fetchActiveChats(uid);
-    return subscribeToTable('active_chats', fetcher, callback, `user_uid=eq.${uid}`, onError);
+    return subscribeToTable('active_chats', fetcher, callback, `user_uid=eq.${uid}`, onError, `chats:active:${uid}`);
   },
 
   async getRecentConversations(uid: string) {
+    const cacheKey = `chats:recent:${uid}`;
+    const cached = readCache<any[]>(cacheKey, CACHE_TTL.chats);
+    if (cached) return cached;
+
     const rows = await runQuery<DbMessage[]>(
       supabase
         .from('messages')
@@ -1006,7 +1161,7 @@ export const supabaseService = {
     const profiles = await this.getUsersByUids(otherUids);
     const profileMap = new Map(profiles.map((p) => [p.uid, p]));
 
-    return otherUids
+    const mapped = otherUids
       .map((otherUid) => {
         const user = profileMap.get(otherUid);
         if (!user) return null;
@@ -1019,6 +1174,8 @@ export const supabaseService = {
         };
       })
       .filter((c): c is any => c !== null);
+    writeCache(cacheKey, mapped);
+    return mapped;
   },
 
   // Friend Requests
@@ -1034,7 +1191,7 @@ export const supabaseService = {
       );
       return rows.map(mapFriendRequestFromDb);
     };
-    return subscribeToTable('friend_requests', fetcher, callback, `to_uid=eq.${uid}`);
+    return subscribeToTable('friend_requests', fetcher, callback, `to_uid=eq.${uid}`, undefined, `requests:incoming:${uid}`);
   },
 
   subscribeToOutgoingFriendRequests(uid: string, callback: (requests: FriendRequest[]) => void) {
@@ -1049,7 +1206,7 @@ export const supabaseService = {
       );
       return rows.map(mapFriendRequestFromDb);
     };
-    return subscribeToTable('friend_requests', fetcher, callback, `from_uid=eq.${uid}`);
+    return subscribeToTable('friend_requests', fetcher, callback, `from_uid=eq.${uid}`, undefined, `requests:outgoing:${uid}`);
   },
 
   async sendFriendRequest(targetUser: UserProfile, myProfile: UserProfile): Promise<void> {
@@ -1057,7 +1214,7 @@ export const supabaseService = {
       supabase.from('friend_requests').insert({
         from_uid: myProfile.uid,
         from_name: myProfile.displayName,
-        from_photo: myProfile.photoURL,
+        from_photo: toCloudinaryCdnUrl(myProfile.photoURL, 'profile') || myProfile.photoURL,
         to_uid: targetUser.uid,
         status: 'pending',
         created_at: new Date().toISOString(),
@@ -1125,27 +1282,39 @@ export const supabaseService = {
       );
       return rows.map(mapConnectionFromDb);
     };
-    return subscribeToTable('connections', fetcher, callback);
+    return subscribeToTable('connections', fetcher, callback, undefined, undefined, `connections:${uid}`);
   },
 
   async getFriends(uid: string): Promise<UserProfile[]> {
+    const cached = readCache<UserProfile[]>(`friends:${uid}`, CACHE_TTL.users);
+    if (cached) return cached;
+
     const connections = await runQuery<DbConnection[]>(
       supabase.from('connections').select('*').contains('uids', [uid]),
       'getFriends:connections'
     );
     const otherUids = connections.flatMap((c) => c.uids.filter((id) => id !== uid));
     if (otherUids.length === 0) return [];
-    return this.getUsersByUids(otherUids);
+    const friends = await this.getUsersByUids(otherUids);
+    writeCache(`friends:${uid}`, friends);
+    return friends;
   },
 
   // Wallets
   async getOrCreateWallet(uid: string): Promise<Wallet> {
+    const cached = readCache<Wallet>(`wallet:${uid}`, CACHE_TTL.wallet);
+    if (cached) return cached;
+
     const existing = await runQuery<DbWallet | null>(
       supabase.from('wallets').select('*').eq('user_uid', uid).maybeSingle(),
       'getOrCreateWallet'
     );
 
-    if (existing) return mapWalletFromDb(existing);
+    if (existing) {
+      const mapped = mapWalletFromDb(existing);
+      writeCache(`wallet:${uid}`, mapped);
+      return mapped;
+    }
 
     const created = await runQuery<DbWallet>(
       supabase
@@ -1162,10 +1331,16 @@ export const supabaseService = {
       'createWallet'
     );
 
-    return mapWalletFromDb(created);
+    const mapped = mapWalletFromDb(created);
+    writeCache(`wallet:${uid}`, mapped);
+    return mapped;
   },
 
   async listWalletTransactions(uid: string): Promise<WalletTransaction[]> {
+    const cacheKey = `wallet:transactions:${uid}`;
+    const cached = readCache<WalletTransaction[]>(cacheKey, CACHE_TTL.wallet);
+    if (cached) return cached;
+
     const rows = await runQuery<DbWalletTransaction[]>(
       supabase
         .from('wallet_transactions')
@@ -1175,7 +1350,9 @@ export const supabaseService = {
         .limit(100),
       'listWalletTransactions'
     );
-    return rows.map(mapWalletTransactionFromDb);
+    const mapped = rows.map(mapWalletTransactionFromDb);
+    writeCache(cacheKey, mapped);
+    return mapped;
   },
 
   async hasTransactionPin(uid: string): Promise<boolean> {
@@ -1430,7 +1607,7 @@ export const supabaseService = {
       );
       return rows.map(mapJobFromDb);
     };
-    return subscribeToTable('jobs', fetcher, callback, `client_uid=eq.${clientUid}`);
+    return subscribeToTable('jobs', fetcher, callback, `client_uid=eq.${clientUid}`, undefined, `jobs:client:${clientUid}`);
   },
 
   async updateJobStatus(jobId: string, status: 'open' | 'closed'): Promise<void> {
@@ -1460,7 +1637,7 @@ export const supabaseService = {
       );
       return rows.map(mapProposalFromDb);
     };
-    return subscribeToTable('proposals', fetcher, callback, `job_id=eq.${jobId}`);
+    return subscribeToTable('proposals', fetcher, callback, `job_id=eq.${jobId}`, undefined, `proposals:job:${jobId}`);
   },
 
   async createProposal(proposal: Omit<Proposal, 'id' | 'createdAt' | 'status'>): Promise<void> {
@@ -1498,6 +1675,10 @@ export const supabaseService = {
   },
 
   async getNotifications(uid: string): Promise<AppNotification[]> {
+    const cacheKey = `notifications:${uid}`;
+    const cached = readCache<AppNotification[]>(cacheKey, CACHE_TTL.notifications);
+    if (cached) return cached;
+
     const settings = this.getNotificationSettings(uid);
 
     const [incomingRequests, proposals, myJobs, walletTransactions, feedLikes, feedComments] = await Promise.all([
@@ -1618,7 +1799,7 @@ export const supabaseService = {
       link: `/comments/${comment.post_id}`,
     }));
 
-    return [
+    const mapped = [
       ...requestNotifications,
       ...gigNotifications,
       ...walletNotifications,
@@ -1627,6 +1808,8 @@ export const supabaseService = {
     ].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
+    writeCache(cacheKey, mapped);
+    return mapped;
   },
 
   subscribeToNotifications(uid: string, callback: (items: AppNotification[]) => void, onError?: (error: any) => void) {

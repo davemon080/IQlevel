@@ -5,6 +5,7 @@ import { supabase } from './supabase';
 import { supabaseService } from './services/supabaseService';
 import { UserProfile } from './types';
 import { getCartoonAvatar } from './utils/avatar';
+import { toCloudinaryCdnUrl } from './utils/cloudinary';
 import { Mail, Lock, User as UserIcon, LogIn, UserPlus, Link2, Eye, EyeOff } from 'lucide-react';
 
 // Components
@@ -49,7 +50,11 @@ export default function App() {
         email: sessionUser.email || '',
         displayName: sessionUser.user_metadata?.full_name || sessionUser.user_metadata?.name || 'Anonymous',
         photoURL:
-          sessionUser.user_metadata?.avatar_url ||
+          toCloudinaryCdnUrl(
+            sessionUser.user_metadata?.avatar_url ||
+            getCartoonAvatar(sessionUser.user_metadata?.full_name || sessionUser.id),
+            'profile'
+          ) ||
           getCartoonAvatar(sessionUser.user_metadata?.full_name || sessionUser.id),
         role: 'freelancer',
         bio: '',
