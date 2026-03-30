@@ -68,6 +68,20 @@ export interface Job {
   createdAt: string;
 }
 
+export interface CompanyPartnerRequest {
+  id: string;
+  userUid: string;
+  companyName: string;
+  companyLogoUrl: string;
+  websiteUrl?: string;
+  socialLinks: string[];
+  about: string;
+  location: string;
+  registrationUrls: string[];
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+}
+
 export interface MarketItem {
   id: string;
   sellerUid: string;
@@ -75,6 +89,7 @@ export interface MarketItem {
   category: string;
   description?: string;
   price: number;
+  priceCurrency: WalletCurrency;
   isNegotiable: boolean;
   isAnonymous: boolean;
   stockQuantity: number;

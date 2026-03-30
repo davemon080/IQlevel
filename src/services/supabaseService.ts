@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 
@@ -81,10 +81,25 @@ type DbMarketItem = {
   category: string;
   description?: string | null;
   price: number;
+  price_currency?: WalletCurrency | null;
   is_negotiable: boolean;
   is_anonymous: boolean;
   stock_quantity: number;
   image_urls: string[];
+  created_at: string;
+};
+
+type DbCompanyPartnerRequest = {
+  id: string;
+  user_uid: string;
+  company_name: string;
+  company_logo_url: string;
+  website_url?: string | null;
+  social_links: string[] | null;
+  about: string;
+  location: string;
+  registration_urls: string[] | null;
+  status: 'pending' | 'approved' | 'rejected';
   created_at: string;
 };
 
@@ -381,12 +396,29 @@ function mapMarketItemFromDb(row: DbMarketItem, seller?: UserProfile): MarketIte
     category: row.category,
     description: row.description || undefined,
     price: row.price,
+    priceCurrency: row.price_currency || 'USD',
     isNegotiable: row.is_negotiable,
     isAnonymous: row.is_anonymous,
     stockQuantity: row.stock_quantity,
     imageUrls: row.image_urls || [],
     createdAt: row.created_at,
     seller,
+  };
+}
+
+function mapCompanyPartnerRequestFromDb(row: DbCompanyPartnerRequest): CompanyPartnerRequest {
+  return {
+    id: row.id,
+    userUid: row.user_uid,
+    companyName: row.company_name,
+    companyLogoUrl: row.company_logo_url,
+    websiteUrl: row.website_url || undefined,
+    socialLinks: row.social_links || [],
+    about: row.about,
+    location: row.location,
+    registrationUrls: row.registration_urls || [],
+    status: row.status,
+    createdAt: row.created_at,
   };
 }
 
@@ -1588,6 +1620,7 @@ export const supabaseService = {
         category: item.category,
         description: item.description || null,
         price: item.price,
+        price_currency: item.priceCurrency,
         is_negotiable: item.isNegotiable,
         is_anonymous: item.isAnonymous,
         stock_quantity: item.stockQuantity,
@@ -1608,6 +1641,7 @@ export const supabaseService = {
           category: updates.category,
           description: updates.description || null,
           price: updates.price,
+          price_currency: updates.priceCurrency,
           is_negotiable: updates.isNegotiable,
           is_anonymous: updates.isAnonymous,
           stock_quantity: updates.stockQuantity,
@@ -1672,6 +1706,66 @@ export const supabaseService = {
   subscribeToMarketItems(callback: (items: MarketItem[]) => void, onError?: (error: any) => void) {
     const fetcher = async () => this.listMarketItems();
     return subscribeToTable('market_items', fetcher, callback, undefined, onError, 'market:all');
+  },
+
+  async getMyCompanyPartnerRequest(uid: string): Promise<CompanyPartnerRequest | null> {
+    const cacheKey = `partner:request:${uid}`;
+    const cached = readCache<CompanyPartnerRequest | null>(cacheKey, CACHE_TTL.users);
+    if (cached) return cached;
+
+    const row = await runQuery<DbCompanyPartnerRequest | null>(
+      supabase.from('company_partner_requests').select('*').eq('user_uid', uid).maybeSingle(),
+      'getMyCompanyPartnerRequest'
+    );
+    const mapped = row ? mapCompanyPartnerRequestFromDb(row) : null;
+    writeCache(cacheKey, mapped);
+    return mapped;
+  },
+
+  subscribeToMyCompanyPartnerRequest(uid: string, callback: (request: CompanyPartnerRequest | null) => void, onError?: (error: any) => void) {
+    const fetcher = async () => this.getMyCompanyPartnerRequest(uid);
+    return subscribeToTable('company_partner_requests', fetcher, callback, `user_uid=eq.${uid}`, onError, `partner:request:${uid}`);
+  },
+
+  async submitCompanyPartnerRequest(request: Omit<CompanyPartnerRequest, 'id' | 'createdAt' | 'status'>): Promise<CompanyPartnerRequest> {
+    const row = await runQuery<DbCompanyPartnerRequest>(
+      supabase
+        .from('company_partner_requests')
+        .upsert(
+          {
+            user_uid: request.userUid,
+            company_name: request.companyName,
+            company_logo_url: request.companyLogoUrl,
+            website_url: request.websiteUrl || null,
+            social_links: request.socialLinks,
+            about: request.about,
+            location: request.location,
+            registration_urls: request.registrationUrls,
+            status: 'pending',
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_uid' }
+        )
+        .select('*')
+        .single(),
+      'submitCompanyPartnerRequest'
+    );
+    const mapped = mapCompanyPartnerRequestFromDb(row);
+    writeCache(`partner:request:${request.userUid}`, mapped);
+    return mapped;
+  },
+
+  async getApprovedCompanyPartnerRequestsByUserUids(userUids: string[]): Promise<Record<string, CompanyPartnerRequest>> {
+    const uniqueUids = Array.from(new Set(userUids.filter(Boolean)));
+    if (uniqueUids.length === 0) return {};
+    const rows = await runQuery<DbCompanyPartnerRequest[]>(
+      supabase.from('company_partner_requests').select('*').in('user_uid', uniqueUids).eq('status', 'approved'),
+      'getApprovedCompanyPartnerRequestsByUserUids'
+    );
+    return rows.reduce<Record<string, CompanyPartnerRequest>>((acc, row) => {
+      acc[row.user_uid] = mapCompanyPartnerRequestFromDb(row);
+      return acc;
+    }, {});
   },
 
   async listMarketSellerRatings(): Promise<MarketSellerRating[]> {

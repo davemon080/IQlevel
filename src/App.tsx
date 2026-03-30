@@ -30,6 +30,8 @@ import SellItem from './components/SellItem';
 import MarketItemDetails from './components/MarketItemDetails';
 import EditMarketItem from './components/EditMarketItem';
 import EditPost from './components/EditPost';
+import PartnershipPage from './components/PartnershipPage';
+import CompanyDashboard from './components/CompanyDashboard';
 
 export default function App() {
   const ONBOARDING_KEY = 'connect_onboarding_uid';
@@ -43,6 +45,8 @@ export default function App() {
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [showPartnerPage, setShowPartnerPage] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -139,6 +143,7 @@ export default function App() {
 
   const handleGoogleLogin = async () => {
     try {
+      setAuthSubmitting(true);
       setError('');
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -150,12 +155,15 @@ export default function App() {
     } catch (error: any) {
       console.error('Login error:', error);
       setError(error.message || 'Login failed. Please try again.');
+    } finally {
+      setAuthSubmitting(false);
     }
   };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setAuthSubmitting(true);
     try {
       if (authMode === 'register') {
         const { data, error } = await supabase.auth.signUp({
@@ -181,6 +189,8 @@ export default function App() {
     } catch (error: any) {
       console.error('Auth error:', error);
       setError(error.message);
+    } finally {
+      setAuthSubmitting(false);
     }
   };
 
@@ -198,6 +208,10 @@ export default function App() {
   }
 
   if (!user) {
+    if (showPartnerPage) {
+      return <PartnershipPage onBack={() => setShowPartnerPage(false)} />;
+    }
+
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
@@ -260,10 +274,11 @@ export default function App() {
 
             <button
               type="submit"
+              disabled={authSubmitting}
               className="w-full bg-teal-700 text-white font-bold py-3 px-4 rounded-xl hover:bg-teal-800 transition-all flex items-center justify-center gap-2"
             >
               {authMode === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />}
-              {authMode === 'login' ? 'Sign In' : 'Create Account'}
+              {authSubmitting ? (authMode === 'login' ? 'Signing In...' : 'Creating Account...') : (authMode === 'login' ? 'Sign In' : 'Create Account')}
             </button>
           </form>
 
@@ -274,6 +289,7 @@ export default function App() {
 
           <button
             onClick={handleGoogleLogin}
+            disabled={authSubmitting}
             className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors shadow-sm mb-6"
           >
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
@@ -289,6 +305,13 @@ export default function App() {
               {authMode === 'login' ? 'Register' : 'Sign In'}
             </button>
           </p>
+          <button
+            type="button"
+            onClick={() => setShowPartnerPage(true)}
+            className="mt-5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-white hover:border-teal-200"
+          >
+            Partner With Us
+          </button>
         </div>
       </div>
     );
@@ -339,6 +362,8 @@ export default function App() {
           <Route path="/comments/:postId" element={<Comments profile={profile} />} />
           <Route path="/posts/:postId/edit" element={<EditPost profile={profile} />} />
           <Route path="/settings" element={<Settings profile={profile} onLogout={handleLogout} onProfileUpdate={setProfile} />} />
+          <Route path="/partner-with-connect" element={<PartnershipPage profile={profile} />} />
+          <Route path="/company/dashboard" element={<CompanyDashboard profile={profile} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Layout>

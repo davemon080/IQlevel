@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile, Job } from '../types';
+import { UserProfile, Job, CompanyPartnerRequest } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { Search, Filter, Briefcase, MapPin, Clock, CheckCircle, Plus, Settings, Store } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatMoneyFromUSD } from '../utils/currency';
+import CachedImage from './CachedImage';
 
 interface JobBoardProps {
   profile: UserProfile;
@@ -23,6 +24,8 @@ export default function JobBoard({ profile }: JobBoardProps) {
     category: 'All'
   });
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [myPartnerRequest, setMyPartnerRequest] = useState<CompanyPartnerRequest | null>(null);
+  const [companyByUid, setCompanyByUid] = useState<Record<string, CompanyPartnerRequest>>({});
   const [newJob, setNewJob] = useState({
     title: '',
     description: '',
@@ -36,6 +39,16 @@ export default function JobBoard({ profile }: JobBoardProps) {
     const unsubscribe = supabaseService.subscribeToJobs(setJobs);
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    supabaseService.getMyCompanyPartnerRequest(profile.uid).then(setMyPartnerRequest).catch(() => undefined);
+  }, [profile.uid]);
+
+  useEffect(() => {
+    const jobClientUids = Array.from(new Set(jobs.map((job) => job.clientUid)));
+    if (jobClientUids.length === 0) return;
+    supabaseService.getApprovedCompanyPartnerRequestsByUserUids(jobClientUids).then(setCompanyByUid).catch(() => undefined);
+  }, [jobs]);
 
   useEffect(() => {
     let result = jobs;
@@ -76,13 +89,32 @@ export default function JobBoard({ profile }: JobBoardProps) {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Job Board</h1>
           <p className="text-sm sm:text-base text-gray-500">Find the perfect gig or hire top talent.</p>
         </div>
-        <Link
-          to="/market"
-          className="inline-flex items-center gap-2 self-start rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700"
-        >
-          <Store size={18} />
-          Market
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            to="/market"
+            className="inline-flex items-center gap-2 self-start rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700"
+          >
+            <Store size={18} />
+            Market
+          </Link>
+          {myPartnerRequest?.status === 'approved' ? (
+            <Link
+              to="/company/dashboard"
+              className="inline-flex items-center gap-2 self-start rounded-2xl bg-teal-700 px-4 py-3 text-sm font-bold text-white shadow-sm transition-all hover:bg-teal-800"
+            >
+              <Briefcase size={18} />
+              Company Dashboard
+            </Link>
+          ) : (
+            <Link
+              to="/partner-with-connect"
+              className="inline-flex items-center gap-2 self-start rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700"
+            >
+              <Briefcase size={18} />
+              Partner With Connect
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Filters & Search Bar */}
@@ -150,6 +182,20 @@ export default function JobBoard({ profile }: JobBoardProps) {
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-gray-200 hover:border-teal-200 hover:shadow-md transition-all group flex flex-col"
               >
+                {companyByUid[job.clientUid] && (
+                  <div className="mb-4 flex items-center gap-3">
+                    <CachedImage
+                      src={companyByUid[job.clientUid].companyLogoUrl}
+                      alt={companyByUid[job.clientUid].companyName}
+                      wrapperClassName="h-11 w-11 rounded-2xl bg-gray-100"
+                      imgClassName="h-full w-full rounded-2xl object-cover"
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">{companyByUid[job.clientUid].companyName}</p>
+                      <p className="text-[11px] text-gray-400">{companyByUid[job.clientUid].location}</p>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-start justify-between mb-4">
                   <div className="bg-teal-50 p-3 rounded-2xl text-teal-700 group-hover:bg-teal-600 group-hover:text-white transition-colors">
                     <Briefcase size={24} />
@@ -310,7 +356,7 @@ export default function JobBoard({ profile }: JobBoardProps) {
         </div>
       )}
 
-      {profile.role === 'client' && (
+      {myPartnerRequest?.status === 'approved' && (
         <button
           onClick={() => setShowCreateModal(true)}
           className="fixed bottom-24 md:bottom-8 right-6 z-30 w-14 h-14 rounded-full bg-teal-600 text-white shadow-xl hover:bg-teal-700 transition-all flex items-center justify-center"

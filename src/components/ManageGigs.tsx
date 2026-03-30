@@ -23,10 +23,20 @@ export default function ManageGigs({ profile }: ManageGigsProps) {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('all');
+  const [isApprovedCompany, setIsApprovedCompany] = useState<boolean | null>(null);
   const { confirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
-    if (profile.role !== 'client') {
+    supabaseService.getMyCompanyPartnerRequest(profile.uid).then((request) => {
+      setIsApprovedCompany(request?.status === 'approved');
+    }).catch(() => undefined);
+  }, [profile.uid]);
+
+  useEffect(() => {
+    if (profile.role !== 'client' && isApprovedCompany === null) {
+      return;
+    }
+    if (profile.role !== 'client' && !isApprovedCompany) {
       navigate('/');
       return;
     }
@@ -41,7 +51,7 @@ export default function ManageGigs({ profile }: ManageGigsProps) {
     });
 
     return () => unsubscribe();
-  }, [navigate, profile.role, profile.uid, requestedJobId, selectedJob]);
+  }, [isApprovedCompany, navigate, profile.role, profile.uid, requestedJobId, selectedJob]);
 
   useEffect(() => {
     if (!selectedJob) {
@@ -206,12 +216,14 @@ export default function ManageGigs({ profile }: ManageGigsProps) {
                     </div>
                     <p className="text-sm text-gray-700 mt-3 whitespace-pre-wrap">{application.content}</p>
                     <div className="flex flex-wrap gap-2 mt-3">
-                      <button
-                        onClick={() => navigate(`/messages?uid=${application.freelancerUid}`)}
-                        className="px-3 py-2 text-xs font-semibold rounded-xl bg-teal-700 text-white hover:bg-teal-800"
-                      >
-                        Message Applicant
-                      </button>
+                      {application.status === 'accepted' && (
+                        <button
+                          onClick={() => navigate(`/messages?uid=${application.freelancerUid}`)}
+                          className="px-3 py-2 text-xs font-semibold rounded-xl bg-teal-700 text-white hover:bg-teal-800"
+                        >
+                          Message Applicant
+                        </button>
+                      )}
                       <button
                         onClick={() => navigate(`/profile/${application.freelancerUid}`)}
                         className="px-3 py-2 text-xs font-semibold rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"

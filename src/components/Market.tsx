@@ -4,8 +4,7 @@ import { Search, SlidersHorizontal, Tag, Plus, Star } from 'lucide-react';
 import { UserProfile, MarketItem, MarketSellerRating } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage, { preloadCachedImage } from './CachedImage';
-import { useCurrency } from '../context/CurrencyContext';
-import { formatMoneyFromUSD } from '../utils/currency';
+import { formatAmount } from '../utils/currency';
 import { formatDistanceToNow } from 'date-fns';
 import { MARKET_CATEGORIES } from '../constants/market';
 
@@ -14,7 +13,6 @@ interface MarketProps {
 }
 
 export default function Market({ profile }: MarketProps) {
-  const { currency } = useCurrency();
   const navigate = useNavigate();
   const [items, setItems] = useState<MarketItem[]>([]);
   const [ratings, setRatings] = useState<MarketSellerRating[]>([]);
@@ -57,7 +55,7 @@ export default function Market({ profile }: MarketProps) {
       if (negotiableOnly && !item.isNegotiable) return false;
       if (category !== 'All' && item.category !== category) return false;
       if (!normalizedQuery) return true;
-      return [item.title, item.description || '', item.seller?.displayName || '', item.category, `${item.stockQuantity}`, formatMoneyFromUSD(item.price, currency)]
+      return [item.title, item.description || '', item.seller?.displayName || '', item.category, `${item.stockQuantity}`, formatAmount(item.price, item.priceCurrency)]
         .some((value) => value.toLowerCase().includes(normalizedQuery));
     });
 
@@ -68,7 +66,7 @@ export default function Market({ profile }: MarketProps) {
     });
 
     return nextItems;
-  }, [category, currency, items, negotiableOnly, searchQuery, sortBy]);
+  }, [category, items, negotiableOnly, searchQuery, sortBy]);
 
   const categoryCounts = useMemo(() => {
     return items.reduce<Record<string, number>>((acc, item) => {
@@ -133,7 +131,7 @@ export default function Market({ profile }: MarketProps) {
                     <CachedImage src={item.imageUrls[0]} alt={item.title} wrapperClassName="h-10 w-10 rounded-xl" imgClassName="h-full w-full rounded-xl object-cover" />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-gray-900">{item.title}</p>
-                      <p className="truncate text-xs text-gray-500">{item.category} · {formatMoneyFromUSD(item.price, currency)}</p>
+                      <p className="truncate text-xs text-gray-500">{item.category} · {formatAmount(item.price, item.priceCurrency)}</p>
                     </div>
                   </button>
                 ))}
@@ -219,7 +217,7 @@ export default function Market({ profile }: MarketProps) {
                   )}
                 </div>
 
-                <p className="text-xl font-black text-teal-700">{formatMoneyFromUSD(item.price, currency)}</p>
+                <p className="text-xl font-black text-teal-700">{formatAmount(item.price, item.priceCurrency)}</p>
 
                 <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
                   <div className="min-w-0">

@@ -5,7 +5,7 @@ import { UserProfile } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
 import { useCurrency } from '../context/CurrencyContext';
-import { convertToUSD } from '../utils/currency';
+import { formatAmount } from '../utils/currency';
 import { MARKET_CATEGORIES } from '../constants/market';
 
 interface SellItemProps {
@@ -77,7 +77,8 @@ export default function SellItem({ profile }: SellItemProps) {
         title: title.trim(),
         category,
         description: description.trim() || undefined,
-        price: Number(convertToUSD(numericPrice, currency).toFixed(2)),
+        price: Number(numericPrice.toFixed(2)),
+        priceCurrency: currency,
         isNegotiable,
         isAnonymous,
         stockQuantity: Math.floor(numericStock),
@@ -185,7 +186,7 @@ export default function SellItem({ profile }: SellItemProps) {
               required
               className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-teal-200 focus:bg-white focus:ring-2 focus:ring-teal-500"
             />
-            <p className="text-xs text-gray-500">This will be saved using your current wallet currency: {currency}.</p>
+            <p className="text-xs text-gray-500">This item will show exactly as {formatAmount(Number(price || 0), currency)}.</p>
           </div>
 
           <div className="space-y-2">
