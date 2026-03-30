@@ -49,35 +49,16 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
   }, [profile.uid]);
 
   React.useEffect(() => {
-    const refreshUnreadMessages = (chats: Array<{ otherUid: string; updatedAt: string }>) => {
-      setUnreadMessages(supabaseService.computeUnreadChatCount(profile.uid, chats));
-    };
-
-    const unsubscribeChats = supabaseService.subscribeToActiveChats(profile.uid, (chats) => {
-      const simplified = chats.map((chat) => ({
-        otherUid: chat.otherUid as string,
-        updatedAt: chat.updatedAt as string,
-      }));
-      refreshUnreadMessages(simplified);
-    });
-
-    const unsubscribeChatReadEvents = supabaseService.onChatReadUpdated(() => {
-      supabaseService.fetchActiveChats(profile.uid).then((chats) => {
-        const simplified = chats.map((chat) => ({
-          otherUid: chat.otherUid as string,
-          updatedAt: chat.updatedAt as string,
-        }));
-        refreshUnreadMessages(simplified);
-      });
+    const unsubscribeUnreadCounts = supabaseService.subscribeToUnreadMessageCounts(profile.uid, (counts) => {
+      setUnreadMessages(Object.values(counts).reduce((sum, count) => sum + count, 0));
     });
 
     if (location.pathname === '/messages' && targetUid) {
-      supabaseService.markChatAsRead(profile.uid, targetUid);
+      supabaseService.markMessagesAsRead(profile.uid, targetUid).catch(() => undefined);
     }
 
     return () => {
-      unsubscribeChats();
-      unsubscribeChatReadEvents();
+      unsubscribeUnreadCounts();
     };
   }, [location.pathname, profile.uid, targetUid]);
 

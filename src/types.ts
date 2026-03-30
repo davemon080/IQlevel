@@ -81,6 +81,7 @@ export interface Message {
   receiverUid: string;
   content: string;
   createdAt: string;
+  readAt?: string;
   attachments?: Attachment[];
 }
 

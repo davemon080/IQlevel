@@ -80,6 +80,7 @@ type DbMessage = {
   receiver_uid: string;
   content: string | null;
   created_at: string;
+  read_at?: string | null;
   attachments?: Attachment[] | null;
 };
 
@@ -345,6 +346,7 @@ function mapMessageFromDb(row: DbMessage): Message {
     receiverUid: row.receiver_uid,
     content: row.content || '',
     createdAt: row.created_at,
+    readAt: row.read_at || undefined,
     attachments: row.attachments || undefined,
   };
 }
@@ -1452,6 +1454,7 @@ export const supabaseService = {
           content: message.content || null,
           attachments: message.attachments || null,
           created_at: createdAt,
+          read_at: null,
         })
         .select('*')
         .single(),
@@ -1533,6 +1536,50 @@ export const supabaseService = {
     };
 
     return subscribeToTable('messages', fetcher, callback, undefined, onError, `messages:${uid}:${otherUid}`);
+  },
+
+  async markMessagesAsRead(uid: string, otherUid: string, readAt: string = new Date().toISOString()) {
+    await runQuery(
+      supabase
+        .from('messages')
+        .update({ read_at: readAt })
+        .eq('receiver_uid', uid)
+        .eq('sender_uid', otherUid)
+        .is('read_at', null),
+      'markMessagesAsRead'
+    );
+    this.markChatAsRead(uid, otherUid, readAt);
+    removeCache(`messages:${uid}:${otherUid}`);
+    removeCache(`messages:${otherUid}:${uid}`);
+    removeCache(`unread:messages:${uid}`);
+  },
+
+  async getUnreadMessageCounts(uid: string): Promise<Record<string, number>> {
+    const cacheKey = `unread:messages:${uid}`;
+    const cached = readCache<Record<string, number>>(cacheKey, CACHE_TTL.chats);
+    if (cached) return cached;
+
+    const rows = await runQuery<Pick<DbMessage, 'sender_uid'>[]>(
+      supabase
+        .from('messages')
+        .select('sender_uid')
+        .eq('receiver_uid', uid)
+        .is('read_at', null),
+      'getUnreadMessageCounts'
+    );
+
+    const counts = rows.reduce<Record<string, number>>((acc, row) => {
+      acc[row.sender_uid] = (acc[row.sender_uid] || 0) + 1;
+      return acc;
+    }, {});
+
+    writeCache(cacheKey, counts);
+    return counts;
+  },
+
+  subscribeToUnreadMessageCounts(uid: string, callback: (counts: Record<string, number>) => void, onError?: (error: any) => void) {
+    const fetcher = async () => this.getUnreadMessageCounts(uid);
+    return subscribeToTable('messages', fetcher, callback, `receiver_uid=eq.${uid}`, onError, `unread:messages:${uid}`);
   },
 
   upsertActiveChatCache(uid: string, chat: ActiveChatSummary) {

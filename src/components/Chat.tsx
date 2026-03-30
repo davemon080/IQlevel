@@ -43,6 +43,7 @@ export default function Chat({ profile }: ChatProps) {
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [presenceState, setPresenceState] = useState<Record<string, { userUid: string; onlineAt?: string; visibilityState?: string; typingTo?: string | null; viewingChatUid?: string | null; updatedAt?: string }>>({});
   const [isComposerFocused, setIsComposerFocused] = useState(false);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const typingTimeoutRef = useRef<number | null>(null);
 
   const mergeChats = React.useCallback((incomingChats: any[], recentChats: any[] = []) => {
@@ -104,6 +105,10 @@ export default function Chat({ profile }: ChatProps) {
       setPresenceState(state);
     });
   }, []);
+
+  useEffect(() => {
+    return supabaseService.subscribeToUnreadMessageCounts(profile.uid, setUnreadCounts);
+  }, [profile.uid]);
 
   // Lock body scroll when chat is open on mobile
   useEffect(() => {
@@ -259,7 +264,7 @@ export default function Chat({ profile }: ChatProps) {
 
   useEffect(() => {
     if (!selectedContact) return;
-    supabaseService.markChatAsRead(profile.uid, selectedContact.uid);
+    supabaseService.markMessagesAsRead(profile.uid, selectedContact.uid).catch(() => undefined);
   }, [profile.uid, selectedContact, messages.length]);
 
   useEffect(() => {
@@ -513,16 +518,14 @@ export default function Chat({ profile }: ChatProps) {
     ? Math.max(0, window.innerHeight - viewportHeight - viewportOffsetTop)
     : 0;
   const shouldLiftForKeyboard = isMobile && showChatOnMobile && isComposerFocused && keyboardInset > 0;
-  const chatViewportLift = shouldLiftForKeyboard ? keyboardInset : 0;
   const isSelectedContactOnline = selectedContact ? onlineUserIds.has(selectedContact.uid) : false;
   const selectedContactPresence = selectedContact ? presenceState[selectedContact.uid] : undefined;
   const isSelectedContactTyping = selectedContactPresence?.typingTo === profile.uid;
-  const isSelectedContactViewingChat = selectedContactPresence?.viewingChatUid === profile.uid;
 
   const getOutgoingReceiptState = (message: LocalMessage): 'pending' | 'failed' | 'sent' | 'delivered' | 'read' => {
     if (message.localStatus === 'pending') return 'pending';
     if (message.localStatus === 'failed') return 'failed';
-    if (isSelectedContactViewingChat) return 'read';
+    if (message.readAt) return 'read';
     if (isSelectedContactOnline) return 'delivered';
     return 'sent';
   };
@@ -604,8 +607,11 @@ export default function Chat({ profile }: ChatProps) {
                     <p className={`text-xs truncate font-medium ${presenceState[chat.user.uid]?.typingTo === profile.uid ? 'text-emerald-600' : 'text-gray-500'}`}>
                       {presenceState[chat.user.uid]?.typingTo === profile.uid ? 'Typing...' : chat.lastMessage || chat.user.role}
                     </p>
-                    {/* Placeholder for unread count */}
-                    {/* <div className="bg-teal-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">2</div> */}
+                    {unreadCounts[chat.otherUid] > 0 && (
+                      <div className="bg-teal-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                        {unreadCounts[chat.otherUid] > 9 ? '9+' : unreadCounts[chat.otherUid]}
+                      </div>
+                    )}
                   </div>
                 </div>
               </button>
@@ -631,12 +637,7 @@ export default function Chat({ profile }: ChatProps) {
       {/* Chat Area */}
       <div
         className={`flex-1 flex flex-col bg-[#efeae2] transition-all duration-300 overflow-hidden ${!showChatOnMobile ? 'hidden md:flex' : 'flex'}`}
-        style={shouldLiftForKeyboard
-          ? {
-              transform: `translateY(-${chatViewportLift}px)`,
-              paddingBottom: `${chatViewportLift}px`,
-            }
-          : undefined}
+        style={undefined}
       >
         {selectedContact ? (
           <>
@@ -685,7 +686,7 @@ export default function Chat({ profile }: ChatProps) {
                 backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`,
                 backgroundBlendMode: 'overlay',
                 backgroundColor: '#efeae2',
-                paddingBottom: `${shouldLiftForKeyboard ? 24 : 0}px`,
+                paddingBottom: `${shouldLiftForKeyboard ? keyboardInset + 24 : 0}px`,
               }}
             >
               {messagesLoading ? (
@@ -825,8 +826,11 @@ export default function Chat({ profile }: ChatProps) {
 
             {/* Message Input - WhatsApp Style */}
             <div
-              className="flex-none p-3 bg-[#f0f2f5] border-t border-gray-200 transition-[padding] duration-200"
-              style={{ paddingBottom: `${Math.max(12, shouldLiftForKeyboard ? 12 : keyboardInset + 12)}px` }}
+              className="sticky bottom-0 flex-none p-3 bg-[#f0f2f5] border-t border-gray-200 transition-[padding,transform] duration-200"
+              style={{
+                paddingBottom: '12px',
+                transform: shouldLiftForKeyboard ? `translateY(-${keyboardInset}px)` : 'translateY(0)',
+              }}
             >
               {/* File Previews */}
               {selectedFiles.length > 0 && (
