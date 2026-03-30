@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 
@@ -50,6 +50,14 @@ type DbPostComment = {
   author_name: string;
   author_photo: string;
   content: string;
+  created_at: string;
+  parent_comment_id?: string | null;
+};
+
+type DbPostCommentLike = {
+  id: string;
+  comment_id: string;
+  user_uid: string;
   created_at: string;
 };
 
@@ -274,6 +282,16 @@ function mapPostCommentFromDb(row: DbPostComment): PostComment {
     authorName: row.author_name,
     authorPhoto: row.author_photo,
     content: row.content,
+    createdAt: row.created_at,
+    parentCommentId: row.parent_comment_id || undefined,
+  };
+}
+
+function mapPostCommentLikeFromDb(row: DbPostCommentLike): PostCommentLike {
+  return {
+    id: row.id,
+    commentId: row.comment_id,
+    userUid: row.user_uid,
     createdAt: row.created_at,
   };
 }
@@ -1003,7 +1021,80 @@ export const supabaseService = {
     return subscribeToTable('post_comments', fetcher, callback, `post_id=eq.${postId}`, undefined, `posts:comments:${postId}`);
   },
 
-  async addPostComment(postId: string, author: UserProfile, content: string): Promise<void> {
+  async listPostCommentLikes(commentIds: string[]): Promise<PostCommentLike[]> {
+    const uniqueIds = Array.from(new Set(commentIds.filter(Boolean)));
+    if (uniqueIds.length === 0) return [];
+    const cacheKey = `posts:comment-likes:${uniqueIds.slice().sort().join(',')}`;
+    const cached = readCache<PostCommentLike[]>(cacheKey, CACHE_TTL.interactions);
+    if (cached) return cached;
+
+    const rows = await runQuery<DbPostCommentLike[]>(
+      supabase.from('post_comment_likes').select('*').in('comment_id', uniqueIds),
+      'listPostCommentLikes'
+    );
+    const mapped = rows.map(mapPostCommentLikeFromDb);
+    writeCache(cacheKey, mapped);
+    return mapped;
+  },
+
+  subscribeToPostCommentLikes(commentIds: string[], callback: (likes: PostCommentLike[]) => void) {
+    const uniqueIds = Array.from(new Set(commentIds.filter(Boolean)));
+    if (uniqueIds.length === 0) {
+      callback([]);
+      return () => undefined;
+    }
+
+    const cacheKey = `posts:comment-likes:${uniqueIds.slice().sort().join(',')}`;
+    const fetcher = async () => {
+      const rows = await runQuery<DbPostCommentLike[]>(
+        supabase.from('post_comment_likes').select('*').in('comment_id', uniqueIds),
+        'subscribeToPostCommentLikes'
+      );
+      return rows.map(mapPostCommentLikeFromDb);
+    };
+
+    return subscribeToTable('post_comment_likes', fetcher, callback, undefined, undefined, cacheKey);
+  },
+
+  async setPostCommentLike(commentId: string, userUid: string, shouldLike: boolean): Promise<void> {
+    const existingRows = await runQuery<Pick<DbPostCommentLike, 'id'>[]>(
+      supabase.from('post_comment_likes').select('id').eq('comment_id', commentId).eq('user_uid', userUid),
+      'setPostCommentLike:existing'
+    );
+
+    if (!shouldLike) {
+      if (existingRows.length === 0) return;
+      await runQuery(
+        supabase.from('post_comment_likes').delete().in('id', existingRows.map((row) => row.id)),
+        'setPostCommentLike:delete'
+      );
+      removeCacheByPrefix('posts:comment-likes:');
+      return;
+    }
+
+    if (existingRows.length === 0) {
+      await runQuery(
+        supabase.from('post_comment_likes').insert({
+          comment_id: commentId,
+          user_uid: userUid,
+          created_at: new Date().toISOString(),
+        }),
+        'setPostCommentLike:insert'
+      );
+      removeCacheByPrefix('posts:comment-likes:');
+      return;
+    }
+
+    if (existingRows.length > 1) {
+      await runQuery(
+        supabase.from('post_comment_likes').delete().in('id', existingRows.slice(1).map((row) => row.id)),
+        'setPostCommentLike:dedupe'
+      );
+    }
+    removeCacheByPrefix('posts:comment-likes:');
+  },
+
+  async addPostComment(postId: string, author: UserProfile, content: string, parentCommentId?: string): Promise<void> {
     await runQuery(
       supabase.from('post_comments').insert({
         post_id: postId,
@@ -1012,11 +1103,13 @@ export const supabaseService = {
         author_photo: author.photoURL,
         content,
         created_at: new Date().toISOString(),
+        parent_comment_id: parentCommentId || null,
       }),
       'addPostComment'
     );
     removeCache(`posts:comments:${postId}`);
     removeCache('posts:comments:all');
+    removeCacheByPrefix('posts:comment-likes:');
   },
 
   // Jobs

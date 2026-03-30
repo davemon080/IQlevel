@@ -165,4 +165,12 @@ export interface PostComment {
   authorPhoto: string;
   content: string;
   createdAt: string;
+  parentCommentId?: string;
+}
+
+export interface PostCommentLike {
+  id: string;
+  commentId: string;
+  userUid: string;
+  createdAt: string;
 }

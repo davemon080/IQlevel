@@ -100,8 +100,14 @@ export default function CachedImage({
       {!isLoaded && (
         <div
           aria-hidden="true"
-          className={`absolute inset-0 animate-pulse bg-gradient-to-br from-gray-200 via-gray-100 to-gray-200 ${skeletonClassName || ''}`}
-        />
+          className={`absolute inset-0 overflow-hidden bg-slate-200 ${skeletonClassName || ''}`}
+        >
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-200 via-white/60 to-slate-200 opacity-80 animate-pulse" />
+          <div
+            className="absolute inset-y-0 -left-1/2 w-1/2 bg-gradient-to-r from-transparent via-white/80 to-transparent"
+            style={{ animation: 'cached-image-shimmer 1.3s ease-in-out infinite' }}
+          />
+        </div>
       )}
       <img
         {...props}
@@ -125,6 +131,12 @@ export default function CachedImage({
           props.onError?.(event);
         }}
       />
+      <style>{`
+        @keyframes cached-image-shimmer {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(300%); }
+        }
+      `}</style>
     </div>
   );
 }
