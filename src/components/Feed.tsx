@@ -16,10 +16,11 @@ interface FeedProps {
 export default function Feed({ profile }: FeedProps) {
   const TOP_ACTIVE_LIMIT = 15;
   const { currency } = useCurrency();
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [likes, setLikes] = useState<PostLike[]>([]);
-  const [comments, setComments] = useState<PostComment[]>([]);
+  const initialFeedSnapshot = useMemo(() => supabaseService.getFeedCacheSnapshot(), []);
+  const [posts, setPosts] = useState<Post[]>(() => initialFeedSnapshot?.posts || []);
+  const [jobs, setJobs] = useState<Job[]>(() => initialFeedSnapshot?.jobs || []);
+  const [likes, setLikes] = useState<PostLike[]>(() => initialFeedSnapshot?.likes || []);
+  const [comments, setComments] = useState<PostComment[]>(() => initialFeedSnapshot?.comments || []);
   const [likingPostIds, setLikingPostIds] = useState<string[]>([]);
   const [newPostContent, setNewPostContent] = useState('');
   const [isPosting, setIsPosting] = useState(false);
@@ -31,10 +32,22 @@ export default function Feed({ profile }: FeedProps) {
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [topStudents, setTopStudents] = useState<UserProfile[]>([]);
-  const [hasMoreTopStudents, setHasMoreTopStudents] = useState(false);
-  const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>({});
+  const [topStudents, setTopStudents] = useState<UserProfile[]>(() => initialFeedSnapshot?.topStudents || []);
+  const [hasMoreTopStudents, setHasMoreTopStudents] = useState(() => initialFeedSnapshot?.hasMoreTopStudents || false);
+  const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>(() => initialFeedSnapshot?.profileByUid || {});
   const navigate = useNavigate();
+
+  useEffect(() => {
+    supabaseService.writeFeedCacheSnapshot({
+      posts,
+      jobs,
+      likes,
+      comments,
+      topStudents,
+      hasMoreTopStudents,
+      profileByUid,
+    });
+  }, [posts, jobs, likes, comments, topStudents, hasMoreTopStudents, profileByUid]);
 
   useEffect(() => {
     const unsubscribePosts = supabaseService.subscribeToPosts(setPosts);

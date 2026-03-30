@@ -8,8 +8,21 @@ type CachedImageProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'src'> &
   fallbackSrc?: string;
 };
 
-const loadedImageUrls = new Set<string>();
+declare global {
+  interface Window {
+    __connectLoadedImageUrls?: Set<string>;
+  }
+}
+
+const loadedImageUrls =
+  typeof window !== 'undefined'
+    ? (window.__connectLoadedImageUrls ||= new Set<string>())
+    : new Set<string>();
 const pendingImageLoads = new Map<string, Promise<void>>();
+
+function rememberLoadedImageUrl(src: string) {
+  loadedImageUrls.add(src);
+}
 
 function preloadImage(src: string): Promise<void> {
   if (loadedImageUrls.has(src)) return Promise.resolve();
@@ -20,7 +33,7 @@ function preloadImage(src: string): Promise<void> {
     const image = new window.Image();
     image.decoding = 'async';
     image.onload = () => {
-      loadedImageUrls.add(src);
+      rememberLoadedImageUrl(src);
       pendingImageLoads.delete(src);
       resolve();
     };
@@ -37,7 +50,12 @@ function preloadImage(src: string): Promise<void> {
 
 export function markImageAsCached(src?: string | null) {
   if (!src) return;
-  loadedImageUrls.add(src);
+  rememberLoadedImageUrl(src);
+}
+
+export function preloadCachedImage(src?: string | null) {
+  if (!src || typeof window === 'undefined') return Promise.resolve();
+  return preloadImage(src).catch(() => undefined);
 }
 
 export default function CachedImage({
@@ -55,6 +73,7 @@ export default function CachedImage({
   const resolvedSrc = src || fallbackSrc;
   const [activeSrc, setActiveSrc] = React.useState(resolvedSrc);
   const [isLoaded, setIsLoaded] = React.useState(() => (resolvedSrc ? loadedImageUrls.has(resolvedSrc) : false));
+  const imageRef = React.useRef<HTMLImageElement | null>(null);
 
   React.useEffect(() => {
     setActiveSrc(resolvedSrc);
@@ -91,6 +110,15 @@ export default function CachedImage({
     };
   }, [resolvedSrc, fallbackSrc]);
 
+  React.useEffect(() => {
+    if (!activeSrc) return;
+    const image = imageRef.current;
+    if (image?.complete && image.naturalWidth > 0) {
+      rememberLoadedImageUrl(activeSrc);
+      setIsLoaded(true);
+    }
+  }, [activeSrc]);
+
   if (!activeSrc) {
     return <div aria-hidden="true" className={wrapperClassName || className} />;
   }
@@ -111,13 +139,14 @@ export default function CachedImage({
       )}
       <img
         {...props}
+        ref={imageRef}
         src={activeSrc}
         alt={alt}
         loading={loading}
         decoding={decoding}
         className={`${imgClassName || className || ''} transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
         onLoad={(event) => {
-          loadedImageUrls.add(activeSrc);
+          rememberLoadedImageUrl(activeSrc);
           setIsLoaded(true);
           props.onLoad?.(event);
         }}

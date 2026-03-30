@@ -123,6 +123,15 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  useEffect(() => {
+    if (!user) {
+      supabaseService.stopPresenceTracking();
+      return;
+    }
+    const stopPresence = supabaseService.startPresenceTracking(user.id);
+    return () => stopPresence();
+  }, [user]);
+
   const handleGoogleLogin = async () => {
     try {
       setError('');
@@ -171,6 +180,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    supabaseService.stopPresenceTracking();
     await supabase.auth.signOut();
   };
 

@@ -40,6 +40,31 @@ export default function Chat({ profile }: ChatProps) {
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 0);
   const [viewportOffsetTop, setViewportOffsetTop] = useState(0);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+
+  const mergeChats = React.useCallback((incomingChats: any[], recentChats: any[] = []) => {
+    const merged = new Map<string, any>();
+    [...incomingChats, ...recentChats].forEach((chat) => {
+      if (!chat?.otherUid || !chat?.user) return;
+      const existing = merged.get(chat.otherUid);
+      if (!existing) {
+        merged.set(chat.otherUid, chat);
+        return;
+      }
+
+      if (new Date(chat.updatedAt || 0).getTime() >= new Date(existing.updatedAt || 0).getTime()) {
+        merged.set(chat.otherUid, chat);
+      }
+    });
+
+    return Array.from(merged.values()).sort(
+      (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+    );
+  }, []);
+
+  const upsertLocalChat = React.useCallback((chat: any) => {
+    setActiveChats((prev) => mergeChats([chat], prev));
+  }, [mergeChats]);
 
   const adjustComposerHeight = () => {
     if (!inputRef.current) return;
@@ -63,6 +88,12 @@ export default function Chat({ profile }: ChatProps) {
       window.visualViewport?.removeEventListener('resize', handleResize);
       window.visualViewport?.removeEventListener('scroll', handleResize);
     };
+  }, []);
+
+  useEffect(() => {
+    return supabaseService.subscribeToOnlineUsers((uids) => {
+      setOnlineUserIds(new Set(uids));
+    });
   }, []);
 
   // Lock body scroll when chat is open on mobile
@@ -111,15 +142,11 @@ export default function Chat({ profile }: ChatProps) {
       profile.uid, 
       async (chats) => {
         clearTimeout(timeout);
-        if (chats.length === 0) {
-          try {
-            const recent = await supabaseService.getRecentConversations(profile.uid);
-            setActiveChats(recent);
-          } catch (e) {
-            setActiveChats([]);
-          }
-        } else {
-          setActiveChats(chats);
+        try {
+          const recent = await supabaseService.getRecentConversations(profile.uid);
+          setActiveChats(mergeChats(chats, recent));
+        } catch (e) {
+          setActiveChats(mergeChats(chats));
         }
         setLoading(false);
         setError(null);
@@ -136,7 +163,7 @@ export default function Chat({ profile }: ChatProps) {
       clearTimeout(timeout);
       unsubscribe();
     };
-  }, [profile.uid]);
+  }, [mergeChats, profile.uid]);
 
   // Handle targetUid from search params separately to ensure it updates correctly
   useEffect(() => {
@@ -161,6 +188,12 @@ export default function Chat({ profile }: ChatProps) {
           if (user) {
             setSelectedContact(user);
             setShowChatOnMobile(true);
+            upsertLocalChat({
+              otherUid: user.uid,
+              user,
+              lastMessage: '',
+              updatedAt: new Date().toISOString(),
+            });
           }
         } catch (err) {
           console.error('Error loading target user:', err);
@@ -171,7 +204,7 @@ export default function Chat({ profile }: ChatProps) {
     };
 
     loadTargetUser();
-  }, [targetUid, activeChats, selectedContact]);
+  }, [targetUid, activeChats, selectedContact, upsertLocalChat]);
 
   useEffect(() => {
     if (isNewChatModalOpen) {
@@ -236,7 +269,7 @@ export default function Chat({ profile }: ChatProps) {
     const messageText = newMessage.trim();
     const files = [...selectedFiles];
     
-    if (!messageText || !selectedContact) return;
+    if ((!messageText && files.length === 0) || !selectedContact) return;
     
     // If we're already uploading files, we can still send text-only messages,
     // but we shouldn't allow sending more files until the current ones finish.
@@ -262,6 +295,12 @@ export default function Chat({ profile }: ChatProps) {
       localStatus: 'pending',
     };
     setMessages((prev) => [...prev, optimisticMessage]);
+    upsertLocalChat({
+      otherUid: selectedContact.uid,
+      user: selectedContact,
+      lastMessage: messageText || (files.length > 0 ? 'Attachment' : ''),
+      updatedAt: optimisticMessage.createdAt,
+    });
     
     // Increment active uploads if there are files
     if (files.length > 0) {
@@ -287,6 +326,12 @@ export default function Chat({ profile }: ChatProps) {
       }
 
       const inserted = await supabaseService.sendMessage(messageData);
+      upsertLocalChat({
+        otherUid: selectedContact.uid,
+        user: selectedContact,
+        lastMessage: inserted.content || (attachments.length > 0 ? 'Attachment' : ''),
+        updatedAt: inserted.createdAt,
+      });
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === tempId
@@ -413,6 +458,7 @@ export default function Chat({ profile }: ChatProps) {
   );
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const isSelectedContactOnline = selectedContact ? onlineUserIds.has(selectedContact.uid) : false;
 
   return (
     <div 
@@ -457,6 +503,7 @@ export default function Chat({ profile }: ChatProps) {
                 onClick={() => {
                   setSelectedContact(chat.user);
                   setShowChatOnMobile(true);
+                  upsertLocalChat(chat);
                   setSearchParams({ uid: chat.otherUid });
                 }}
                 className={`w-full px-4 py-3 flex items-center gap-3 transition-all border-b border-gray-50 ${
@@ -473,7 +520,9 @@ export default function Chat({ profile }: ChatProps) {
                     wrapperClassName="w-14 h-14 rounded-2xl shadow-sm"
                     imgClassName="w-full h-full rounded-2xl object-cover"
                   />
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
+                  {onlineUserIds.has(chat.user.uid) && (
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
+                  )}
                 </div>
                 <div className="flex-1 text-left min-w-0">
                   <div className="flex justify-between items-start mb-0.5">
@@ -534,11 +583,15 @@ export default function Chat({ profile }: ChatProps) {
                     wrapperClassName="w-10 h-10 rounded-xl shadow-sm"
                     imgClassName="w-full h-full rounded-xl object-cover"
                   />
-                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
+                  {isSelectedContactOnline && (
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
+                  )}
                 </div>
                 <div className="cursor-pointer" onClick={() => navigate(`/profile/${selectedContact.uid}`)}>
                   <h3 className="text-sm font-bold text-gray-900 leading-tight">{selectedContact.displayName}</h3>
-                  <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Online</p>
+                  <p className={`text-[10px] font-bold uppercase tracking-wider ${isSelectedContactOnline ? 'text-emerald-600' : 'text-gray-400'}`}>
+                    {isSelectedContactOnline ? 'Online now' : 'Offline'}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -878,6 +931,12 @@ export default function Chat({ profile }: ChatProps) {
                         setSelectedContact(user);
                         setShowChatOnMobile(true);
                         setIsNewChatModalOpen(false);
+                        upsertLocalChat({
+                          otherUid: user.uid,
+                          user,
+                          lastMessage: '',
+                          updatedAt: new Date().toISOString(),
+                        });
                         setSearchParams({ uid: user.uid });
                       }}
                       className="w-full p-3 flex items-center gap-4 hover:bg-gray-50 rounded-2xl transition-all"

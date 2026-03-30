@@ -160,6 +160,7 @@ const CHAT_READ_KEY_PREFIX = 'connect_chat_read_map_';
 const CHAT_READ_EVENT = 'connect:chat-read-updated';
 const APP_CACHE_PREFIX = 'connect_app_cache_v2:';
 const LEGACY_APP_CACHE_PREFIXES = ['connect_app_cache_v1:'];
+const PRESENCE_CHANNEL_NAME = 'connect:presence';
 
 const CACHE_TTL = {
   users: 1000 * 60 * 60 * 6,
@@ -176,7 +177,30 @@ type CacheEntry<T> = {
   updatedAt: number;
 };
 
+type FeedCacheSnapshot = {
+  posts: Post[];
+  jobs: Job[];
+  likes: PostLike[];
+  comments: PostComment[];
+  topStudents: UserProfile[];
+  hasMoreTopStudents: boolean;
+  profileByUid: Record<string, UserProfile>;
+};
+
+type ActiveChatSummary = {
+  otherUid: string;
+  user: UserProfile;
+  lastMessage: string;
+  updatedAt: string;
+};
+
 const memoryCache = new Map<string, CacheEntry<unknown>>();
+let presenceChannel: any = null;
+let presenceTrackedUid: string | null = null;
+let presenceHeartbeatTimer: number | null = null;
+let presenceVisibilityCleanup: (() => void) | null = null;
+const onlineUserIds = new Set<string>();
+const onlineUserSubscribers = new Set<(uids: Set<string>) => void>();
 
 function clearLegacyAppCaches() {
   if (typeof window === 'undefined') return;
@@ -507,6 +531,56 @@ function removeCacheByPrefix(prefix: string): void {
   }
 }
 
+function emitOnlineUsers() {
+  const snapshot = new Set(onlineUserIds);
+  onlineUserSubscribers.forEach((callback) => callback(snapshot));
+}
+
+function extractPresenceMetas(entry: any): Array<Record<string, any>> {
+  if (!entry) return [];
+  if (Array.isArray(entry)) return entry;
+  if (Array.isArray(entry.metas)) return entry.metas;
+  return [];
+}
+
+function rebuildOnlineUsersFromPresenceState() {
+  onlineUserIds.clear();
+  if (!presenceChannel) {
+    emitOnlineUsers();
+    return;
+  }
+
+  const state = presenceChannel.presenceState?.() || {};
+  Object.values(state).forEach((entry) => {
+    extractPresenceMetas(entry).forEach((meta) => {
+      const uid = typeof meta?.userUid === 'string' ? meta.userUid : null;
+      if (uid) onlineUserIds.add(uid);
+    });
+  });
+
+  emitOnlineUsers();
+}
+
+function mergeChatSummaries(...chatGroups: ActiveChatSummary[][]): ActiveChatSummary[] {
+  const merged = new Map<string, ActiveChatSummary>();
+
+  chatGroups.flat().forEach((chat) => {
+    const existing = merged.get(chat.otherUid);
+    if (!existing) {
+      merged.set(chat.otherUid, chat);
+      return;
+    }
+
+    if (new Date(chat.updatedAt).getTime() >= new Date(existing.updatedAt).getTime()) {
+      merged.set(chat.otherUid, chat);
+    }
+  });
+
+  return Array.from(merged.values()).sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  );
+}
+
 async function uploadToSupabaseStorage(file: File, folder: string): Promise<string> {
   const safeName = file.name.replace(/\s+/g, '_');
   const filePath = `${folder}/${Date.now()}_${safeName}`;
@@ -572,6 +646,103 @@ function subscribeToTable<T>(
 export const supabaseService = {
   profileCache: new Map<string, UserProfile>(),
 
+  startPresenceTracking(uid: string) {
+    if (typeof window === 'undefined' || !uid) return () => undefined;
+    if (presenceTrackedUid === uid && presenceChannel) {
+      return () => undefined;
+    }
+
+    this.stopPresenceTracking();
+
+    presenceTrackedUid = uid;
+    presenceChannel = supabase.channel(PRESENCE_CHANNEL_NAME, {
+      config: {
+        presence: { key: uid },
+      },
+    });
+
+    const trackPresence = () =>
+      presenceChannel?.track?.({
+        userUid: uid,
+        onlineAt: new Date().toISOString(),
+        visibilityState: document.visibilityState,
+      });
+
+    presenceChannel
+      .on('presence', { event: 'sync' }, rebuildOnlineUsersFromPresenceState)
+      .on('presence', { event: 'join' }, rebuildOnlineUsersFromPresenceState)
+      .on('presence', { event: 'leave' }, rebuildOnlineUsersFromPresenceState)
+      .subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED') {
+          await trackPresence();
+          rebuildOnlineUsersFromPresenceState();
+        }
+      });
+
+    const handleVisibilityChange = () => {
+      if (!presenceChannel) return;
+      if (document.visibilityState === 'visible') {
+        trackPresence();
+      } else {
+        presenceChannel.untrack?.();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', this.stopPresenceTracking);
+    presenceVisibilityCleanup = () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', this.stopPresenceTracking);
+    };
+
+    presenceHeartbeatTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        trackPresence();
+      }
+    }, 30000);
+
+    return () => {
+      if (presenceTrackedUid === uid) {
+        this.stopPresenceTracking();
+      }
+    };
+  },
+
+  stopPresenceTracking() {
+    if (presenceHeartbeatTimer !== null && typeof window !== 'undefined') {
+      window.clearInterval(presenceHeartbeatTimer);
+      presenceHeartbeatTimer = null;
+    }
+    presenceVisibilityCleanup?.();
+    presenceVisibilityCleanup = null;
+
+    if (presenceChannel) {
+      try {
+        presenceChannel.untrack?.();
+      } catch {
+        // Ignore presence untrack failures.
+      }
+      supabase.removeChannel(presenceChannel);
+      presenceChannel = null;
+    }
+
+    presenceTrackedUid = null;
+    onlineUserIds.clear();
+    emitOnlineUsers();
+  },
+
+  subscribeToOnlineUsers(callback: (uids: Set<string>) => void) {
+    onlineUserSubscribers.add(callback);
+    callback(new Set(onlineUserIds));
+    return () => {
+      onlineUserSubscribers.delete(callback);
+    };
+  },
+
+  isUserOnline(uid: string) {
+    return onlineUserIds.has(uid);
+  },
+
   getNotificationSettings(uid: string): NotificationSettings {
     const defaults: NotificationSettings = {
       wallet: true,
@@ -591,6 +762,14 @@ export const supabaseService = {
       window.localStorage.setItem(`${NOTIFICATION_SETTINGS_KEY_PREFIX}${uid}`, JSON.stringify(next));
     }
     return next;
+  },
+
+  getFeedCacheSnapshot(): FeedCacheSnapshot | null {
+    return readCacheAnyAge<FeedCacheSnapshot>('feed:snapshot');
+  },
+
+  writeFeedCacheSnapshot(snapshot: FeedCacheSnapshot) {
+    writeCache('feed:snapshot', snapshot);
   },
 
   getChatReadMap(uid: string): Record<string, string> {
@@ -1225,6 +1404,29 @@ export const supabaseService = {
       'updateActiveChats'
     );
 
+    const senderProfile =
+      this.profileCache.get(message.senderUid) || (await this.getUserProfile(message.senderUid));
+    const receiverProfile =
+      this.profileCache.get(message.receiverUid) || (await this.getUserProfile(message.receiverUid));
+
+    if (receiverProfile) {
+      this.upsertActiveChatCache(message.senderUid, {
+        otherUid: receiverProfile.uid,
+        user: receiverProfile,
+        lastMessage: lastMessageText,
+        updatedAt: createdAt,
+      });
+    }
+
+    if (senderProfile) {
+      this.upsertActiveChatCache(message.receiverUid, {
+        otherUid: senderProfile.uid,
+        user: senderProfile,
+        lastMessage: lastMessageText,
+        updatedAt: createdAt,
+      });
+    }
+
     return mapMessageFromDb(inserted);
   },
 
@@ -1253,6 +1455,26 @@ export const supabaseService = {
     };
 
     return subscribeToTable('messages', fetcher, callback, undefined, onError, `messages:${uid}:${otherUid}`);
+  },
+
+  upsertActiveChatCache(uid: string, chat: ActiveChatSummary) {
+    const activeCacheKey = `chats:active:${uid}`;
+    const recentCacheKey = `chats:recent:${uid}`;
+    const nextActiveChats = mergeChatSummaries(readCacheAnyAge<ActiveChatSummary[]>(activeCacheKey) || [], [chat]);
+    writeCache(activeCacheKey, nextActiveChats);
+
+    const nextRecentChats = mergeChatSummaries(readCacheAnyAge<ActiveChatSummary[]>(recentCacheKey) || [], [chat]);
+    writeCache(recentCacheKey, nextRecentChats);
+    return nextActiveChats;
+  },
+
+  ensureChatVisible(uid: string, otherUser: UserProfile, options?: { lastMessage?: string; updatedAt?: string }) {
+    return this.upsertActiveChatCache(uid, {
+      otherUid: otherUser.uid,
+      user: otherUser,
+      lastMessage: options?.lastMessage || '',
+      updatedAt: options?.updatedAt || new Date().toISOString(),
+    });
   },
 
   async fetchActiveChats(uid: string) {
@@ -1287,9 +1509,12 @@ export const supabaseService = {
           user,
         };
       })
-      .filter((c): c is any => c !== null);
-    writeCache(cacheKey, mapped);
-    return mapped;
+      .filter((c): c is ActiveChatSummary => c !== null);
+
+    const recent = readCacheAnyAge<ActiveChatSummary[]>(`chats:recent:${uid}`) || [];
+    const merged = mergeChatSummaries(mapped, recent);
+    writeCache(cacheKey, merged);
+    return merged;
   },
 
   subscribeToActiveChats(uid: string, callback: (chats: any[]) => void, onError?: (error: any) => void) {
@@ -1341,7 +1566,7 @@ export const supabaseService = {
           updatedAt: convo.updatedAt,
         };
       })
-      .filter((c): c is any => c !== null);
+      .filter((c): c is ActiveChatSummary => c !== null);
     writeCache(cacheKey, mapped);
     return mapped;
   },
