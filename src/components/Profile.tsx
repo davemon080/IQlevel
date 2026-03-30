@@ -4,6 +4,7 @@ import { UserProfile, Post } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { ArrowLeft, Camera, MessageSquare, Save, Share2, Plus, Trash2, Copy } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import CachedImage from './CachedImage';
 
 interface ProfileProps {
   profile: UserProfile;
@@ -152,12 +153,13 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
       <div className="space-y-6">
         <div className="relative h-48 bg-gradient-to-r from-teal-600 to-emerald-600">
           {(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) && (
-            <img
+            <CachedImage
               src={(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) || ''}
               alt="cover"
               loading="lazy"
               decoding="async"
-              className="w-full h-full object-cover"
+              wrapperClassName="w-full h-full"
+              imgClassName="w-full h-full object-cover"
             />
           )}
           {isOwnProfile && editing && (
@@ -176,13 +178,14 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
         <div className="space-y-6">
           <div className="flex flex-col md:flex-row md:items-center gap-4">
             <div className="relative -mt-16">
-              <img
+              <CachedImage
                 src={(editing ? draft.photoURL : userProfile.photoURL) || ''}
                 alt={userProfile.displayName}
                 loading="lazy"
                 decoding="async"
                 referrerPolicy="no-referrer"
-                className="w-28 h-28 rounded-2xl border-4 border-white object-cover"
+                wrapperClassName="w-28 h-28 rounded-2xl border-4 border-white"
+                imgClassName="w-full h-full rounded-2xl object-cover"
               />
               {isOwnProfile && editing && (
                 <label className="absolute bottom-1 right-1 p-1.5 rounded-lg bg-black/30 text-white cursor-pointer">
@@ -307,7 +310,16 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                   <div key={post.id} className="p-4 border border-gray-100 rounded-2xl">
                     <p className="text-xs text-gray-400 mb-2">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
                     <p className="text-sm text-gray-800 whitespace-pre-wrap">{post.content}</p>
-                    {post.imageUrl && <img src={post.imageUrl} alt="post" loading="lazy" decoding="async" className="w-full mt-3 rounded-xl" />}
+                    {post.imageUrl && (
+                      <CachedImage
+                        src={post.imageUrl}
+                        alt="post"
+                        loading="lazy"
+                        decoding="async"
+                        wrapperClassName="w-full mt-3 rounded-xl"
+                        imgClassName="w-full h-full rounded-xl object-cover"
+                      />
+                    )}
                   </div>
                 ))}
               </section>
@@ -392,7 +404,14 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {(editing ? draft.portfolio : userProfile.portfolio || []).map((item, index) => (
                   <div key={index} className="p-4 border border-gray-100 rounded-2xl space-y-3">
-                    <img src={item.imageUrl || 'https://via.placeholder.com/600x400?text=Project'} alt={item.title} loading="lazy" decoding="async" className="w-full h-44 object-cover rounded-xl" />
+                    <CachedImage
+                      src={item.imageUrl || 'https://via.placeholder.com/600x400?text=Project'}
+                      alt={item.title}
+                      loading="lazy"
+                      decoding="async"
+                      wrapperClassName="w-full h-44 rounded-xl"
+                      imgClassName="w-full h-full rounded-xl object-cover"
+                    />
                     <EditableField label="Project Title" value={item.title} editing={editing} onChange={(v) => updatePortfolio(index, 'title', v)} />
                     <EditableField label="Project Link" value={item.link} editing={editing} onChange={(v) => updatePortfolio(index, 'link', v)} />
                     {editing && (
@@ -417,7 +436,16 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 <div key={post.id} className="p-4 border border-gray-100 rounded-2xl">
                   <p className="text-xs text-gray-400 mb-2">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
                   <p className="text-sm text-gray-800 whitespace-pre-wrap">{post.content}</p>
-                  {post.imageUrl && <img src={post.imageUrl} alt="post" loading="lazy" decoding="async" className="w-full mt-3 rounded-xl" />}
+                  {post.imageUrl && (
+                    <CachedImage
+                      src={post.imageUrl}
+                      alt="post"
+                      loading="lazy"
+                      decoding="async"
+                      wrapperClassName="w-full mt-3 rounded-xl"
+                      imgClassName="w-full h-full rounded-xl object-cover"
+                    />
+                  )}
                 </div>
               ))}
             </div>

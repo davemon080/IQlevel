@@ -20,6 +20,7 @@ import {
   Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import CachedImage from './CachedImage';
 
 interface SettingsProps {
   profile: UserProfile;
@@ -190,7 +191,15 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
               <div className="p-6 bg-gray-50/50 border-b border-gray-100">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <img src={profile.photoURL} alt={profile.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-16 h-16 rounded-2xl object-cover shadow-md" />
+                    <CachedImage
+                      src={profile.photoURL}
+                      alt={profile.displayName}
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      wrapperClassName="w-16 h-16 rounded-2xl shadow-md"
+                      imgClassName="w-full h-full rounded-2xl object-cover"
+                    />
                     <div>
                       <h2 className="text-lg font-bold text-gray-900">{profile.displayName}</h2>
                       <p className="text-sm text-gray-500">{profile.email}</p>
@@ -285,7 +294,15 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
 
               <div className="flex flex-col items-center gap-4">
                 <div className="relative group">
-                  <img src={photoURL} alt="Profile" loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-32 h-32 rounded-3xl object-cover shadow-xl" />
+                  <CachedImage
+                    src={photoURL}
+                    alt="Profile"
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                    wrapperClassName="w-32 h-32 rounded-3xl shadow-xl"
+                    imgClassName="w-full h-full rounded-3xl object-cover"
+                  />
                   <label className="absolute bottom-2 right-2 p-2 bg-teal-600 text-white rounded-xl shadow-lg hover:bg-teal-700 transition-all cursor-pointer">
                     <Camera size={18} />
                     <input

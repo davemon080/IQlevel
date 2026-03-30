@@ -154,11 +154,11 @@ const APP_CACHE_PREFIX = 'connect_app_cache_v2:';
 const LEGACY_APP_CACHE_PREFIXES = ['connect_app_cache_v1:'];
 
 const CACHE_TTL = {
-  users: 1000 * 60 * 10,
-  posts: 1000 * 60 * 3,
-  jobs: 1000 * 60 * 3,
-  interactions: 1000 * 60,
-  chats: 1000 * 60,
+  users: 1000 * 60 * 60 * 6,
+  posts: 1000 * 60 * 30,
+  jobs: 1000 * 60 * 30,
+  interactions: 1000 * 60 * 10,
+  chats: 1000 * 60 * 5,
   wallet: 1000 * 30,
   notifications: 1000 * 30,
 } as const;
@@ -167,6 +167,8 @@ type CacheEntry<T> = {
   data: T;
   updatedAt: number;
 };
+
+const memoryCache = new Map<string, CacheEntry<unknown>>();
 
 function clearLegacyAppCaches() {
   if (typeof window === 'undefined') return;
@@ -397,7 +399,21 @@ function loadJsonFromStorage<T>(key: string, fallback: T): T {
   }
 }
 
+function readMemoryCache<T>(key: string, maxAgeMs: number): T | null {
+  const cached = memoryCache.get(key) as CacheEntry<T> | undefined;
+  if (!cached) return null;
+  if (Date.now() - cached.updatedAt > maxAgeMs) return null;
+  return cached.data;
+}
+
+function readMemoryCacheAnyAge<T>(key: string): T | null {
+  const cached = memoryCache.get(key) as CacheEntry<T> | undefined;
+  return cached?.data ?? null;
+}
+
 function readCache<T>(key: string, maxAgeMs: number): T | null {
+  const memoryValue = readMemoryCache<T>(key, maxAgeMs);
+  if (memoryValue !== null) return memoryValue;
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(`${APP_CACHE_PREFIX}${key}`);
@@ -405,6 +421,7 @@ function readCache<T>(key: string, maxAgeMs: number): T | null {
     const parsed = JSON.parse(raw) as CacheEntry<T>;
     if (!parsed || typeof parsed.updatedAt !== 'number') return null;
     if (Date.now() - parsed.updatedAt > maxAgeMs) return null;
+    memoryCache.set(key, parsed as CacheEntry<unknown>);
     return parsed.data;
   } catch {
     return null;
@@ -412,11 +429,14 @@ function readCache<T>(key: string, maxAgeMs: number): T | null {
 }
 
 function readCacheAnyAge<T>(key: string): T | null {
+  const memoryValue = readMemoryCacheAnyAge<T>(key);
+  if (memoryValue !== null) return memoryValue;
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(`${APP_CACHE_PREFIX}${key}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CacheEntry<T>;
+    memoryCache.set(key, parsed as CacheEntry<unknown>);
     return parsed?.data ?? null;
   } catch {
     return null;
@@ -424,15 +444,48 @@ function readCacheAnyAge<T>(key: string): T | null {
 }
 
 function writeCache<T>(key: string, data: T): void {
+  const payload: CacheEntry<T> = {
+    data,
+    updatedAt: Date.now(),
+  };
+  memoryCache.set(key, payload as CacheEntry<unknown>);
   if (typeof window === 'undefined') return;
   try {
-    const payload: CacheEntry<T> = {
-      data,
-      updatedAt: Date.now(),
-    };
     window.localStorage.setItem(`${APP_CACHE_PREFIX}${key}`, JSON.stringify(payload));
   } catch {
     // Ignore quota / serialization errors and continue with network-first behavior.
+  }
+}
+
+function removeCache(key: string): void {
+  memoryCache.delete(key);
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(`${APP_CACHE_PREFIX}${key}`);
+  } catch {
+    // Ignore cache cleanup failures.
+  }
+}
+
+function removeCacheByPrefix(prefix: string): void {
+  Array.from(memoryCache.keys())
+    .filter((key) => key.startsWith(prefix))
+    .forEach((key) => memoryCache.delete(key));
+
+  if (typeof window === 'undefined') return;
+  try {
+    const keysToDelete: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (!key || !key.startsWith(APP_CACHE_PREFIX)) continue;
+      const normalizedKey = key.slice(APP_CACHE_PREFIX.length);
+      if (normalizedKey.startsWith(prefix)) {
+        keysToDelete.push(key);
+      }
+    }
+    keysToDelete.forEach((key) => window.localStorage.removeItem(key));
+  } catch {
+    // Ignore cache cleanup failures.
   }
 }
 
@@ -644,10 +697,14 @@ export const supabaseService = {
       ),
       'createUserProfile'
     );
-    this.profileCache.set(profile.uid, {
+    const nextProfile = {
       ...profile,
       publicId: profile.publicId || buildPublicId(profile.uid),
-    });
+    };
+    this.profileCache.set(profile.uid, nextProfile);
+    writeCache(`user:${profile.uid}`, nextProfile);
+    removeCache('users:all');
+    removeCacheByPrefix('users:page:');
   },
 
   async updateUserProfile(uid: string, data: Partial<UserProfile>): Promise<void> {
@@ -672,7 +729,12 @@ export const supabaseService = {
       }
     }
     const prev = this.profileCache.get(uid);
-    if (prev) this.profileCache.set(uid, { ...prev, ...data });
+    const nextProfile = { ...(prev || { uid }), ...data } as UserProfile;
+    this.profileCache.set(uid, nextProfile);
+    writeCache(`user:${uid}`, nextProfile);
+    removeCache('users:all');
+    removeCacheByPrefix('users:page:');
+    removeCacheByPrefix('friends:');
   },
 
   async getTopStudents(limitCount: number): Promise<UserProfile[]> {
@@ -753,7 +815,13 @@ export const supabaseService = {
         .single(),
       'createPost'
     );
-    return mapPostFromDb(row);
+    const mapped = mapPostFromDb(row);
+    writeCache(`post:${mapped.id}`, mapped);
+    removeCacheByPrefix('posts:list:');
+    removeCacheByPrefix(`posts:user:${mapped.authorUid}`);
+    removeCacheByPrefix('posts:highlights:');
+    removeCache('posts:all');
+    return mapped;
   },
 
   async listPosts(limitCount: number = 100): Promise<Post[]> {
@@ -859,6 +927,7 @@ export const supabaseService = {
         supabase.from('post_likes').delete().in('id', existingIds),
         'setPostLike:delete'
       );
+      removeCache('posts:likes');
       return;
     }
 
@@ -871,6 +940,7 @@ export const supabaseService = {
         }),
         'setPostLike:insert'
       );
+      removeCache('posts:likes');
       return;
     }
 
@@ -881,6 +951,7 @@ export const supabaseService = {
         'setPostLike:dedupe'
       );
     }
+    removeCache('posts:likes');
   },
 
   async listPostComments(postId: string): Promise<PostComment[]> {
@@ -944,6 +1015,8 @@ export const supabaseService = {
       }),
       'addPostComment'
     );
+    removeCache(`posts:comments:${postId}`);
+    removeCache('posts:comments:all');
   },
 
   // Jobs

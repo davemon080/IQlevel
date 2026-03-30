@@ -7,6 +7,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatMoneyFromUSD } from '../utils/currency';
+import CachedImage from './CachedImage';
 
 interface FeedProps {
   profile: UserProfile;
@@ -246,13 +247,14 @@ export default function Feed({ profile }: FeedProps) {
                 onClick={() => navigate(`/profile/${student.uid}`)}
                 className="shrink-0 flex flex-col items-center gap-2 min-w-[92px] sm:min-w-[110px]"
               >
-                <img
+                <CachedImage
                   src={student.photoURL}
                   alt={student.displayName}
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"
-                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-2 border-teal-100"
+                  wrapperClassName="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-teal-100"
+                  imgClassName="w-full h-full rounded-full object-cover"
                 />
                 <span className="text-[10px] sm:text-xs font-semibold text-gray-700 text-center truncate w-20 sm:w-24">
                   {student.displayName}
@@ -278,7 +280,15 @@ export default function Feed({ profile }: FeedProps) {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="h-20 bg-teal-600"></div>
           <div className="px-6 pb-6 -mt-10 text-center">
-            <img src={profile.photoURL} alt={profile.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-20 h-20 rounded-2xl border-4 border-white mx-auto mb-4 object-cover shadow-md" />
+            <CachedImage
+              src={profile.photoURL}
+              alt={profile.displayName}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              wrapperClassName="w-20 h-20 rounded-2xl border-4 border-white mx-auto mb-4 shadow-md"
+              imgClassName="w-full h-full rounded-2xl object-cover"
+            />
             <h3 className="text-lg font-bold text-gray-900">{profile.displayName}</h3>
             <p className="text-sm text-gray-500 mb-4 capitalize">{profile.role}</p>
             <div className="pt-4 border-t border-gray-100 flex justify-around text-center">
@@ -329,13 +339,14 @@ export default function Feed({ profile }: FeedProps) {
                 <div className="flex items-center justify-between mb-3 sm:mb-4">
                   <div className="flex items-center gap-2 sm:gap-3">
                     <Link to={`/profile/${post.authorUid}`} className="shrink-0">
-                      <img
+                      <CachedImage
                         src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto}
                         alt={post.authorName}
                         loading="lazy"
                         decoding="async"
                         referrerPolicy="no-referrer"
-                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-cover"
+                        wrapperClassName="w-8 h-8 sm:w-10 sm:h-10 rounded-xl"
+                        imgClassName="w-full h-full rounded-xl object-cover"
                       />
                     </Link>
                     <div>
@@ -352,7 +363,16 @@ export default function Feed({ profile }: FeedProps) {
                   )}
                 </div>
                 <p className="text-gray-700 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
-                {post.imageUrl && <img src={post.imageUrl} alt="Post content" loading="lazy" decoding="async" className="mt-3 sm:mt-4 rounded-xl w-full object-cover max-h-64 sm:max-h-96" />}
+                {post.imageUrl && (
+                  <CachedImage
+                    src={post.imageUrl}
+                    alt="Post content"
+                    loading="lazy"
+                    decoding="async"
+                    wrapperClassName="mt-3 sm:mt-4 rounded-xl w-full max-h-64 sm:max-h-96"
+                    imgClassName="w-full h-full rounded-xl object-cover max-h-64 sm:max-h-96"
+                  />
+                )}
               </div>
               <div className="px-4 sm:px-6 py-3 sm:py-4 bg-gray-50 border-t border-gray-100 flex items-center gap-4 sm:gap-6">
                 <button
@@ -405,7 +425,15 @@ export default function Feed({ profile }: FeedProps) {
 
             <form onSubmit={handleCreatePost} className="space-y-4">
               <div className="flex gap-3 sm:gap-4">
-                <img src={profile.photoURL} alt={profile.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-cover" />
+                <CachedImage
+                  src={profile.photoURL}
+                  alt={profile.displayName}
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  wrapperClassName="w-10 h-10 sm:w-12 sm:h-12 rounded-xl"
+                  imgClassName="w-full h-full rounded-xl object-cover"
+                />
                 <div className="flex-1 space-y-2">
                   <textarea
                     value={newPostContent}
@@ -415,7 +443,14 @@ export default function Feed({ profile }: FeedProps) {
                   />
                   {postImagePreview && (
                     <div className="relative rounded-xl overflow-hidden border border-gray-200">
-                      <img src={postImagePreview} alt="Post preview" loading="lazy" decoding="async" className="w-full max-h-56 object-cover" />
+                      <CachedImage
+                        src={postImagePreview}
+                        alt="Post preview"
+                        loading="lazy"
+                        decoding="async"
+                        wrapperClassName="w-full max-h-56"
+                        imgClassName="w-full h-full max-h-56 object-cover"
+                      />
                       <button
                         type="button"
                         onClick={() => {
@@ -496,7 +531,15 @@ export default function Feed({ profile }: FeedProps) {
           <div className="space-y-4">
             {topStudentsPreview.map((student) => (
               <div key={student.uid} className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded-xl transition-all" onClick={() => navigate(`/profile/${student.uid}`)}>
-                <img src={student.photoURL} alt={student.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-10 h-10 rounded-xl object-cover" />
+                <CachedImage
+                  src={student.photoURL}
+                  alt={student.displayName}
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  wrapperClassName="w-10 h-10 rounded-xl"
+                  imgClassName="w-full h-full rounded-xl object-cover"
+                />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-900 truncate">{student.displayName}</p>
                   <p className="text-[10px] text-gray-500 truncate">{student.skills?.[0] || 'Student'} · 4.9 ★</p>

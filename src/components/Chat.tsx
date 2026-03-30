@@ -5,6 +5,7 @@ import { supabaseService } from '../services/supabaseService';
 import { Send, Search, MessageSquare, User, MoreVertical, Phone, Video, ArrowLeft, CheckCheck, Smile, PlusSquare, Lock, FileIcon, X, Download, Image as ImageIcon, Loader2, Clock3, Check } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
+import CachedImage from './CachedImage';
 
 interface ChatProps {
   profile: UserProfile;
@@ -463,7 +464,15 @@ export default function Chat({ profile }: ChatProps) {
                 }`}
               >
                 <div className="relative">
-                  <img src={chat.user.photoURL} alt={chat.user.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-14 h-14 rounded-2xl object-cover shadow-sm" />
+                  <CachedImage
+                    src={chat.user.photoURL}
+                    alt={chat.user.displayName}
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                    wrapperClassName="w-14 h-14 rounded-2xl shadow-sm"
+                    imgClassName="w-full h-full rounded-2xl object-cover"
+                  />
                   <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
                 </div>
                 <div className="flex-1 text-left min-w-0">
@@ -516,7 +525,15 @@ export default function Chat({ profile }: ChatProps) {
                   <ArrowLeft size={20} />
                 </button>
                 <div className="relative">
-                  <img src={selectedContact.photoURL} alt={selectedContact.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-10 h-10 rounded-xl object-cover shadow-sm" />
+                  <CachedImage
+                    src={selectedContact.photoURL}
+                    alt={selectedContact.displayName}
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                    wrapperClassName="w-10 h-10 rounded-xl shadow-sm"
+                    imgClassName="w-full h-full rounded-xl object-cover"
+                  />
                   <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
                 </div>
                 <div className="cursor-pointer" onClick={() => navigate(`/profile/${selectedContact.uid}`)}>
@@ -590,13 +607,14 @@ export default function Chat({ profile }: ChatProps) {
                                   <div key={i} className="rounded-lg overflow-hidden border border-black/5 bg-black/5">
                                     {isImage ? (
                                       <a href={att.url} target="_blank" rel="noopener noreferrer" className="block">
-                                        <img 
-                                          src={att.url} 
-                                          alt={att.name} 
+                                        <CachedImage
+                                          src={att.url}
+                                          alt={att.name}
                                           loading="lazy"
                                           decoding="async"
-                                          className="max-w-full max-h-64 object-contain"
                                           referrerPolicy="no-referrer"
+                                          wrapperClassName="max-w-full max-h-64"
+                                          imgClassName="max-w-full max-h-64 object-contain"
                                         />
                                       </a>
                                     ) : (
@@ -664,12 +682,13 @@ export default function Chat({ profile }: ChatProps) {
                     <div key={i} className="relative group">
                       <div className="w-20 h-20 rounded-lg bg-white border border-gray-200 flex flex-col items-center justify-center p-2 text-center overflow-hidden shadow-sm">
                         {file.type.startsWith('image/') ? (
-                          <img 
-                            src={URL.createObjectURL(file)} 
-                            alt="preview" 
+                          <CachedImage
+                            src={URL.createObjectURL(file)}
+                            alt="preview"
                             loading="lazy"
                             decoding="async"
-                            className="w-full h-full object-cover rounded" 
+                            wrapperClassName="w-full h-full rounded"
+                            imgClassName="w-full h-full rounded object-cover"
                           />
                         ) : (
                           <>
@@ -863,7 +882,15 @@ export default function Chat({ profile }: ChatProps) {
                       }}
                       className="w-full p-3 flex items-center gap-4 hover:bg-gray-50 rounded-2xl transition-all"
                     >
-                      <img src={user.photoURL} alt={user.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-12 h-12 rounded-xl object-cover shadow-sm" />
+                      <CachedImage
+                        src={user.photoURL}
+                        alt={user.displayName}
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                        wrapperClassName="w-12 h-12 rounded-xl shadow-sm"
+                        imgClassName="w-full h-full rounded-xl object-cover"
+                      />
                       <div className="text-left">
                         <p className="text-sm font-bold text-gray-900">{user.displayName}</p>
                         <p className="text-xs text-gray-500 capitalize">{user.role}</p>

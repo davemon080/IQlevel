@@ -5,6 +5,7 @@ import { resolveAvatar } from '../utils/avatar';
 import { Check, X, Clock, UserPlus, ArrowLeft, UserCheck, UserX, Send, Copy, MapPin } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
+import CachedImage from './CachedImage';
 
 interface FriendRequestsProps {
   profile: UserProfile;
@@ -138,12 +139,13 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
       <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm">
         <div className="flex items-start gap-3 sm:gap-4">
           <Link to={`/profile/${targetUid}`} className="shrink-0">
-            <img
+            <CachedImage
               src={avatar}
               loading="lazy"
               decoding="async"
               referrerPolicy="no-referrer"
-              className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-gray-100"
+              wrapperClassName="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border border-gray-100"
+              imgClassName="w-full h-full rounded-xl object-cover"
               alt={name}
             />
           </Link>

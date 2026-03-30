@@ -4,6 +4,7 @@ import { supabaseService } from '../services/supabaseService';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, Star, MessageSquare, UserPlus, Users, Check, Sparkles, TrendingUp } from 'lucide-react';
 import { motion } from 'motion/react';
+import CachedImage from './CachedImage';
 
 interface NetworkProps {
   profile: UserProfile;
@@ -247,13 +248,14 @@ export default function Network({ profile }: NetworkProps) {
               >
                 <div className="flex items-start gap-4">
                   <Link to={`/profile/${user.uid}`} className="relative shrink-0">
-                    <img
+                    <CachedImage
                       src={user.photoURL}
                       alt={user.displayName}
                       loading="lazy"
                       decoding="async"
                       referrerPolicy="no-referrer"
-                      className="w-16 h-16 rounded-2xl object-cover shadow-sm group-hover:scale-105 transition-transform duration-300"
+                      wrapperClassName="w-16 h-16 rounded-2xl shadow-sm"
+                      imgClassName="w-full h-full rounded-2xl object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     {user.score > 30 && (
                       <div className="absolute -top-1 -right-1 p-1 bg-amber-400 text-white rounded-lg shadow-sm">
@@ -327,7 +329,15 @@ export default function Network({ profile }: NetworkProps) {
               className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-all"
             >
               <div className="p-4 flex items-center gap-3 border-b border-gray-50">
-                <img src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-10 h-10 rounded-xl object-cover" alt="" />
+                <CachedImage
+                  src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto}
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  wrapperClassName="w-10 h-10 rounded-xl"
+                  imgClassName="w-full h-full rounded-xl object-cover"
+                  alt=""
+                />
                 <div>
                   <p className="font-bold text-gray-900 text-sm">{post.authorName}</p>
                   <p className="text-[10px] text-teal-600 font-semibold">
@@ -339,7 +349,14 @@ export default function Network({ profile }: NetworkProps) {
               <div className="p-4">
                 <p className="text-gray-600 text-sm line-clamp-3 mb-4">{post.content}</p>
                 {post.imageUrl && (
-                  <img src={post.imageUrl} loading="lazy" decoding="async" className="w-full h-48 object-cover rounded-2xl mb-4" alt="" />
+                  <CachedImage
+                    src={post.imageUrl}
+                    loading="lazy"
+                    decoding="async"
+                    wrapperClassName="w-full h-48 rounded-2xl mb-4"
+                    imgClassName="w-full h-full rounded-2xl object-cover"
+                    alt=""
+                  />
                 )}
                 <Link to={`/profile/${post.authorUid}`} className="inline-flex items-center gap-2 text-teal-600 font-bold text-xs hover:gap-3 transition-all">
                   View Portfolio

@@ -7,6 +7,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { supabaseService } from '../services/supabaseService';
 import GlobalSearch from './GlobalSearch';
+import CachedImage from './CachedImage';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -118,7 +119,12 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
 
         <div className="p-4 border-t border-gray-100">
           <div className={cn("flex items-center gap-3 px-4 py-3 mb-4", isMessagesPage && "px-0 justify-center")}>
-            <img src={profile.photoURL} alt={profile.displayName} className="w-10 h-10 rounded-full border border-gray-200" />
+            <CachedImage
+              src={profile.photoURL}
+              alt={profile.displayName}
+              wrapperClassName="w-10 h-10 rounded-full border border-gray-200"
+              imgClassName="w-full h-full rounded-full object-cover"
+            />
             {!isMessagesPage && (
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900 truncate">{profile.displayName}</p>

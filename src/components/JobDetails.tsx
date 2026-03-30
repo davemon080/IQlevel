@@ -6,6 +6,7 @@ import { Job, UserProfile } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatMoneyFromUSD } from '../utils/currency';
+import CachedImage from './CachedImage';
 
 interface JobDetailsProps {
   profile: UserProfile;
@@ -96,7 +97,12 @@ export default function JobDetails({ profile }: JobDetailsProps) {
         <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
           <p className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Posted by</p>
           <Link to={`/profile/${client.uid}`} className="flex items-center gap-3 hover:opacity-80">
-            <img src={client.photoURL} alt={client.displayName} className="w-12 h-12 rounded-xl object-cover" />
+            <CachedImage
+              src={client.photoURL}
+              alt={client.displayName}
+              wrapperClassName="w-12 h-12 rounded-xl"
+              imgClassName="w-full h-full rounded-xl object-cover"
+            />
             <div>
               <p className="text-sm font-bold text-gray-900">{client.displayName}</p>
               <p className="text-xs text-gray-500 capitalize">{client.role}</p>
