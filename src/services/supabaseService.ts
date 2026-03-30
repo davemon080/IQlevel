@@ -149,7 +149,8 @@ type DbPostCommentNotificationRow = {
 const NOTIFICATION_SETTINGS_KEY_PREFIX = 'connect_notification_settings_';
 const CHAT_READ_KEY_PREFIX = 'connect_chat_read_map_';
 const CHAT_READ_EVENT = 'connect:chat-read-updated';
-const APP_CACHE_PREFIX = 'connect_app_cache_v1:';
+const APP_CACHE_PREFIX = 'connect_app_cache_v2:';
+const LEGACY_APP_CACHE_PREFIXES = ['connect_app_cache_v1:'];
 
 const CACHE_TTL = {
   users: 1000 * 60 * 10,
@@ -165,6 +166,25 @@ type CacheEntry<T> = {
   data: T;
   updatedAt: number;
 };
+
+function clearLegacyAppCaches() {
+  if (typeof window === 'undefined') return;
+  try {
+    const keysToDelete: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+      if (LEGACY_APP_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+        keysToDelete.push(key);
+      }
+    }
+    keysToDelete.forEach((key) => window.localStorage.removeItem(key));
+  } catch {
+    // Ignore localStorage cleanup failures.
+  }
+}
+
+clearLegacyAppCaches();
 
 function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
   const isLegacyLetterAvatar =

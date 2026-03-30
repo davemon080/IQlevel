@@ -1,4 +1,4 @@
-const APP_CACHE = 'studentlink-app-v1';
+const APP_CACHE = 'studentlink-app-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
