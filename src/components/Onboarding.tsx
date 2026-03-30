@@ -3,7 +3,6 @@ import type { User } from '@supabase/supabase-js';
 import { UserProfile, UserRole } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { getCartoonAvatar } from '../utils/avatar';
-import { toCloudinaryCdnUrl } from '../utils/cloudinary';
 import { Briefcase, UserCheck, ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -24,11 +23,7 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
       publicId: `SL-${user.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`,
       email: user.email || '',
       displayName: user.user_metadata?.full_name || user.user_metadata?.name || 'Anonymous',
-      photoURL:
-        toCloudinaryCdnUrl(
-          user.user_metadata?.avatar_url || getCartoonAvatar(user.user_metadata?.full_name || user.id),
-          'profile'
-        ) || getCartoonAvatar(user.user_metadata?.full_name || user.id),
+      photoURL: user.user_metadata?.avatar_url || getCartoonAvatar(user.user_metadata?.full_name || user.id),
       role,
       bio: '',
       skills: [],

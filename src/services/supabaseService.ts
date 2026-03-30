@@ -1,7 +1,6 @@
 import { supabase } from '../supabase';
 import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
-import { hasCloudinaryConfig, inferImageKindFromFolder, toCloudinaryCdnUrl, uploadImageToCloudinary } from '../utils/cloudinary';
 
 type DbUserProfile = {
   uid: string;
@@ -182,8 +181,8 @@ function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
     publicId: row.public_id || undefined,
     email: row.email,
     displayName: row.display_name,
-    photoURL: toCloudinaryCdnUrl(resolvedPhoto, 'profile') || resolvedPhoto,
-    coverPhotoURL: toCloudinaryCdnUrl(row.cover_photo_url || undefined, 'cover') || row.cover_photo_url || undefined,
+    photoURL: resolvedPhoto,
+    coverPhotoURL: row.cover_photo_url || undefined,
     role: row.role === 'admin' ? 'client' : row.role,
     bio: row.bio || undefined,
     phoneNumber: row.phone_number || undefined,
@@ -194,10 +193,7 @@ function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
     education: row.education || undefined,
     experience: row.experience || undefined,
     socialLinks: row.social_links || undefined,
-    portfolio: row.portfolio?.map((item) => ({
-      ...item,
-      imageUrl: toCloudinaryCdnUrl(item.imageUrl, 'post') || item.imageUrl,
-    })) || undefined,
+    portfolio: row.portfolio || undefined,
     companyInfo: row.company_info || undefined,
   };
 }
@@ -208,8 +204,8 @@ function mapUserProfileToDb(data: Partial<UserProfile>): Partial<DbUserProfile> 
     public_id: data.publicId,
     email: data.email,
     display_name: data.displayName,
-    photo_url: toCloudinaryCdnUrl(data.photoURL, 'profile') || data.photoURL,
-    cover_photo_url: toCloudinaryCdnUrl(data.coverPhotoURL, 'cover') || data.coverPhotoURL || null,
+    photo_url: data.photoURL,
+    cover_photo_url: data.coverPhotoURL ?? null,
     role: data.role as DbUserProfile['role'] | undefined,
     bio: data.bio ?? null,
     phone_number: data.phoneNumber ?? null,
@@ -220,10 +216,7 @@ function mapUserProfileToDb(data: Partial<UserProfile>): Partial<DbUserProfile> 
     education: data.education ?? null,
     experience: data.experience ?? null,
     social_links: data.socialLinks ?? null,
-    portfolio: data.portfolio?.map((item) => ({
-      ...item,
-      imageUrl: toCloudinaryCdnUrl(item.imageUrl, 'post') || item.imageUrl,
-    })) ?? null,
+    portfolio: data.portfolio ?? null,
     company_info: data.companyInfo ?? null,
   };
 }
@@ -233,9 +226,9 @@ function mapPostFromDb(row: DbPost): Post {
     id: row.id,
     authorUid: row.author_uid,
     authorName: row.author_name,
-    authorPhoto: toCloudinaryCdnUrl(row.author_photo, 'profile') || row.author_photo,
+    authorPhoto: row.author_photo,
     content: row.content,
-    imageUrl: toCloudinaryCdnUrl(row.image_url || undefined, 'post') || row.image_url || undefined,
+    imageUrl: row.image_url || undefined,
     type: row.type,
     createdAt: row.created_at,
   };
@@ -256,7 +249,7 @@ function mapPostCommentFromDb(row: DbPostComment): PostComment {
     postId: row.post_id,
     userUid: row.user_uid,
     authorName: row.author_name,
-    authorPhoto: toCloudinaryCdnUrl(row.author_photo, 'profile') || row.author_photo,
+    authorPhoto: row.author_photo,
     content: row.content,
     createdAt: row.created_at,
   };
@@ -278,20 +271,13 @@ function mapJobFromDb(row: DbJob): Job {
 }
 
 function mapMessageFromDb(row: DbMessage): Message {
-  const attachments = (row.attachments || undefined)?.map((item) => ({
-    ...item,
-    url: item.type?.startsWith('image/')
-      ? (toCloudinaryCdnUrl(item.url, 'generic') || item.url)
-      : item.url,
-  }));
-
   return {
     id: row.id,
     senderUid: row.sender_uid,
     receiverUid: row.receiver_uid,
     content: row.content || '',
     createdAt: row.created_at,
-    attachments,
+    attachments: row.attachments || undefined,
   };
 }
 
@@ -312,7 +298,7 @@ function mapFriendRequestFromDb(row: DbFriendRequest): FriendRequest {
     id: row.id,
     fromUid: row.from_uid,
     fromName: row.from_name,
-    fromPhoto: toCloudinaryCdnUrl(row.from_photo, 'profile') || row.from_photo,
+    fromPhoto: row.from_photo,
     toUid: row.to_uid,
     status: row.status,
     createdAt: row.created_at,
@@ -736,9 +722,9 @@ export const supabaseService = {
         .insert({
           author_uid: post.authorUid,
           author_name: post.authorName,
-          author_photo: toCloudinaryCdnUrl(post.authorPhoto, 'profile') || post.authorPhoto,
+          author_photo: post.authorPhoto,
           content: post.content,
-          image_url: toCloudinaryCdnUrl(post.imageUrl, 'post') || post.imageUrl || null,
+          image_url: post.imageUrl || null,
           type: post.type,
           created_at: new Date().toISOString(),
         })
@@ -931,7 +917,7 @@ export const supabaseService = {
         post_id: postId,
         user_uid: author.uid,
         author_name: author.displayName,
-        author_photo: toCloudinaryCdnUrl(author.photoURL, 'profile') || author.photoURL,
+        author_photo: author.photoURL,
         content,
         created_at: new Date().toISOString(),
       }),
@@ -996,10 +982,7 @@ export const supabaseService = {
 
   // Messages
   async uploadFile(file: File, folder: string = 'chat'): Promise<Attachment> {
-    const isImage = file.type.startsWith('image/');
-    const url = isImage && hasCloudinaryConfig()
-      ? await uploadImageToCloudinary(file, { folder, kind: inferImageKindFromFolder(folder) })
-      : await uploadToSupabaseStorage(file, folder);
+    const url = await uploadToSupabaseStorage(file, folder);
     return {
       name: file.name,
       url,
@@ -1009,10 +992,6 @@ export const supabaseService = {
   },
 
   async uploadUserAsset(file: File, folder: string = 'profile'): Promise<string> {
-    const isImage = file.type.startsWith('image/');
-    if (isImage && hasCloudinaryConfig()) {
-      return uploadImageToCloudinary(file, { folder, kind: inferImageKindFromFolder(folder) });
-    }
     return uploadToSupabaseStorage(file, folder);
   },
 
@@ -1214,7 +1193,7 @@ export const supabaseService = {
       supabase.from('friend_requests').insert({
         from_uid: myProfile.uid,
         from_name: myProfile.displayName,
-        from_photo: toCloudinaryCdnUrl(myProfile.photoURL, 'profile') || myProfile.photoURL,
+        from_photo: myProfile.photoURL,
         to_uid: targetUser.uid,
         status: 'pending',
         created_at: new Date().toISOString(),
