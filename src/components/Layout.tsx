@@ -51,6 +51,15 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
   }, [profile.uid]);
 
   React.useEffect(() => {
+    if (location.pathname !== '/notifications') return;
+    const readKey = `connect_read_notifications_${profile.uid}`;
+    supabaseService.getNotifications(profile.uid).then((items) => {
+      localStorage.setItem(readKey, JSON.stringify(items.map((item) => item.id)));
+      setUnreadNotifications(0);
+    });
+  }, [location.pathname, profile.uid]);
+
+  React.useEffect(() => {
     const unsubscribeUnreadCounts = supabaseService.subscribeToUnreadMessageCounts(profile.uid, (counts) => {
       setUnreadMessages(Object.values(counts).reduce((sum, count) => sum + count, 0));
     });

@@ -21,7 +21,9 @@ export default function Notifications({ profile }: NotificationsProps) {
     const readIds = new Set<string>(JSON.parse(localStorage.getItem(key) || '[]'));
 
     const unsubscribe = supabaseService.subscribeToNotifications(profile.uid, (items) => {
-      setNotifications(items.map((item) => ({ ...item, read: readIds.has(item.id) })));
+      const next = items.map((item) => ({ ...item, read: true }));
+      setNotifications(next);
+      localStorage.setItem(key, JSON.stringify(next.map((item) => item.id)));
       setLoading(false);
     });
 

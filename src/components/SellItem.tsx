@@ -19,6 +19,7 @@ export default function SellItem({ profile }: SellItemProps) {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<(typeof MARKET_CATEGORIES)[number]>(MARKET_CATEGORIES[0]);
   const [price, setPrice] = useState('');
+  const [stockQuantity, setStockQuantity] = useState('1');
   const [isNegotiable, setIsNegotiable] = useState(false);
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -26,6 +27,18 @@ export default function SellItem({ profile }: SellItemProps) {
   const [error, setError] = useState<string | null>(null);
 
   const previewUrls = files.map((file) => URL.createObjectURL(file));
+
+  React.useEffect(() => {
+    let active = true;
+    supabaseService.getMarketSettings(profile.uid).then((settings) => {
+      if (active && !settings.isRegistered) {
+        navigate('/settings?section=market', { replace: true });
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [navigate, profile.uid]);
 
   const handleFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
     const nextFiles = Array.from(event.target.files || []).slice(0, 4);
@@ -50,6 +63,11 @@ export default function SellItem({ profile }: SellItemProps) {
       setError('Enter a valid price.');
       return;
     }
+    const numericStock = Number(stockQuantity);
+    if (!Number.isFinite(numericStock) || numericStock < 0) {
+      setError('Enter a valid stock quantity.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -62,6 +80,7 @@ export default function SellItem({ profile }: SellItemProps) {
         price: Number(convertToUSD(numericPrice, currency).toFixed(2)),
         isNegotiable,
         isAnonymous,
+        stockQuantity: Math.floor(numericStock),
         imageUrls: uploads.map((upload) => upload.url),
       });
       navigate('/market');
@@ -167,6 +186,19 @@ export default function SellItem({ profile }: SellItemProps) {
               className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-teal-200 focus:bg-white focus:ring-2 focus:ring-teal-500"
             />
             <p className="text-xs text-gray-500">This will be saved using your current wallet currency: {currency}.</p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-gray-700">Stock Quantity</label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={stockQuantity}
+              onChange={(event) => setStockQuantity(event.target.value)}
+              required
+              className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-teal-200 focus:bg-white focus:ring-2 focus:ring-teal-500"
+            />
           </div>
 
           <div className="space-y-3 rounded-[1.5rem] border border-gray-200 bg-gray-50 p-4">

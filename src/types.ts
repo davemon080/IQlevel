@@ -77,6 +77,7 @@ export interface MarketItem {
   price: number;
   isNegotiable: boolean;
   isAnonymous: boolean;
+  stockQuantity: number;
   imageUrls: string[];
   createdAt: string;
   seller?: UserProfile;
@@ -89,6 +90,17 @@ export interface MarketSettings {
   brandName: string;
   isRegistered: boolean;
   registeredAt?: string;
+  showPhoneNumber: boolean;
+  showLocation: boolean;
+  showBrandName: boolean;
+}
+
+export interface MarketSellerRating {
+  id: string;
+  sellerUid: string;
+  userUid: string;
+  rating: number;
+  createdAt: string;
 }
 
 export interface Attachment {

@@ -23,10 +23,23 @@ export default function EditMarketItem({ profile }: EditMarketItemProps) {
   const [category, setCategory] = useState<(typeof MARKET_CATEGORIES)[number]>(MARKET_CATEGORIES[0]);
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
+  const [stockQuantity, setStockQuantity] = useState('1');
   const [isNegotiable, setIsNegotiable] = useState(false);
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [existingImages, setExistingImages] = useState<string[]>([]);
   const [newFiles, setNewFiles] = useState<File[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    supabaseService.getMarketSettings(profile.uid).then((settings) => {
+      if (active && !settings.isRegistered) {
+        navigate('/settings?section=market', { replace: true });
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [navigate, profile.uid]);
 
   useEffect(() => {
     let active = true;
@@ -41,6 +54,7 @@ export default function EditMarketItem({ profile }: EditMarketItemProps) {
       setCategory((item.category as (typeof MARKET_CATEGORIES)[number]) || MARKET_CATEGORIES[0]);
       setDescription(item.description || '');
       setPrice(convertFromUSD(item.price, currency).toFixed(2));
+      setStockQuantity(String(item.stockQuantity));
       setIsNegotiable(item.isNegotiable);
       setIsAnonymous(item.isAnonymous);
       setExistingImages(item.imageUrls);
@@ -73,6 +87,11 @@ export default function EditMarketItem({ profile }: EditMarketItemProps) {
       setError('Enter a valid price.');
       return;
     }
+    const numericStock = Number(stockQuantity);
+    if (!Number.isFinite(numericStock) || numericStock < 0) {
+      setError('Enter a valid stock quantity.');
+      return;
+    }
     setSubmitting(true);
     try {
       const uploads = await Promise.all(newFiles.map((file) => supabaseService.uploadFile(file, 'market')));
@@ -83,6 +102,7 @@ export default function EditMarketItem({ profile }: EditMarketItemProps) {
         price: Number(convertToUSD(numericPrice, currency).toFixed(2)),
         isNegotiable,
         isAnonymous,
+        stockQuantity: Math.floor(numericStock),
         imageUrls: [...existingImages, ...uploads.map((upload) => upload.url)].slice(0, 4),
       });
       navigate(`/market/${itemId}`);
@@ -175,6 +195,11 @@ export default function EditMarketItem({ profile }: EditMarketItemProps) {
             <label className="text-sm font-bold text-gray-700">Price</label>
             <input type="number" min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} required className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-500" />
             <p className="text-xs text-gray-500">Editing in your current wallet currency: {currency}.</p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-gray-700">Stock Quantity</label>
+            <input type="number" min="0" step="1" value={stockQuantity} onChange={(event) => setStockQuantity(event.target.value)} required className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-500" />
           </div>
 
           <div className="space-y-3 rounded-[1.5rem] border border-gray-200 bg-gray-50 p-4">

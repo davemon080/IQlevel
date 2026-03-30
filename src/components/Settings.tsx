@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { NotificationSettings, UserProfile } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { supabase } from '../supabase';
@@ -18,7 +18,9 @@ import {
   Smartphone,
   Wallet,
   Copy,
-  Store
+  Store,
+  ShieldCheck,
+  CheckCircle2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CachedImage from './CachedImage';
@@ -31,6 +33,7 @@ interface SettingsProps {
 }
 
 export default function Settings({ profile, onLogout, onProfileUpdate }: SettingsProps) {
+  const [searchParams] = useSearchParams();
   const [activeSection, setActiveSection] = useState<'main' | 'profile' | 'security' | 'notifications' | 'market'>('main');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -58,8 +61,14 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   const [marketBrandName, setMarketBrandName] = useState(profile.companyInfo?.name || '');
   const [marketRegistered, setMarketRegistered] = useState(false);
   const [marketRegisteredAt, setMarketRegisteredAt] = useState<string | undefined>(undefined);
+  const [showPhoneNumber, setShowPhoneNumber] = useState(false);
+  const [showLocation, setShowLocation] = useState(false);
+  const [showBrandName, setShowBrandName] = useState(true);
   const [savingMarket, setSavingMarket] = useState(false);
   const [registeringMarket, setRegisteringMarket] = useState(false);
+  const [showPinPad, setShowPinPad] = useState(false);
+  const [marketPin, setMarketPin] = useState('');
+  const [marketSuccess, setMarketSuccess] = useState<string | null>(null);
   const { confirm, confirmDialog } = useConfirmDialog();
 
   React.useEffect(() => {
@@ -73,8 +82,18 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
       setMarketBrandName(settings.brandName || profile.companyInfo?.name || '');
       setMarketRegistered(settings.isRegistered);
       setMarketRegisteredAt(settings.registeredAt);
+      setShowPhoneNumber(settings.showPhoneNumber);
+      setShowLocation(settings.showLocation);
+      setShowBrandName(settings.showBrandName);
     });
   }, [profile.companyInfo?.name, profile.location, profile.phoneNumber, profile.uid]);
+
+  React.useEffect(() => {
+    const requestedSection = searchParams.get('section');
+    if (requestedSection === 'market') {
+      setActiveSection('market');
+    }
+  }, [searchParams]);
 
   const handleUpdateProfile = async () => {
     setLoading(true);
@@ -164,6 +183,9 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
         phoneNumber: marketPhone.trim(),
         location: marketLocation.trim(),
         brandName: marketBrandName.trim(),
+        showPhoneNumber,
+        showLocation,
+        showBrandName,
       });
       setMarketRegistered(updated.isRegistered);
       setMarketRegisteredAt(updated.registeredAt);
@@ -191,6 +213,15 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
       confirmLabel: 'Pay N500',
     });
     if (!confirmed) return;
+    setMarketPin('');
+    setShowPinPad(true);
+  };
+
+  const submitMarketplaceRegistration = async () => {
+    if (!/^\d{4}$/.test(marketPin)) {
+      setMessage({ type: 'error', text: 'Enter your 4-digit wallet PIN.' });
+      return;
+    }
 
     setRegisteringMarket(true);
     setMessage(null);
@@ -199,10 +230,16 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
         phoneNumber: marketPhone.trim(),
         location: marketLocation.trim(),
         brandName: marketBrandName.trim(),
+        showPhoneNumber,
+        showLocation,
+        showBrandName,
       });
-      const registered = await supabaseService.registerMarketplace(profile.uid);
+      const registered = await supabaseService.registerMarketplace(profile.uid, marketPin);
       setMarketRegistered(registered.isRegistered);
       setMarketRegisteredAt(registered.registeredAt);
+      setShowPinPad(false);
+      setMarketSuccess('Payment successful. Marketplace registration complete.');
+      setTimeout(() => setMarketSuccess(null), 2400);
       onProfileUpdate({
         ...profile,
         phoneNumber: saved.phoneNumber,
@@ -257,7 +294,7 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   );
 
   return (
-    <div className="max-w-2xl mx-auto pb-24 md:pb-8">
+    <div className={`${activeSection === 'market' ? 'max-w-5xl' : 'max-w-2xl'} mx-auto pb-24 md:pb-8`}>
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
         <p className="text-gray-500">Manage your account and preferences</p>
@@ -621,38 +658,88 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
               <div className={`p-4 rounded-2xl border text-sm font-semibold ${marketRegistered ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
                 {marketRegistered
                   ? `Marketplace registered${marketRegisteredAt ? ` on ${new Date(marketRegisteredAt).toLocaleDateString()}` : ''}.`
-                  : 'Marketplace not registered yet. One-time registration fee: N500 from your NGN wallet.'}
+                  : 'Marketplace access is locked until you complete the one-time N500 registration.'}
               </div>
 
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Phone Number</label>
-                  <input
-                    type="text"
-                    value={marketPhone}
-                    onChange={(e) => setMarketPhone(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-sm transition-all"
-                  />
+              {!marketRegistered ? (
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                  <div className="rounded-3xl border border-gray-200 bg-gray-50 p-6">
+                    <h3 className="text-lg font-bold text-gray-900">Marketplace Registration</h3>
+                    <p className="mt-2 text-sm text-gray-500">
+                      Unlock market access, selling tools, ratings, stock management, and seller profile controls with a one-time N500 fee from your NGN wallet.
+                    </p>
+                    <div className="mt-5 space-y-3 text-sm text-gray-600">
+                      <div className="rounded-2xl bg-white p-4">Access the market page and seller listings</div>
+                      <div className="rounded-2xl bg-white p-4">Manage stock quantity for every item you list</div>
+                      <div className="rounded-2xl bg-white p-4">Choose what buyers see on your item details page</div>
+                    </div>
+                  </div>
+                  <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+                    <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Registration Fee</p>
+                    <p className="mt-2 text-4xl font-black text-teal-700">N500</p>
+                    <p className="mt-2 text-sm text-gray-500">Charged once from your available NGN wallet balance after PIN confirmation.</p>
+                    <button
+                      onClick={handleRegisterMarketplace}
+                      disabled={registeringMarket}
+                      className="mt-6 w-full bg-teal-700 text-white font-bold py-4 rounded-2xl hover:bg-teal-800 disabled:opacity-50 transition-all"
+                    >
+                      {registeringMarket ? 'Processing...' : 'Register Marketplace'}
+                    </button>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Location</label>
-                  <input
-                    type="text"
-                    value={marketLocation}
-                    onChange={(e) => setMarketLocation(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-sm transition-all"
-                  />
+              ) : (
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <div className="space-y-4 rounded-3xl border border-gray-200 bg-white p-6">
+                    <h3 className="text-lg font-bold text-gray-900">Seller Information</h3>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase">Brand Name</label>
+                      <input
+                        type="text"
+                        value={marketBrandName}
+                        onChange={(e) => setMarketBrandName(e.target.value)}
+                        className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-sm transition-all"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase">Phone Number</label>
+                      <input
+                        type="text"
+                        value={marketPhone}
+                        onChange={(e) => setMarketPhone(e.target.value)}
+                        className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-sm transition-all"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase">Location</label>
+                      <input
+                        type="text"
+                        value={marketLocation}
+                        onChange={(e) => setMarketLocation(e.target.value)}
+                        className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-sm transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 rounded-3xl border border-gray-200 bg-white p-6">
+                    <h3 className="text-lg font-bold text-gray-900">Item Details Visibility</h3>
+                    <label className="flex items-center justify-between rounded-2xl bg-gray-50 px-4 py-3">
+                      <span className="text-sm font-semibold text-gray-700">Show brand name</span>
+                      <input type="checkbox" checked={showBrandName} onChange={(e) => setShowBrandName(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500" />
+                    </label>
+                    <label className="flex items-center justify-between rounded-2xl bg-gray-50 px-4 py-3">
+                      <span className="text-sm font-semibold text-gray-700">Show phone number</span>
+                      <input type="checkbox" checked={showPhoneNumber} onChange={(e) => setShowPhoneNumber(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500" />
+                    </label>
+                    <label className="flex items-center justify-between rounded-2xl bg-gray-50 px-4 py-3">
+                      <span className="text-sm font-semibold text-gray-700">Show location</span>
+                      <input type="checkbox" checked={showLocation} onChange={(e) => setShowLocation(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500" />
+                    </label>
+                    <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                      Stock is now managed per item when you create or edit listings.
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Brand Name</label>
-                  <input
-                    type="text"
-                    value={marketBrandName}
-                    onChange={(e) => setMarketBrandName(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-sm transition-all"
-                  />
-                </div>
-              </div>
+              )}
 
               {message && (
                 <div className={`p-4 rounded-xl flex items-center gap-3 text-sm ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
@@ -662,25 +749,90 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
               )}
 
               <div className="flex flex-col gap-3 sm:flex-row">
-                <button
-                  onClick={handleSaveMarketSettings}
-                  disabled={savingMarket}
-                  className="flex-1 bg-gray-900 text-white font-bold py-4 rounded-2xl hover:bg-gray-800 disabled:opacity-50 transition-all"
-                >
-                  {savingMarket ? 'Saving...' : 'Save Market Settings'}
-                </button>
-                <button
-                  onClick={handleRegisterMarketplace}
-                  disabled={registeringMarket || marketRegistered}
-                  className="flex-1 bg-teal-700 text-white font-bold py-4 rounded-2xl hover:bg-teal-800 disabled:opacity-50 transition-all"
-                >
-                  {marketRegistered ? 'Registered' : registeringMarket ? 'Processing...' : 'Register for N500'}
-                </button>
+                {marketRegistered && (
+                  <button
+                    onClick={handleSaveMarketSettings}
+                    disabled={savingMarket}
+                    className="flex-1 bg-gray-900 text-white font-bold py-4 rounded-2xl hover:bg-gray-800 disabled:opacity-50 transition-all"
+                  >
+                    {savingMarket ? 'Saving...' : 'Save Market Settings'}
+                  </button>
+                )}
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+      <AnimatePresence>
+        {showPinPad && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-40" onClick={() => !registeringMarket && setShowPinPad(false)} />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+              className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl p-5 border-t border-gray-200"
+            >
+              <div className="max-w-md mx-auto space-y-4">
+                <div className="text-center">
+                  <p className="text-sm font-bold text-gray-900 inline-flex items-center gap-1">
+                    <ShieldCheck size={14} />
+                    Enter Wallet PIN
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Confirm your one-time N500 marketplace registration payment.</p>
+                </div>
+
+                <div className="flex items-center justify-center gap-2">
+                  {Array.from({ length: 4 }).map((_, idx) => (
+                    <span key={idx} className={`w-3 h-3 rounded-full ${idx < marketPin.length ? 'bg-teal-600' : 'bg-gray-300'}`} />
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'back'].map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => {
+                        if (key === 'clear') return setMarketPin('');
+                        if (key === 'back') return setMarketPin((prev) => prev.slice(0, -1));
+                        setMarketPin((prev) => (prev.length < 4 ? `${prev}${key}` : prev));
+                      }}
+                      disabled={registeringMarket}
+                      className="h-12 rounded-xl bg-gray-100 font-bold text-gray-900 disabled:opacity-60"
+                    >
+                      {key === 'back' ? 'Del' : key === 'clear' ? 'Clear' : key}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={submitMarketplaceRegistration}
+                  disabled={registeringMarket || marketPin.length !== 4}
+                  className="w-full py-3 rounded-xl bg-teal-700 text-white font-bold disabled:opacity-70"
+                >
+                  {registeringMarket ? 'Processing Payment...' : 'Pay and Register'}
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {marketSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] bg-emerald-600 text-white px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold inline-flex items-center gap-2"
+          >
+            <CheckCircle2 size={16} />
+            {marketSuccess}
+          </motion.div>
+        )}
+      </AnimatePresence>
       {confirmDialog}
     </div>
   );

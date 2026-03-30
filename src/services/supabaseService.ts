@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 
@@ -83,6 +83,7 @@ type DbMarketItem = {
   price: number;
   is_negotiable: boolean;
   is_anonymous: boolean;
+  stock_quantity: number;
   image_urls: string[];
   created_at: string;
 };
@@ -94,6 +95,17 @@ type DbMarketSettings = {
   brand_name: string | null;
   is_registered: boolean | null;
   registered_at: string | null;
+  show_phone_number: boolean | null;
+  show_location: boolean | null;
+  show_brand_name: boolean | null;
+};
+
+type DbMarketSellerRating = {
+  id: string;
+  seller_uid: string;
+  user_uid: string;
+  rating: number;
+  created_at: string;
 };
 
 type DbMessage = {
@@ -371,6 +383,7 @@ function mapMarketItemFromDb(row: DbMarketItem, seller?: UserProfile): MarketIte
     price: row.price,
     isNegotiable: row.is_negotiable,
     isAnonymous: row.is_anonymous,
+    stockQuantity: row.stock_quantity,
     imageUrls: row.image_urls || [],
     createdAt: row.created_at,
     seller,
@@ -385,6 +398,19 @@ function mapMarketSettingsFromDb(row: DbMarketSettings): MarketSettings {
     brandName: row.brand_name || '',
     isRegistered: !!row.is_registered,
     registeredAt: row.registered_at || undefined,
+    showPhoneNumber: row.show_phone_number ?? false,
+    showLocation: row.show_location ?? false,
+    showBrandName: row.show_brand_name ?? true,
+  };
+}
+
+function mapMarketSellerRatingFromDb(row: DbMarketSellerRating): MarketSellerRating {
+  return {
+    id: row.id,
+    sellerUid: row.seller_uid,
+    userUid: row.user_uid,
+    rating: row.rating,
+    createdAt: row.created_at,
   };
 }
 
@@ -1564,6 +1590,7 @@ export const supabaseService = {
         price: item.price,
         is_negotiable: item.isNegotiable,
         is_anonymous: item.isAnonymous,
+        stock_quantity: item.stockQuantity,
         image_urls: item.imageUrls,
         created_at: new Date().toISOString(),
       }),
@@ -1583,6 +1610,7 @@ export const supabaseService = {
           price: updates.price,
           is_negotiable: updates.isNegotiable,
           is_anonymous: updates.isAnonymous,
+          stock_quantity: updates.stockQuantity,
           image_urls: updates.imageUrls,
         })
         .eq('id', itemId)
@@ -1646,6 +1674,44 @@ export const supabaseService = {
     return subscribeToTable('market_items', fetcher, callback, undefined, onError, 'market:all');
   },
 
+  async listMarketSellerRatings(): Promise<MarketSellerRating[]> {
+    const cacheKey = 'market:seller-ratings';
+    const cached = readCache<MarketSellerRating[]>(cacheKey, CACHE_TTL.interactions);
+    if (cached) return cached;
+
+    const rows = await runQuery<DbMarketSellerRating[]>(
+      supabase.from('market_seller_ratings').select('*'),
+      'listMarketSellerRatings'
+    );
+    const mapped = rows.map(mapMarketSellerRatingFromDb);
+    writeCache(cacheKey, mapped);
+    return mapped;
+  },
+
+  subscribeToMarketSellerRatings(callback: (ratings: MarketSellerRating[]) => void, onError?: (error: any) => void) {
+    const fetcher = async () => this.listMarketSellerRatings();
+    return subscribeToTable('market_seller_ratings', fetcher, callback, undefined, onError, 'market:seller-ratings');
+  },
+
+  async upsertMarketSellerRating(sellerUid: string, userUid: string, rating: number): Promise<void> {
+    if (rating < 1 || rating > 5) {
+      throw new Error('Rating must be between 1 and 5.');
+    }
+    await runQuery(
+      supabase.from('market_seller_ratings').upsert(
+        {
+          seller_uid: sellerUid,
+          user_uid: userUid,
+          rating,
+          created_at: new Date().toISOString(),
+        },
+        { onConflict: 'seller_uid,user_uid' }
+      ),
+      'upsertMarketSellerRating'
+    );
+    removeCache('market:seller-ratings');
+  },
+
   async getMarketSettings(uid: string): Promise<MarketSettings> {
     const cacheKey = `market:settings:${uid}`;
     const cached = readCache<MarketSettings>(cacheKey, CACHE_TTL.users);
@@ -1668,12 +1734,15 @@ export const supabaseService = {
       location: '',
       brandName: '',
       isRegistered: false,
+      showPhoneNumber: false,
+      showLocation: false,
+      showBrandName: true,
     };
     writeCache(cacheKey, fallback);
     return fallback;
   },
 
-  async updateMarketSettings(uid: string, updates: Pick<MarketSettings, 'phoneNumber' | 'location' | 'brandName'>): Promise<MarketSettings> {
+  async updateMarketSettings(uid: string, updates: Pick<MarketSettings, 'phoneNumber' | 'location' | 'brandName' | 'showPhoneNumber' | 'showLocation' | 'showBrandName'>): Promise<MarketSettings> {
     const existing = await this.getMarketSettings(uid);
     const row = await runQuery<DbMarketSettings>(
       supabase
@@ -1686,6 +1755,9 @@ export const supabaseService = {
             brand_name: updates.brandName || null,
             is_registered: existing.isRegistered,
             registered_at: existing.registeredAt || null,
+            show_phone_number: updates.showPhoneNumber,
+            show_location: updates.showLocation,
+            show_brand_name: updates.showBrandName,
           },
           { onConflict: 'user_uid' }
         )
@@ -1707,10 +1779,14 @@ export const supabaseService = {
     return mapped;
   },
 
-  async registerMarketplace(uid: string): Promise<MarketSettings> {
+  async registerMarketplace(uid: string, pin: string): Promise<MarketSettings> {
     const settings = await this.getMarketSettings(uid);
     if (settings.isRegistered) {
       throw new Error('Marketplace registration has already been completed.');
+    }
+    const pinValid = await this.verifyTransactionPin(uid, pin);
+    if (!pinValid) {
+      throw new Error('Invalid transaction PIN.');
     }
 
     const wallet = await this.getOrCreateWallet(uid);
@@ -1757,6 +1833,9 @@ export const supabaseService = {
             brand_name: settings.brandName || null,
             is_registered: true,
             registered_at: timestamp,
+            show_phone_number: settings.showPhoneNumber,
+            show_location: settings.showLocation,
+            show_brand_name: settings.showBrandName,
           },
           { onConflict: 'user_uid' }
         )

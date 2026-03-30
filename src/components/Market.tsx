@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Search, SlidersHorizontal, Tag, MessageCircle, Plus } from 'lucide-react';
-import { UserProfile, MarketItem } from '../types';
+import { Link, useNavigate } from 'react-router-dom';
+import { Search, SlidersHorizontal, Tag, Plus, Star } from 'lucide-react';
+import { UserProfile, MarketItem, MarketSellerRating } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage, { preloadCachedImage } from './CachedImage';
 import { useCurrency } from '../context/CurrencyContext';
@@ -15,16 +15,41 @@ interface MarketProps {
 
 export default function Market({ profile }: MarketProps) {
   const { currency } = useCurrency();
+  const navigate = useNavigate();
   const [items, setItems] = useState<MarketItem[]>([]);
+  const [ratings, setRatings] = useState<MarketSellerRating[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [negotiableOnly, setNegotiableOnly] = useState(false);
   const [category, setCategory] = useState('All');
   const [sortBy, setSortBy] = useState<'newest' | 'price-low' | 'price-high'>('newest');
+  const [accessReady, setAccessReady] = useState(false);
 
   useEffect(() => {
+    let active = true;
+    supabaseService.getMarketSettings(profile.uid).then((settings) => {
+      if (!active) return;
+      if (!settings.isRegistered) {
+        navigate('/settings?section=market', { replace: true });
+        return;
+      }
+      setAccessReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [navigate, profile.uid]);
+
+  useEffect(() => {
+    if (!accessReady) return;
     const unsubscribe = supabaseService.subscribeToMarketItems(setItems);
     return () => unsubscribe();
-  }, []);
+  }, [accessReady]);
+
+  useEffect(() => {
+    if (!accessReady) return;
+    const unsubscribe = supabaseService.subscribeToMarketSellerRatings(setRatings);
+    return () => unsubscribe();
+  }, [accessReady]);
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -32,7 +57,7 @@ export default function Market({ profile }: MarketProps) {
       if (negotiableOnly && !item.isNegotiable) return false;
       if (category !== 'All' && item.category !== category) return false;
       if (!normalizedQuery) return true;
-      return [item.title, item.description || '', item.seller?.displayName || '', item.category]
+      return [item.title, item.description || '', item.seller?.displayName || '', item.category, `${item.stockQuantity}`, formatMoneyFromUSD(item.price, currency)]
         .some((value) => value.toLowerCase().includes(normalizedQuery));
     });
 
@@ -43,13 +68,45 @@ export default function Market({ profile }: MarketProps) {
     });
 
     return nextItems;
-  }, [category, items, negotiableOnly, searchQuery, sortBy]);
+  }, [category, currency, items, negotiableOnly, searchQuery, sortBy]);
+
+  const categoryCounts = useMemo(() => {
+    return items.reduce<Record<string, number>>((acc, item) => {
+      acc[item.category] = (acc[item.category] || 0) + 1;
+      return acc;
+    }, {});
+  }, [items]);
+
+  const sellerRatingMeta = useMemo(() => {
+    return ratings.reduce<Record<string, { avg: number; count: number }>>((acc, rating) => {
+      const current = acc[rating.sellerUid] || { avg: 0, count: 0 };
+      const total = current.avg * current.count + rating.rating;
+      const count = current.count + 1;
+      acc[rating.sellerUid] = { avg: total / count, count };
+      return acc;
+    }, {});
+  }, [ratings]);
+
+  const suggestions = useMemo(() => {
+    const normalized = searchQuery.trim().toLowerCase();
+    if (!normalized) return [];
+    return items
+      .filter((item) =>
+        [item.title, item.description || '', item.category, item.seller?.displayName || '']
+          .some((value) => value.toLowerCase().includes(normalized))
+      )
+      .slice(0, 6);
+  }, [items, searchQuery]);
 
   useEffect(() => {
     filteredItems.slice(0, 8).forEach((item) => {
       preloadCachedImage(item.imageUrls[0]);
     });
   }, [filteredItems]);
+
+  if (!accessReady) {
+    return <div className="rounded-[2rem] border border-gray-200 bg-white p-8 text-sm text-gray-500 shadow-sm">Checking marketplace access...</div>;
+  }
 
   return (
     <div className="relative space-y-5 pb-24">
@@ -64,6 +121,24 @@ export default function Market({ profile }: MarketProps) {
               placeholder="Search items for sale..."
               className="w-full rounded-2xl border border-gray-100 bg-gray-50 py-3 pl-11 pr-4 text-sm outline-none transition-all focus:border-teal-200 focus:bg-white focus:ring-2 focus:ring-teal-500"
             />
+            {suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+                {suggestions.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => navigate(`/market/${item.id}`)}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50"
+                  >
+                    <CachedImage src={item.imageUrls[0]} alt={item.title} wrapperClassName="h-10 w-10 rounded-xl" imgClassName="h-full w-full rounded-xl object-cover" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-gray-900">{item.title}</p>
+                      <p className="truncate text-xs text-gray-500">{item.category} · {formatMoneyFromUSD(item.price, currency)}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -98,7 +173,7 @@ export default function Market({ profile }: MarketProps) {
               >
                 <option value="All">All categories</option>
                 {MARKET_CATEGORIES.map((item) => (
-                  <option key={item} value={item}>{item}</option>
+                  <option key={item} value={item}>{item} ({categoryCounts[item] || 0})</option>
                 ))}
               </select>
             </div>
@@ -151,11 +226,20 @@ export default function Market({ profile }: MarketProps) {
                     <p className="truncate font-semibold text-gray-700">
                       {item.isAnonymous ? 'Anonymous Seller' : item.seller?.displayName || 'Seller'}
                     </p>
-                    <p>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</p>
+                    <div className="flex items-center gap-2">
+                      <p>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</p>
+                      <span className="inline-flex items-center gap-1 text-amber-600">
+                        <Star size={12} className="fill-current" />
+                        {(sellerRatingMeta[item.sellerUid]?.avg || 0).toFixed(1)}
+                      </span>
+                      <span className="text-[10px] font-semibold text-gray-400">
+                        {sellerRatingMeta[item.sellerUid]?.count || 0} rating{(sellerRatingMeta[item.sellerUid]?.count || 0) === 1 ? '' : 's'}
+                      </span>
+                    </div>
                   </div>
                   <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 font-semibold text-gray-600">
                     <Tag size={12} />
-                    For Sale
+                    {item.stockQuantity} in stock
                   </span>
                 </div>
               </div>
