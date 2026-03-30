@@ -104,6 +104,31 @@ export default function Chat({ profile }: ChatProps) {
     supabaseService.markMessagesAsRead(profile.uid, otherUid).catch(() => undefined);
   }, [clearUnreadForChat, profile.uid, setSearchParams, upsertLocalChat]);
 
+  const updateUnreadForChat = React.useCallback((otherUid: string, updater: (current: number) => number) => {
+    setUnreadCounts((prev) => {
+      const nextValue = Math.max(0, updater(prev[otherUid] || 0));
+      if (nextValue === 0) {
+        if (!prev[otherUid]) return prev;
+        const next = { ...prev };
+        delete next[otherUid];
+        return next;
+      }
+      return {
+        ...prev,
+        [otherUid]: nextValue,
+      };
+    });
+  }, []);
+
+  const findKnownUser = React.useCallback((uid: string) => {
+    if (selectedContact?.uid === uid) return selectedContact;
+    const activeUser = activeChats.find((chat) => chat.otherUid === uid)?.user;
+    if (activeUser) return activeUser;
+    const knownUser = allUsers.find((user) => user.uid === uid);
+    if (knownUser) return knownUser;
+    return supabaseService.profileCache.get(uid) || null;
+  }, [activeChats, allUsers, selectedContact]);
+
   const adjustComposerHeight = () => {
     if (!inputRef.current) return;
     inputRef.current.style.height = '0px';
@@ -144,21 +169,16 @@ export default function Chat({ profile }: ChatProps) {
     return supabaseService.subscribeToUnreadMessageCounts(profile.uid, setUnreadCounts);
   }, [profile.uid]);
 
-  // Lock body scroll when chat is open on mobile
   useEffect(() => {
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    if (isMobile && showChatOnMobile) {
-      document.body.style.overflow = 'hidden';
-      document.body.style.overscrollBehavior = 'none';
-    } else {
-      document.body.style.overflow = '';
-      document.body.style.overscrollBehavior = '';
+    if (typeof navigator === 'undefined') return;
+    const virtualKeyboard = (navigator as any).virtualKeyboard;
+    if (!virtualKeyboard) return;
+    try {
+      virtualKeyboard.overlaysContent = false;
+    } catch {
+      // Ignore unsupported virtual keyboard settings.
     }
-    return () => {
-      document.body.style.overflow = '';
-      document.body.style.overscrollBehavior = '';
-    };
-  }, [showChatOnMobile]);
+  }, []);
 
   const ensureDate = (date: any): Date => {
     try {
@@ -256,6 +276,34 @@ export default function Chat({ profile }: ChatProps) {
       fetchFriends();
     }
   }, [isNewChatModalOpen, profile.uid]);
+
+  useEffect(() => {
+    return supabaseService.subscribeToMessageEvents(profile.uid, async ({ type, message }) => {
+      if (!message || type === 'DELETE') return;
+
+      const otherUid = message.senderUid === profile.uid ? message.receiverUid : message.senderUid;
+      const knownUser = findKnownUser(otherUid);
+      if (knownUser) {
+        upsertLocalChat({
+          otherUid,
+          user: knownUser,
+          lastMessage: getPreviewText(message),
+          updatedAt: message.createdAt,
+        });
+      }
+
+      const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 768;
+      const isOpenConversation = selectedContact?.uid === otherUid && (!isMobileViewport || showChatOnMobile);
+      if (message.receiverUid === profile.uid) {
+        if (isOpenConversation) {
+          clearUnreadForChat(otherUid);
+          supabaseService.markMessagesAsRead(profile.uid, otherUid).catch(() => undefined);
+        } else {
+          updateUnreadForChat(otherUid, (current) => current + 1);
+        }
+      }
+    });
+  }, [clearUnreadForChat, findKnownUser, getPreviewText, profile.uid, selectedContact, showChatOnMobile, updateUnreadForChat, upsertLocalChat]);
 
   useEffect(() => {
     if (selectedContact) {
@@ -554,7 +602,7 @@ export default function Chat({ profile }: ChatProps) {
   );
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-  const mobileViewportHeight = Math.max(320, viewportHeight || window.innerHeight);
+  const mobileViewportHeight = typeof window !== 'undefined' ? Math.max(320, viewportHeight || window.innerHeight) : 320;
   const keyboardInset = typeof window !== 'undefined'
     ? Math.max(0, window.innerHeight - viewportHeight - viewportOffsetTop)
     : 0;
@@ -573,11 +621,10 @@ export default function Chat({ profile }: ChatProps) {
 
   return (
     <div 
-      className={`h-full min-h-0 bg-white flex relative md:rounded-[0] ${isMobile && showChatOnMobile ? 'z-[60]' : ''}`}
+      className={`min-h-0 bg-white flex relative ${isMobile && showChatOnMobile ? 'z-[60]' : ''}`}
       style={isMobile && showChatOnMobile
         ? {
-            height: `${mobileViewportHeight}px`,
-            marginTop: `${viewportOffsetTop}px`,
+            minHeight: `${mobileViewportHeight}px`,
           }
         : undefined}
     >
@@ -673,7 +720,7 @@ export default function Chat({ profile }: ChatProps) {
       {/* Chat Area */}
       <div
         className={`flex-1 flex flex-col bg-[#efeae2] transition-all duration-300 min-h-0 overflow-hidden ${!showChatOnMobile ? 'hidden md:flex' : 'flex'}`}
-        style={undefined}
+        style={isMobile && showChatOnMobile && shouldLiftForKeyboard ? { paddingBottom: `${keyboardInset}px` } : undefined}
       >
         {selectedContact ? (
           <>
@@ -723,7 +770,7 @@ export default function Chat({ profile }: ChatProps) {
                 backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`,
                 backgroundBlendMode: 'overlay',
                 backgroundColor: '#efeae2',
-                paddingBottom: `${shouldLiftForKeyboard ? keyboardInset + 24 : 12}px`,
+                paddingBottom: '12px',
               }}
             >
               {messagesLoading ? (
@@ -863,10 +910,10 @@ export default function Chat({ profile }: ChatProps) {
 
             {/* Message Input - WhatsApp Style */}
             <div
-              className="sticky bottom-0 flex-none p-3 bg-[#f0f2f5] border-t border-gray-200 transition-[padding,transform] duration-200 pb-[max(12px,env(safe-area-inset-bottom))]"
+              className="sticky bottom-0 flex-none p-3 bg-[#f0f2f5] border-t border-gray-200 transition-[padding,margin] duration-200 pb-[max(12px,env(safe-area-inset-bottom))]"
               style={{
                 paddingBottom: '12px',
-                transform: shouldLiftForKeyboard ? `translateY(-${keyboardInset}px)` : 'translateY(0)',
+                marginBottom: shouldLiftForKeyboard ? `${keyboardInset}px` : '0px',
               }}
             >
               {/* File Previews */}
@@ -989,8 +1036,9 @@ export default function Chat({ profile }: ChatProps) {
                     onFocus={() => {
                       setIsComposerFocused(true);
                       window.setTimeout(() => {
+                        inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                      }, 120);
+                      }, 160);
                     }}
                     onBlur={() => {
                       window.setTimeout(() => setIsComposerFocused(false), 120);

@@ -188,7 +188,7 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
         <div className={cn(
           "transition-all",
           isMessagesPage 
-            ? (targetUid ? "w-full h-[100dvh] md:h-screen" : "w-full") 
+            ? (targetUid ? "w-full min-h-[100dvh] md:h-screen" : "w-full") 
             : "max-w-6xl mx-auto p-4 md:p-8"
         )}>
           {children}

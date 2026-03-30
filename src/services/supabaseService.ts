@@ -1582,6 +1582,44 @@ export const supabaseService = {
     return subscribeToTable('messages', fetcher, callback, `receiver_uid=eq.${uid}`, onError, `unread:messages:${uid}`);
   },
 
+  subscribeToMessageEvents(
+    uid: string,
+    callback: (event: { type: 'INSERT' | 'UPDATE' | 'DELETE'; message?: Message; oldMessage?: Message }) => void
+  ) {
+    const handlePayload = (eventType: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) => {
+      const nextRow = payload?.new && payload.new.id ? mapMessageFromDb(payload.new as DbMessage) : undefined;
+      const prevRow = payload?.old && payload.old.id ? mapMessageFromDb(payload.old as DbMessage) : undefined;
+      callback({
+        type: eventType,
+        message: nextRow,
+        oldMessage: prevRow,
+      });
+    };
+
+    const senderChannel = supabase
+      .channel(`realtime:messages:sender:${uid}:${Math.random().toString(36).slice(2)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `sender_uid=eq.${uid}` },
+        (payload: any) => handlePayload(payload.eventType, payload)
+      )
+      .subscribe();
+
+    const receiverChannel = supabase
+      .channel(`realtime:messages:receiver:${uid}:${Math.random().toString(36).slice(2)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `receiver_uid=eq.${uid}` },
+        (payload: any) => handlePayload(payload.eventType, payload)
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(senderChannel);
+      supabase.removeChannel(receiverChannel);
+    };
+  },
+
   upsertActiveChatCache(uid: string, chat: ActiveChatSummary) {
     const activeCacheKey = `chats:active:${uid}`;
     const recentCacheKey = `chats:recent:${uid}`;
