@@ -25,6 +25,7 @@ import JobDetails from './components/JobDetails';
 import JobApply from './components/JobApply';
 import Notifications from './components/Notifications';
 import Comments from './components/Comments';
+import Market from './components/Market';
 
 export default function App() {
   const ONBOARDING_KEY = 'connect_onboarding_uid';
@@ -318,6 +319,7 @@ export default function App() {
           <Route path="/jobs" element={<JobBoard profile={profile} />} />
           <Route path="/jobs/:jobId" element={<JobDetails profile={profile} />} />
           <Route path="/jobs/:jobId/apply" element={<JobApply profile={profile} />} />
+          <Route path="/market" element={<Market profile={profile} />} />
           <Route path="/network" element={<Network profile={profile} />} />
           <Route path="/requests" element={<FriendRequests profile={profile} />} />
           <Route path="/manage-gigs" element={<ManageGigs profile={profile} />} />

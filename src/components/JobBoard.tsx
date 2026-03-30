@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Job } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { Search, Filter, Briefcase, MapPin, Clock, CheckCircle, Plus, Settings } from 'lucide-react';
+import { Search, Filter, Briefcase, MapPin, Clock, CheckCircle, Plus, Settings, Store } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
@@ -76,6 +76,13 @@ export default function JobBoard({ profile }: JobBoardProps) {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Job Board</h1>
           <p className="text-sm sm:text-base text-gray-500">Find the perfect gig or hire top talent.</p>
         </div>
+        <Link
+          to="/market"
+          className="inline-flex items-center gap-2 self-start rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700"
+        >
+          <Store size={18} />
+          Market
+        </Link>
       </div>
 
       {/* Filters & Search Bar */}

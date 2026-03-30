@@ -35,6 +35,7 @@ export default function Feed({ profile }: FeedProps) {
   const [topStudents, setTopStudents] = useState<UserProfile[]>(() => initialFeedSnapshot?.topStudents || []);
   const [hasMoreTopStudents, setHasMoreTopStudents] = useState(() => initialFeedSnapshot?.hasMoreTopStudents || false);
   const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>(() => initialFeedSnapshot?.profileByUid || {});
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -48,6 +49,12 @@ export default function Feed({ profile }: FeedProps) {
       profileByUid,
     });
   }, [posts, jobs, likes, comments, topStudents, hasMoreTopStudents, profileByUid]);
+
+  useEffect(() => {
+    return supabaseService.subscribeToOnlineUsers((uids) => {
+      setOnlineUserIds(new Set(uids));
+    });
+  }, []);
 
   useEffect(() => {
     const unsubscribePosts = supabaseService.subscribeToPosts(setPosts);
@@ -260,15 +267,20 @@ export default function Feed({ profile }: FeedProps) {
                 onClick={() => navigate(`/profile/${student.uid}`)}
                 className="shrink-0 flex flex-col items-center gap-2 min-w-[92px] sm:min-w-[110px]"
               >
-                <CachedImage
-                  src={student.photoURL}
-                  alt={student.displayName}
-                  loading="lazy"
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                  wrapperClassName="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-teal-100"
-                  imgClassName="w-full h-full rounded-full object-cover"
-                />
+                <div className="relative">
+                  <CachedImage
+                    src={student.photoURL}
+                    alt={student.displayName}
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                    wrapperClassName="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-teal-100"
+                    imgClassName="w-full h-full rounded-full object-cover"
+                  />
+                  {onlineUserIds.has(student.uid) && (
+                    <span className="absolute bottom-1 right-1 block h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500 shadow-sm sm:h-4 sm:w-4" />
+                  )}
+                </div>
                 <span className="text-[10px] sm:text-xs font-semibold text-gray-700 text-center truncate w-20 sm:w-24">
                   {student.displayName}
                 </span>
