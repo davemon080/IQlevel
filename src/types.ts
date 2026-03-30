@@ -68,6 +68,19 @@ export interface Job {
   createdAt: string;
 }
 
+export interface MarketItem {
+  id: string;
+  sellerUid: string;
+  title: string;
+  description?: string;
+  price: number;
+  isNegotiable: boolean;
+  isAnonymous: boolean;
+  imageUrls: string[];
+  createdAt: string;
+  seller?: UserProfile;
+}
+
 export interface Attachment {
   name: string;
   url: string;

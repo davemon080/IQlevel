@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 
@@ -71,6 +71,18 @@ type DbJob = {
   is_student_friendly: boolean;
   is_remote: boolean;
   status: 'open' | 'closed';
+  created_at: string;
+};
+
+type DbMarketItem = {
+  id: string;
+  seller_uid: string;
+  title: string;
+  description?: string | null;
+  price: number;
+  is_negotiable: boolean;
+  is_anonymous: boolean;
+  image_urls: string[];
   created_at: string;
 };
 
@@ -336,6 +348,21 @@ function mapJobFromDb(row: DbJob): Job {
     isRemote: row.is_remote,
     status: row.status,
     createdAt: row.created_at,
+  };
+}
+
+function mapMarketItemFromDb(row: DbMarketItem, seller?: UserProfile): MarketItem {
+  return {
+    id: row.id,
+    sellerUid: row.seller_uid,
+    title: row.title,
+    description: row.description || undefined,
+    price: row.price,
+    isNegotiable: row.is_negotiable,
+    isAnonymous: row.is_anonymous,
+    imageUrls: row.image_urls || [],
+    createdAt: row.created_at,
+    seller,
   };
 }
 
@@ -1424,6 +1451,62 @@ export const supabaseService = {
       return rows.map(mapJobFromDb);
     };
     return subscribeToTable('jobs', fetcher, callback, undefined, undefined, 'jobs:all');
+  },
+
+  async createMarketItem(item: Omit<MarketItem, 'id' | 'createdAt' | 'seller'>): Promise<void> {
+    await runQuery(
+      supabase.from('market_items').insert({
+        seller_uid: item.sellerUid,
+        title: item.title,
+        description: item.description || null,
+        price: item.price,
+        is_negotiable: item.isNegotiable,
+        is_anonymous: item.isAnonymous,
+        image_urls: item.imageUrls,
+        created_at: new Date().toISOString(),
+      }),
+      'createMarketItem'
+    );
+    removeCache('market:all');
+  },
+
+  async listMarketItems(): Promise<MarketItem[]> {
+    const cached = readCache<MarketItem[]>('market:all', CACHE_TTL.jobs);
+    if (cached) return cached;
+
+    const rows = await runQuery<DbMarketItem[]>(
+      supabase.from('market_items').select('*').order('created_at', { ascending: false }),
+      'listMarketItems'
+    );
+
+    const sellerUids = Array.from(new Set(rows.map((row) => row.seller_uid)));
+    const sellers = sellerUids.length > 0 ? await this.getUsersByUids(sellerUids) : [];
+    const sellerMap = new Map<string, UserProfile>(sellers.map((seller) => [seller.uid, seller]));
+    const mapped = rows.map((row) => mapMarketItemFromDb(row, sellerMap.get(row.seller_uid)));
+    writeCache('market:all', mapped);
+    return mapped;
+  },
+
+  async getMarketItemById(itemId: string): Promise<MarketItem | null> {
+    const cached = readCache<MarketItem | null>(`market:${itemId}`, CACHE_TTL.jobs);
+    if (cached) return cached;
+
+    const row = await runQuery<DbMarketItem | null>(
+      supabase.from('market_items').select('*').eq('id', itemId).maybeSingle(),
+      'getMarketItemById'
+    );
+
+    if (!row) return null;
+    const seller =
+      this.profileCache.get(row.seller_uid) || (await this.getUserProfile(row.seller_uid));
+    const mapped = mapMarketItemFromDb(row, seller || undefined);
+    writeCache(`market:${itemId}`, mapped);
+    return mapped;
+  },
+
+  subscribeToMarketItems(callback: (items: MarketItem[]) => void, onError?: (error: any) => void) {
+    const fetcher = async () => this.listMarketItems();
+    return subscribeToTable('market_items', fetcher, callback, undefined, onError, 'market:all');
   },
 
   // Messages
