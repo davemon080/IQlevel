@@ -201,6 +201,9 @@ let presenceHeartbeatTimer: number | null = null;
 let presenceVisibilityCleanup: (() => void) | null = null;
 const onlineUserIds = new Set<string>();
 const onlineUserSubscribers = new Set<(uids: Set<string>) => void>();
+const presenceStateSubscribers = new Set<(state: Record<string, { userUid: string; onlineAt?: string; visibilityState?: string; typingTo?: string | null; viewingChatUid?: string | null; updatedAt?: string }>) => void>();
+const livePresenceState = new Map<string, { userUid: string; onlineAt?: string; visibilityState?: string; typingTo?: string | null; viewingChatUid?: string | null; updatedAt?: string }>();
+let currentPresencePayload: { userUid: string; onlineAt?: string; visibilityState?: string; typingTo?: string | null; viewingChatUid?: string | null; updatedAt?: string } | null = null;
 
 function clearLegacyAppCaches() {
   if (typeof window === 'undefined') return;
@@ -536,6 +539,11 @@ function emitOnlineUsers() {
   onlineUserSubscribers.forEach((callback) => callback(snapshot));
 }
 
+function emitPresenceState() {
+  const snapshot = Object.fromEntries(Array.from(livePresenceState.entries()));
+  presenceStateSubscribers.forEach((callback) => callback(snapshot));
+}
+
 function extractPresenceMetas(entry: any): Array<Record<string, any>> {
   if (!entry) return [];
   if (Array.isArray(entry)) return entry;
@@ -545,8 +553,10 @@ function extractPresenceMetas(entry: any): Array<Record<string, any>> {
 
 function rebuildOnlineUsersFromPresenceState() {
   onlineUserIds.clear();
+  livePresenceState.clear();
   if (!presenceChannel) {
     emitOnlineUsers();
+    emitPresenceState();
     return;
   }
 
@@ -554,11 +564,27 @@ function rebuildOnlineUsersFromPresenceState() {
   Object.values(state).forEach((entry) => {
     extractPresenceMetas(entry).forEach((meta) => {
       const uid = typeof meta?.userUid === 'string' ? meta.userUid : null;
-      if (uid) onlineUserIds.add(uid);
+      if (!uid) return;
+      onlineUserIds.add(uid);
+      const existing = livePresenceState.get(uid);
+      const nextState = {
+        userUid: uid,
+        onlineAt: typeof meta?.onlineAt === 'string' ? meta.onlineAt : existing?.onlineAt,
+        visibilityState: typeof meta?.visibilityState === 'string' ? meta.visibilityState : existing?.visibilityState,
+        typingTo: typeof meta?.typingTo === 'string' ? meta.typingTo : null,
+        viewingChatUid: typeof meta?.viewingChatUid === 'string' ? meta.viewingChatUid : null,
+        updatedAt: typeof meta?.updatedAt === 'string' ? meta.updatedAt : existing?.updatedAt,
+      };
+      const previousUpdatedAt = existing?.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+      const nextUpdatedAt = nextState.updatedAt ? new Date(nextState.updatedAt).getTime() : 0;
+      if (!existing || nextUpdatedAt >= previousUpdatedAt) {
+        livePresenceState.set(uid, nextState);
+      }
     });
   });
 
   emitOnlineUsers();
+  emitPresenceState();
 }
 
 function mergeChatSummaries(...chatGroups: ActiveChatSummary[][]): ActiveChatSummary[] {
@@ -661,12 +687,27 @@ export const supabaseService = {
       },
     });
 
-    const trackPresence = () =>
-      presenceChannel?.track?.({
-        userUid: uid,
-        onlineAt: new Date().toISOString(),
+    currentPresencePayload = {
+      userUid: uid,
+      onlineAt: new Date().toISOString(),
+      visibilityState: document.visibilityState,
+      typingTo: null,
+      viewingChatUid: null,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const trackPresence = (overrides?: Partial<typeof currentPresencePayload>) => {
+      currentPresencePayload = {
+        ...(currentPresencePayload || {
+          userUid: uid,
+          onlineAt: new Date().toISOString(),
+        }),
         visibilityState: document.visibilityState,
-      });
+        updatedAt: new Date().toISOString(),
+        ...overrides,
+      };
+      return presenceChannel?.track?.(currentPresencePayload);
+    };
 
     presenceChannel
       .on('presence', { event: 'sync' }, rebuildOnlineUsersFromPresenceState)
@@ -727,8 +768,11 @@ export const supabaseService = {
     }
 
     presenceTrackedUid = null;
+    currentPresencePayload = null;
     onlineUserIds.clear();
+    livePresenceState.clear();
     emitOnlineUsers();
+    emitPresenceState();
   },
 
   subscribeToOnlineUsers(callback: (uids: Set<string>) => void) {
@@ -737,6 +781,40 @@ export const supabaseService = {
     return () => {
       onlineUserSubscribers.delete(callback);
     };
+  },
+
+  subscribeToPresenceState(
+    callback: (state: Record<string, { userUid: string; onlineAt?: string; visibilityState?: string; typingTo?: string | null; viewingChatUid?: string | null; updatedAt?: string }>) => void
+  ) {
+    presenceStateSubscribers.add(callback);
+    callback(Object.fromEntries(Array.from(livePresenceState.entries())));
+    return () => {
+      presenceStateSubscribers.delete(callback);
+    };
+  },
+
+  async setPresenceTyping(typingTo?: string | null) {
+    if (!presenceChannel || !currentPresencePayload) return;
+    const nextPayload = {
+      ...currentPresencePayload,
+      visibilityState: typeof document !== 'undefined' ? document.visibilityState : currentPresencePayload.visibilityState,
+      typingTo: typingTo || null,
+      updatedAt: new Date().toISOString(),
+    };
+    currentPresencePayload = nextPayload;
+    await presenceChannel.track(nextPayload);
+  },
+
+  async setPresenceViewingChat(viewingChatUid?: string | null) {
+    if (!presenceChannel || !currentPresencePayload) return;
+    const nextPayload = {
+      ...currentPresencePayload,
+      visibilityState: typeof document !== 'undefined' ? document.visibilityState : currentPresencePayload.visibilityState,
+      viewingChatUid: viewingChatUid || null,
+      updatedAt: new Date().toISOString(),
+    };
+    currentPresencePayload = nextPayload;
+    await presenceChannel.track(nextPayload);
   },
 
   isUserOnline(uid: string) {

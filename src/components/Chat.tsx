@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { UserProfile, Message, Attachment } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { Send, Search, MessageSquare, User, MoreVertical, Phone, Video, ArrowLeft, CheckCheck, Smile, PlusSquare, Lock, FileIcon, X, Download, Image as ImageIcon, Loader2, Clock3, Check } from 'lucide-react';
+import { Send, Search, MessageSquare, MoreVertical, ArrowLeft, Smile, PlusSquare, Lock, FileIcon, X, Download, Image as ImageIcon, Loader2, Check, Video } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import CachedImage from './CachedImage';
@@ -41,6 +41,8 @@ export default function Chat({ profile }: ChatProps) {
   const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 0);
   const [viewportOffsetTop, setViewportOffsetTop] = useState(0);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  const [presenceState, setPresenceState] = useState<Record<string, { userUid: string; onlineAt?: string; visibilityState?: string; typingTo?: string | null; viewingChatUid?: string | null; updatedAt?: string }>>({});
+  const typingTimeoutRef = useRef<number | null>(null);
 
   const mergeChats = React.useCallback((incomingChats: any[], recentChats: any[] = []) => {
     const merged = new Map<string, any>();
@@ -93,6 +95,12 @@ export default function Chat({ profile }: ChatProps) {
   useEffect(() => {
     return supabaseService.subscribeToOnlineUsers((uids) => {
       setOnlineUserIds(new Set(uids));
+    });
+  }, []);
+
+  useEffect(() => {
+    return supabaseService.subscribeToPresenceState((state) => {
+      setPresenceState(state);
     });
   }, []);
 
@@ -257,6 +265,50 @@ export default function Chat({ profile }: ChatProps) {
   }, [profile.uid, selectedContact, messages.length]);
 
   useEffect(() => {
+    if (!selectedContact || !showChatOnMobile && typeof window !== 'undefined' && window.innerWidth < 768) {
+      supabaseService.setPresenceViewingChat(null);
+      return;
+    }
+
+    supabaseService.setPresenceViewingChat(selectedContact.uid);
+    return () => {
+      supabaseService.setPresenceViewingChat(null);
+    };
+  }, [selectedContact, showChatOnMobile]);
+
+  useEffect(() => {
+    if (!selectedContact) {
+      supabaseService.setPresenceTyping(null);
+      return;
+    }
+
+    if (!newMessage.trim()) {
+      supabaseService.setPresenceTyping(null);
+      if (typingTimeoutRef.current) {
+        window.clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    supabaseService.setPresenceTyping(selectedContact.uid);
+    if (typingTimeoutRef.current) {
+      window.clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = window.setTimeout(() => {
+      supabaseService.setPresenceTyping(null);
+      typingTimeoutRef.current = null;
+    }, 1200);
+
+    return () => {
+      if (typingTimeoutRef.current) {
+        window.clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+    };
+  }, [newMessage, selectedContact]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
@@ -278,6 +330,7 @@ export default function Chat({ profile }: ChatProps) {
     // Clear inputs immediately for smooth UX
     setNewMessage('');
     setSelectedFiles([]);
+    supabaseService.setPresenceTyping(null);
 
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const optimisticMessage: LocalMessage = {
@@ -458,7 +511,21 @@ export default function Chat({ profile }: ChatProps) {
   );
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const keyboardInset = typeof window !== 'undefined'
+    ? Math.max(0, window.innerHeight - viewportHeight - viewportOffsetTop)
+    : 0;
   const isSelectedContactOnline = selectedContact ? onlineUserIds.has(selectedContact.uid) : false;
+  const selectedContactPresence = selectedContact ? presenceState[selectedContact.uid] : undefined;
+  const isSelectedContactTyping = selectedContactPresence?.typingTo === profile.uid;
+  const isSelectedContactViewingChat = selectedContactPresence?.viewingChatUid === profile.uid;
+
+  const getOutgoingReceiptState = (message: LocalMessage): 'pending' | 'failed' | 'sent' | 'delivered' | 'read' => {
+    if (message.localStatus === 'pending') return 'pending';
+    if (message.localStatus === 'failed') return 'failed';
+    if (isSelectedContactViewingChat) return 'read';
+    if (isSelectedContactOnline) return 'delivered';
+    return 'sent';
+  };
 
   return (
     <div 
@@ -589,14 +656,12 @@ export default function Chat({ profile }: ChatProps) {
                 </div>
                 <div className="cursor-pointer" onClick={() => navigate(`/profile/${selectedContact.uid}`)}>
                   <h3 className="text-sm font-bold text-gray-900 leading-tight">{selectedContact.displayName}</h3>
-                  <p className={`text-[10px] font-bold uppercase tracking-wider ${isSelectedContactOnline ? 'text-emerald-600' : 'text-gray-400'}`}>
-                    {isSelectedContactOnline ? 'Online now' : 'Offline'}
+                  <p className={`text-[10px] font-bold uppercase tracking-wider ${isSelectedContactTyping || isSelectedContactOnline ? 'text-emerald-600' : 'text-gray-400'}`}>
+                    {isSelectedContactTyping ? 'Typing...' : isSelectedContactOnline ? 'Online now' : 'Offline'}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <button className="p-2.5 text-gray-500 hover:bg-gray-100 rounded-full transition-all"><Phone size={20} /></button>
-                <button className="p-2.5 text-gray-500 hover:bg-gray-100 rounded-full transition-all"><Video size={20} /></button>
                 <button className="p-2.5 text-gray-500 hover:bg-gray-100 rounded-full transition-all"><MoreVertical size={20} /></button>
               </div>
             </div>
@@ -698,18 +763,25 @@ export default function Chat({ profile }: ChatProps) {
                             <span className="text-[9px] text-gray-500 font-medium">
                               {format(msgDate, 'HH:mm')}
                             </span>
-                            {isMe && (
-                              <>
-                                {msg.localStatus === 'pending' && <Clock3 size={11} className="text-gray-400" />}
-                                {msg.localStatus === 'failed' && <X size={11} className="text-red-500" />}
-                                {(!msg.localStatus || msg.localStatus === 'sent') && (
-                                  <span className="inline-flex items-center gap-0.5">
-                                    <Check size={11} className="text-blue-500" />
-                                    <Check size={11} className="-ml-1 text-blue-500" />
-                                  </span>
-                                )}
-                              </>
-                            )}
+                            {isMe && (() => {
+                              const receiptState = getOutgoingReceiptState(msg);
+                              if (receiptState === 'pending') {
+                                return <Loader2 size={11} className="animate-spin text-gray-400" />;
+                              }
+                              if (receiptState === 'failed') {
+                                return <X size={11} className="text-red-500" />;
+                              }
+                              if (receiptState === 'sent') {
+                                return <Check size={12} className="text-gray-500 stroke-[3]" />;
+                              }
+                              const tickColor = receiptState === 'read' ? 'text-blue-500' : 'text-gray-500';
+                              return (
+                                <span className={`inline-flex items-center gap-0.5 ${tickColor}`}>
+                                  <Check size={12} className="stroke-[3]" />
+                                  <Check size={12} className="-ml-1.5 stroke-[3]" />
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                       </motion.div>
@@ -723,11 +795,26 @@ export default function Chat({ profile }: ChatProps) {
                   </div>
                 </div>
               )}
+              {isSelectedContactTyping && (
+                <div className="flex justify-start mb-1">
+                  <div className="relative max-w-[70%] px-3 py-2 rounded-xl rounded-tl-none shadow-sm text-sm bg-white text-gray-900">
+                    <div className="-left-1 absolute top-0 w-2 h-2 bg-white [clip-path:polygon(100%_0,100%_100%,0_0)]"></div>
+                    <div className="flex items-center gap-1.5 text-gray-500">
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.2s]" />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.1s]" />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 
             {/* Message Input - WhatsApp Style */}
-            <div className="flex-none p-3 bg-[#f0f2f5] border-t border-gray-200">
+            <div
+              className="flex-none p-3 bg-[#f0f2f5] border-t border-gray-200 transition-[padding] duration-200"
+              style={{ paddingBottom: `${Math.max(12, keyboardInset + 12)}px` }}
+            >
               {/* File Previews */}
               {selectedFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-3 p-2 bg-white/50 rounded-xl">
