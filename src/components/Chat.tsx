@@ -70,6 +70,40 @@ export default function Chat({ profile }: ChatProps) {
     setActiveChats((prev) => mergeChats([chat], prev));
   }, [mergeChats]);
 
+  const clearUnreadForChat = React.useCallback((otherUid: string) => {
+    setUnreadCounts((prev) => {
+      if (!prev[otherUid]) return prev;
+      const next = { ...prev };
+      delete next[otherUid];
+      return next;
+    });
+  }, []);
+
+  const getPreviewText = React.useCallback((message?: Pick<Message, 'content' | 'attachments'> | null) => {
+    if (!message) return '';
+    const content = message.content?.trim();
+    if (content) return content;
+    if (message.attachments && message.attachments.length > 0) {
+      return message.attachments.length > 1 ? 'Attachments' : 'Attachment';
+    }
+    return '';
+  }, []);
+
+  const openChat = React.useCallback((user: UserProfile, options?: { otherUid?: string; lastMessage?: string; updatedAt?: string }) => {
+    const otherUid = options?.otherUid || user.uid;
+    setSelectedContact(user);
+    setShowChatOnMobile(true);
+    upsertLocalChat({
+      otherUid,
+      user,
+      lastMessage: options?.lastMessage || '',
+      updatedAt: options?.updatedAt || new Date().toISOString(),
+    });
+    clearUnreadForChat(otherUid);
+    setSearchParams({ uid: otherUid });
+    supabaseService.markMessagesAsRead(profile.uid, otherUid).catch(() => undefined);
+  }, [clearUnreadForChat, profile.uid, setSearchParams, upsertLocalChat]);
+
   const adjustComposerHeight = () => {
     if (!inputRef.current) return;
     inputRef.current.style.height = '0px';
@@ -190,18 +224,14 @@ export default function Chat({ profile }: ChatProps) {
       // Check if user is already in active chats to avoid extra fetch
       const activeChat = activeChats.find(c => c.otherUid === targetUid);
       if (activeChat) {
-        setSelectedContact(activeChat.user);
-        setShowChatOnMobile(true);
+        openChat(activeChat.user, activeChat);
       } else if (isInitialLoad.current || !selectedContact) {
         // Fetch user if not in active chats or if it's the initial load
         try {
           const user = await supabaseService.getUserProfile(targetUid);
           if (user) {
-            setSelectedContact(user);
-            setShowChatOnMobile(true);
-            upsertLocalChat({
+            openChat(user, {
               otherUid: user.uid,
-              user,
               lastMessage: '',
               updatedAt: new Date().toISOString(),
             });
@@ -215,7 +245,7 @@ export default function Chat({ profile }: ChatProps) {
     };
 
     loadTargetUser();
-  }, [targetUid, activeChats, selectedContact, upsertLocalChat]);
+  }, [targetUid, activeChats, selectedContact, openChat]);
 
   useEffect(() => {
     if (isNewChatModalOpen) {
@@ -236,6 +266,7 @@ export default function Chat({ profile }: ChatProps) {
         profile.uid,
         selectedContact.uid,
         (msgs) => {
+          const latestMessage = msgs[msgs.length - 1];
           setMessages((prev) => {
             const pendingOrFailed = prev.filter((m) => m.id.startsWith('temp-') || m.localStatus === 'failed');
             const serverMessages: LocalMessage[] = msgs.map((m) => ({ ...m, localStatus: 'sent' }));
@@ -246,6 +277,14 @@ export default function Chat({ profile }: ChatProps) {
               (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
             );
           });
+          if (latestMessage) {
+            upsertLocalChat({
+              otherUid: selectedContact.uid,
+              user: selectedContact,
+              lastMessage: getPreviewText(latestMessage),
+              updatedAt: latestMessage.createdAt,
+            });
+          }
           setMessagesLoading(false);
         },
         (err) => {
@@ -260,12 +299,13 @@ export default function Chat({ profile }: ChatProps) {
       setMessagesLoading(false);
       setMessagesError(null);
     }
-  }, [profile.uid, selectedContact]);
+  }, [getPreviewText, profile.uid, selectedContact, upsertLocalChat]);
 
   useEffect(() => {
     if (!selectedContact) return;
+    clearUnreadForChat(selectedContact.uid);
     supabaseService.markMessagesAsRead(profile.uid, selectedContact.uid).catch(() => undefined);
-  }, [profile.uid, selectedContact, messages.length]);
+  }, [clearUnreadForChat, profile.uid, selectedContact, messages.length]);
 
   useEffect(() => {
     if (!selectedContact || !showChatOnMobile && typeof window !== 'undefined' && window.innerWidth < 768) {
@@ -354,7 +394,7 @@ export default function Chat({ profile }: ChatProps) {
     upsertLocalChat({
       otherUid: selectedContact.uid,
       user: selectedContact,
-      lastMessage: messageText || (files.length > 0 ? 'Attachment' : ''),
+      lastMessage: messageText || (files.length > 1 ? 'Attachments' : files.length > 0 ? 'Attachment' : ''),
       updatedAt: optimisticMessage.createdAt,
     });
     
@@ -385,7 +425,7 @@ export default function Chat({ profile }: ChatProps) {
       upsertLocalChat({
         otherUid: selectedContact.uid,
         user: selectedContact,
-        lastMessage: inserted.content || (attachments.length > 0 ? 'Attachment' : ''),
+        lastMessage: getPreviewText({ content: inserted.content, attachments }),
         updatedAt: inserted.createdAt,
       });
       setMessages((prev) =>
@@ -514,6 +554,7 @@ export default function Chat({ profile }: ChatProps) {
   );
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const mobileViewportHeight = Math.max(320, viewportHeight || window.innerHeight);
   const keyboardInset = typeof window !== 'undefined'
     ? Math.max(0, window.innerHeight - viewportHeight - viewportOffsetTop)
     : 0;
@@ -532,16 +573,16 @@ export default function Chat({ profile }: ChatProps) {
 
   return (
     <div 
-      className={`h-full min-h-0 bg-white flex relative overflow-hidden ${isMobile && showChatOnMobile ? 'z-[60]' : ''}`}
+      className={`h-full min-h-0 bg-white flex relative md:rounded-[0] ${isMobile && showChatOnMobile ? 'z-[60]' : ''}`}
       style={isMobile && showChatOnMobile
         ? {
-            height: `${viewportHeight}px`,
+            height: `${mobileViewportHeight}px`,
             marginTop: `${viewportOffsetTop}px`,
           }
         : undefined}
     >
       {/* Contacts Sidebar */}
-      <div className={`w-full md:w-96 border-r border-gray-200 flex flex-col bg-white transition-all duration-300 ${showChatOnMobile ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`w-full md:w-[24rem] md:max-w-[24rem] border-r border-gray-200 flex flex-col bg-white transition-all duration-300 min-h-0 ${showChatOnMobile ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-4 border-b border-gray-100 bg-gray-50/30">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold text-gray-900">Chats</h2>
@@ -572,12 +613,7 @@ export default function Chat({ profile }: ChatProps) {
             filteredActiveChats.map(chat => (
               <button
                 key={chat.otherUid}
-                onClick={() => {
-                  setSelectedContact(chat.user);
-                  setShowChatOnMobile(true);
-                  upsertLocalChat(chat);
-                  setSearchParams({ uid: chat.otherUid });
-                }}
+                onClick={() => openChat(chat.user, chat)}
                 className={`w-full px-4 py-3 flex items-center gap-3 transition-all border-b border-gray-50 ${
                   selectedContact?.uid === chat.otherUid ? 'bg-teal-50/50' : 'hover:bg-gray-50'
                 }`}
@@ -636,7 +672,7 @@ export default function Chat({ profile }: ChatProps) {
 
       {/* Chat Area */}
       <div
-        className={`flex-1 flex flex-col bg-[#efeae2] transition-all duration-300 overflow-hidden ${!showChatOnMobile ? 'hidden md:flex' : 'flex'}`}
+        className={`flex-1 flex flex-col bg-[#efeae2] transition-all duration-300 min-h-0 overflow-hidden ${!showChatOnMobile ? 'hidden md:flex' : 'flex'}`}
         style={undefined}
       >
         {selectedContact ? (
@@ -647,6 +683,7 @@ export default function Chat({ profile }: ChatProps) {
                 <button 
                   onClick={() => {
                     setShowChatOnMobile(false);
+                    setSelectedContact(null);
                     setSearchParams({});
                   }}
                   className="md:hidden p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-600"
@@ -686,7 +723,7 @@ export default function Chat({ profile }: ChatProps) {
                 backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`,
                 backgroundBlendMode: 'overlay',
                 backgroundColor: '#efeae2',
-                paddingBottom: `${shouldLiftForKeyboard ? keyboardInset + 24 : 0}px`,
+                paddingBottom: `${shouldLiftForKeyboard ? keyboardInset + 24 : 12}px`,
               }}
             >
               {messagesLoading ? (
@@ -826,7 +863,7 @@ export default function Chat({ profile }: ChatProps) {
 
             {/* Message Input - WhatsApp Style */}
             <div
-              className="sticky bottom-0 flex-none p-3 bg-[#f0f2f5] border-t border-gray-200 transition-[padding,transform] duration-200"
+              className="sticky bottom-0 flex-none p-3 bg-[#f0f2f5] border-t border-gray-200 transition-[padding,transform] duration-200 pb-[max(12px,env(safe-area-inset-bottom))]"
               style={{
                 paddingBottom: '12px',
                 transform: shouldLiftForKeyboard ? `translateY(-${keyboardInset}px)` : 'translateY(0)',
@@ -1041,16 +1078,12 @@ export default function Chat({ profile }: ChatProps) {
                     <button
                       key={user.uid}
                       onClick={() => {
-                        setSelectedContact(user);
-                        setShowChatOnMobile(true);
                         setIsNewChatModalOpen(false);
-                        upsertLocalChat({
+                        openChat(user, {
                           otherUid: user.uid,
-                          user,
                           lastMessage: '',
                           updatedAt: new Date().toISOString(),
                         });
-                        setSearchParams({ uid: user.uid });
                       }}
                       className="w-full p-3 flex items-center gap-4 hover:bg-gray-50 rounded-2xl transition-all"
                     >
