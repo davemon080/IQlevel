@@ -81,6 +81,32 @@ export default function Feed({ profile }: FeedProps) {
   }, [posts]);
 
   useEffect(() => {
+    setProfileByUid((prev) => ({ ...prev, [profile.uid]: profile }));
+  }, [profile]);
+
+  useEffect(() => {
+    const authorUids = Array.from(new Set(posts.map((post) => post.authorUid).filter(Boolean)));
+    if (authorUids.length === 0) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const refreshedProfiles = await supabaseService.getUsersByUids(authorUids);
+        setProfileByUid((prev) => {
+          const next = { ...prev };
+          refreshedProfiles.forEach((item) => {
+            next[item.uid] = item;
+          });
+          return next;
+        });
+      } catch {
+        // Keep current profile map if refresh fails.
+      }
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [posts]);
+
+  useEffect(() => {
     const interval = setInterval(async () => {
       try {
         const [freshLikes, freshComments] = await Promise.all([

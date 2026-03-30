@@ -554,25 +554,27 @@ export const supabaseService = {
 
   // User Profile
   async getUserProfile(uid: string): Promise<UserProfile | null> {
-    const cached = this.profileCache.get(uid);
-    if (cached) return cached;
-
-    const persisted = readCache<UserProfile | null>(`user:${uid}`, CACHE_TTL.users);
-    if (persisted) {
-      this.profileCache.set(uid, persisted);
-      return persisted;
+    try {
+      const data = await runQuery<DbUserProfile | null>(
+        supabase.from('users').select('*').eq('uid', uid).maybeSingle(),
+        `getUserProfile:${uid}`
+      );
+      const mapped = data ? mapUserProfileFromDb(data) : null;
+      if (mapped) {
+        this.profileCache.set(mapped.uid, mapped);
+        writeCache(`user:${uid}`, mapped);
+      }
+      return mapped;
+    } catch (error) {
+      const memoryCached = this.profileCache.get(uid);
+      if (memoryCached) return memoryCached;
+      const persisted = readCache<UserProfile | null>(`user:${uid}`, CACHE_TTL.users);
+      if (persisted) {
+        this.profileCache.set(uid, persisted);
+        return persisted;
+      }
+      throw error;
     }
-
-    const data = await runQuery<DbUserProfile | null>(
-      supabase.from('users').select('*').eq('uid', uid).maybeSingle(),
-      `getUserProfile:${uid}`
-    );
-    const mapped = data ? mapUserProfileFromDb(data) : null;
-    if (mapped) {
-      this.profileCache.set(mapped.uid, mapped);
-      writeCache(`user:${uid}`, mapped);
-    }
-    return mapped;
   },
 
   subscribeToUserProfile(uid: string, callback: (profile: UserProfile | null) => void, onError?: (error: any) => void) {
@@ -591,30 +593,22 @@ export const supabaseService = {
   async getUsersByUids(uids: string[]): Promise<UserProfile[]> {
     const uniqueUids = Array.from(new Set(uids.filter(Boolean)));
     if (uniqueUids.length === 0) return [];
-
-    const cachedProfiles: UserProfile[] = [];
-    const missingUids: string[] = [];
-    uniqueUids.forEach((id) => {
-      const cached = this.profileCache.get(id);
-      if (cached) cachedProfiles.push(cached);
-      else missingUids.push(id);
-    });
-
-    if (missingUids.length === 0) {
-      const map = new Map(cachedProfiles.map((p) => [p.uid, p]));
-      return uniqueUids.map((id) => map.get(id)).filter((p): p is UserProfile => Boolean(p));
+    try {
+      const rows = await runQuery<DbUserProfile[]>(
+        supabase.from('users').select('*').in('uid', uniqueUids),
+        'getUsersByUids'
+      );
+      const fetched = rows.map(mapUserProfileFromDb);
+      fetched.forEach((profile) => this.profileCache.set(profile.uid, profile));
+      const profileByUid = new Map(fetched.map((p) => [p.uid, p]));
+      return uniqueUids.map((id) => profileByUid.get(id)).filter((p): p is UserProfile => Boolean(p));
+    } catch (error) {
+      const fromMemory = uniqueUids
+        .map((id) => this.profileCache.get(id))
+        .filter((p): p is UserProfile => Boolean(p));
+      if (fromMemory.length > 0) return fromMemory;
+      throw error;
     }
-
-    const rows = await runQuery<DbUserProfile[]>(
-      supabase.from('users').select('*').in('uid', missingUids),
-      'getUsersByUids'
-    );
-    const fetched = rows.map(mapUserProfileFromDb);
-    fetched.forEach((profile) => this.profileCache.set(profile.uid, profile));
-
-    const all = [...cachedProfiles, ...fetched];
-    const profileByUid = new Map(all.map((p) => [p.uid, p]));
-    return uniqueUids.map((id) => profileByUid.get(id)).filter((p): p is UserProfile => Boolean(p));
   },
 
   async getUserProfileByPublicId(publicId: string): Promise<UserProfile | null> {
@@ -696,42 +690,48 @@ export const supabaseService = {
   },
 
   async getAllUsers(): Promise<UserProfile[]> {
-    const cached = readCache<UserProfile[]>('users:all', CACHE_TTL.users);
-    if (cached) return cached;
-
-    const rows = await runQuery<DbUserProfile[]>(
-      supabase.from('users').select('*'),
-      'getAllUsers'
-    );
-    const profiles = rows.map(mapUserProfileFromDb);
-    profiles.forEach((profile) => this.profileCache.set(profile.uid, profile));
-    writeCache('users:all', profiles);
-    return profiles;
+    try {
+      const rows = await runQuery<DbUserProfile[]>(
+        supabase.from('users').select('*'),
+        'getAllUsers'
+      );
+      const profiles = rows.map(mapUserProfileFromDb);
+      profiles.forEach((profile) => this.profileCache.set(profile.uid, profile));
+      writeCache('users:all', profiles);
+      return profiles;
+    } catch (error) {
+      const cached = readCache<UserProfile[]>('users:all', CACHE_TTL.users);
+      if (cached) return cached;
+      throw error;
+    }
   },
 
   async listUsersPaginated(limitCount: number, offsetCount: number, excludeUid?: string): Promise<UserProfile[]> {
     const cacheKey = `users:page:${limitCount}:${offsetCount}:${excludeUid || 'none'}`;
-    const cached = readCache<UserProfile[]>(cacheKey, CACHE_TTL.users);
-    if (cached) return cached;
+    try {
+      let query = supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(offsetCount, offsetCount + limitCount - 1);
 
-    let query = supabase
-      .from('users')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .range(offsetCount, offsetCount + limitCount - 1);
+      if (excludeUid) {
+        query = query.neq('uid', excludeUid);
+      }
 
-    if (excludeUid) {
-      query = query.neq('uid', excludeUid);
+      const rows = await runQuery<DbUserProfile[]>(
+        query,
+        'listUsersPaginated'
+      );
+      const profiles = rows.map(mapUserProfileFromDb);
+      profiles.forEach((profile) => this.profileCache.set(profile.uid, profile));
+      writeCache(cacheKey, profiles);
+      return profiles;
+    } catch (error) {
+      const cached = readCache<UserProfile[]>(cacheKey, CACHE_TTL.users);
+      if (cached) return cached;
+      throw error;
     }
-
-    const rows = await runQuery<DbUserProfile[]>(
-      query,
-      'listUsersPaginated'
-    );
-    const profiles = rows.map(mapUserProfileFromDb);
-    profiles.forEach((profile) => this.profileCache.set(profile.uid, profile));
-    writeCache(cacheKey, profiles);
-    return profiles;
   },
 
   // Posts
