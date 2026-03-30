@@ -463,7 +463,7 @@ export default function Chat({ profile }: ChatProps) {
                 }`}
               >
                 <div className="relative">
-                  <img src={chat.user.photoURL} alt={chat.user.displayName} className="w-14 h-14 rounded-2xl object-cover shadow-sm" />
+                  <img src={chat.user.photoURL} alt={chat.user.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-14 h-14 rounded-2xl object-cover shadow-sm" />
                   <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
                 </div>
                 <div className="flex-1 text-left min-w-0">
@@ -516,7 +516,7 @@ export default function Chat({ profile }: ChatProps) {
                   <ArrowLeft size={20} />
                 </button>
                 <div className="relative">
-                  <img src={selectedContact.photoURL} alt={selectedContact.displayName} className="w-10 h-10 rounded-xl object-cover shadow-sm" />
+                  <img src={selectedContact.photoURL} alt={selectedContact.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-10 h-10 rounded-xl object-cover shadow-sm" />
                   <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
                 </div>
                 <div className="cursor-pointer" onClick={() => navigate(`/profile/${selectedContact.uid}`)}>
@@ -593,6 +593,8 @@ export default function Chat({ profile }: ChatProps) {
                                         <img 
                                           src={att.url} 
                                           alt={att.name} 
+                                          loading="lazy"
+                                          decoding="async"
                                           className="max-w-full max-h-64 object-contain"
                                           referrerPolicy="no-referrer"
                                         />
@@ -665,6 +667,8 @@ export default function Chat({ profile }: ChatProps) {
                           <img 
                             src={URL.createObjectURL(file)} 
                             alt="preview" 
+                            loading="lazy"
+                            decoding="async"
                             className="w-full h-full object-cover rounded" 
                           />
                         ) : (
@@ -859,7 +863,7 @@ export default function Chat({ profile }: ChatProps) {
                       }}
                       className="w-full p-3 flex items-center gap-4 hover:bg-gray-50 rounded-2xl transition-all"
                     >
-                      <img src={user.photoURL} alt={user.displayName} className="w-12 h-12 rounded-xl object-cover shadow-sm" />
+                      <img src={user.photoURL} alt={user.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-12 h-12 rounded-xl object-cover shadow-sm" />
                       <div className="text-left">
                         <p className="text-sm font-bold text-gray-900">{user.displayName}</p>
                         <p className="text-xs text-gray-500 capitalize">{user.role}</p>

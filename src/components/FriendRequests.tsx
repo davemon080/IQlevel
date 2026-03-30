@@ -140,6 +140,9 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
           <Link to={`/profile/${targetUid}`} className="shrink-0">
             <img
               src={avatar}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
               className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-gray-100"
               alt={name}
             />

@@ -155,6 +155,8 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             <img
               src={(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) || ''}
               alt="cover"
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover"
             />
           )}
@@ -177,6 +179,9 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               <img
                 src={(editing ? draft.photoURL : userProfile.photoURL) || ''}
                 alt={userProfile.displayName}
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
                 className="w-28 h-28 rounded-2xl border-4 border-white object-cover"
               />
               {isOwnProfile && editing && (
@@ -302,7 +307,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                   <div key={post.id} className="p-4 border border-gray-100 rounded-2xl">
                     <p className="text-xs text-gray-400 mb-2">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
                     <p className="text-sm text-gray-800 whitespace-pre-wrap">{post.content}</p>
-                    {post.imageUrl && <img src={post.imageUrl} alt="post" className="w-full mt-3 rounded-xl" />}
+                    {post.imageUrl && <img src={post.imageUrl} alt="post" loading="lazy" decoding="async" className="w-full mt-3 rounded-xl" />}
                   </div>
                 ))}
               </section>
@@ -387,7 +392,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {(editing ? draft.portfolio : userProfile.portfolio || []).map((item, index) => (
                   <div key={index} className="p-4 border border-gray-100 rounded-2xl space-y-3">
-                    <img src={item.imageUrl || 'https://via.placeholder.com/600x400?text=Project'} alt={item.title} className="w-full h-44 object-cover rounded-xl" />
+                    <img src={item.imageUrl || 'https://via.placeholder.com/600x400?text=Project'} alt={item.title} loading="lazy" decoding="async" className="w-full h-44 object-cover rounded-xl" />
                     <EditableField label="Project Title" value={item.title} editing={editing} onChange={(v) => updatePortfolio(index, 'title', v)} />
                     <EditableField label="Project Link" value={item.link} editing={editing} onChange={(v) => updatePortfolio(index, 'link', v)} />
                     {editing && (
@@ -412,7 +417,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 <div key={post.id} className="p-4 border border-gray-100 rounded-2xl">
                   <p className="text-xs text-gray-400 mb-2">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
                   <p className="text-sm text-gray-800 whitespace-pre-wrap">{post.content}</p>
-                  {post.imageUrl && <img src={post.imageUrl} alt="post" className="w-full mt-3 rounded-xl" />}
+                  {post.imageUrl && <img src={post.imageUrl} alt="post" loading="lazy" decoding="async" className="w-full mt-3 rounded-xl" />}
                 </div>
               ))}
             </div>

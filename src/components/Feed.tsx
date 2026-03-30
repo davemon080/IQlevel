@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { UserProfile, Post, Job, PostLike, PostComment } from '../types';
 import { supabaseService } from '../services/supabaseService';
@@ -84,44 +84,7 @@ export default function Feed({ profile }: FeedProps) {
     setProfileByUid((prev) => ({ ...prev, [profile.uid]: profile }));
   }, [profile]);
 
-  useEffect(() => {
-    const authorUids = Array.from(new Set(posts.map((post) => post.authorUid).filter(Boolean)));
-    if (authorUids.length === 0) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const refreshedProfiles = await supabaseService.getUsersByUids(authorUids);
-        setProfileByUid((prev) => {
-          const next = { ...prev };
-          refreshedProfiles.forEach((item) => {
-            next[item.uid] = item;
-          });
-          return next;
-        });
-      } catch {
-        // Keep current profile map if refresh fails.
-      }
-    }, 8000);
-
-    return () => clearInterval(interval);
-  }, [posts]);
-
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const [freshLikes, freshComments] = await Promise.all([
-          supabaseService.listPostLikes(),
-          supabaseService.listAllPostComments(),
-        ]);
-        setLikes(freshLikes);
-        setComments(freshComments);
-      } catch {
-        // Keep last known state if polling fails.
-      }
-    }, 7000);
-
-    return () => clearInterval(interval);
-  }, []);
+  const topStudentsPreview = useMemo(() => topStudents.slice(0, 3), [topStudents]);
 
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -287,6 +250,8 @@ export default function Feed({ profile }: FeedProps) {
                   src={student.photoURL}
                   alt={student.displayName}
                   loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
                   className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-2 border-teal-100"
                 />
                 <span className="text-[10px] sm:text-xs font-semibold text-gray-700 text-center truncate w-20 sm:w-24">
@@ -313,7 +278,7 @@ export default function Feed({ profile }: FeedProps) {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="h-20 bg-teal-600"></div>
           <div className="px-6 pb-6 -mt-10 text-center">
-            <img src={profile.photoURL} alt={profile.displayName} loading="lazy" className="w-20 h-20 rounded-2xl border-4 border-white mx-auto mb-4 object-cover shadow-md" />
+            <img src={profile.photoURL} alt={profile.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-20 h-20 rounded-2xl border-4 border-white mx-auto mb-4 object-cover shadow-md" />
             <h3 className="text-lg font-bold text-gray-900">{profile.displayName}</h3>
             <p className="text-sm text-gray-500 mb-4 capitalize">{profile.role}</p>
             <div className="pt-4 border-t border-gray-100 flex justify-around text-center">
@@ -368,6 +333,8 @@ export default function Feed({ profile }: FeedProps) {
                         src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto}
                         alt={post.authorName}
                         loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
                         className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-cover"
                       />
                     </Link>
@@ -385,7 +352,7 @@ export default function Feed({ profile }: FeedProps) {
                   )}
                 </div>
                 <p className="text-gray-700 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
-                {post.imageUrl && <img src={post.imageUrl} alt="Post content" loading="lazy" className="mt-3 sm:mt-4 rounded-xl w-full object-cover max-h-64 sm:max-h-96" />}
+                {post.imageUrl && <img src={post.imageUrl} alt="Post content" loading="lazy" decoding="async" className="mt-3 sm:mt-4 rounded-xl w-full object-cover max-h-64 sm:max-h-96" />}
               </div>
               <div className="px-4 sm:px-6 py-3 sm:py-4 bg-gray-50 border-t border-gray-100 flex items-center gap-4 sm:gap-6">
                 <button
@@ -438,7 +405,7 @@ export default function Feed({ profile }: FeedProps) {
 
             <form onSubmit={handleCreatePost} className="space-y-4">
               <div className="flex gap-3 sm:gap-4">
-                <img src={profile.photoURL} alt={profile.displayName} loading="lazy" className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-cover" />
+                <img src={profile.photoURL} alt={profile.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-cover" />
                 <div className="flex-1 space-y-2">
                   <textarea
                     value={newPostContent}
@@ -448,7 +415,7 @@ export default function Feed({ profile }: FeedProps) {
                   />
                   {postImagePreview && (
                     <div className="relative rounded-xl overflow-hidden border border-gray-200">
-                      <img src={postImagePreview} alt="Post preview" loading="lazy" className="w-full max-h-56 object-cover" />
+                      <img src={postImagePreview} alt="Post preview" loading="lazy" decoding="async" className="w-full max-h-56 object-cover" />
                       <button
                         type="button"
                         onClick={() => {
@@ -527,9 +494,9 @@ export default function Feed({ profile }: FeedProps) {
             Top Rated Students
           </h4>
           <div className="space-y-4">
-            {topStudents.slice(0, 3).map((student) => (
+            {topStudentsPreview.map((student) => (
               <div key={student.uid} className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded-xl transition-all" onClick={() => navigate(`/profile/${student.uid}`)}>
-                <img src={student.photoURL} alt={student.displayName} loading="lazy" className="w-10 h-10 rounded-xl object-cover" />
+                <img src={student.photoURL} alt={student.displayName} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-10 h-10 rounded-xl object-cover" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-900 truncate">{student.displayName}</p>
                   <p className="text-[10px] text-gray-500 truncate">{student.skills?.[0] || 'Student'} · 4.9 ★</p>

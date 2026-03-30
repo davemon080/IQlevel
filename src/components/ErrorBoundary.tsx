@@ -29,7 +29,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
       try {
         const parsedError = JSON.parse(this.state.error?.message || '');
         if (parsedError.error) {
-          errorMessage = `Firestore Error: ${parsedError.error} during ${parsedError.operationType} at ${parsedError.path}`;
+          errorMessage = `Data Error: ${parsedError.error} during ${parsedError.operationType} at ${parsedError.path}`;
         }
       } catch (e) {
         errorMessage = this.state.error?.message || errorMessage;

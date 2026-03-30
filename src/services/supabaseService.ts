@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
+import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 
 type DbUserProfile = {
   uid: string;
@@ -1002,17 +1003,19 @@ export const supabaseService = {
 
   // Messages
   async uploadFile(file: File, folder: string = 'chat'): Promise<Attachment> {
-    const url = await uploadToSupabaseStorage(file, folder);
+    const optimizedFile = await optimizeImageFile(file, getUploadOptimizationOptions(folder));
+    const url = await uploadToSupabaseStorage(optimizedFile, folder);
     return {
-      name: file.name,
+      name: optimizedFile.name,
       url,
-      type: file.type,
-      size: file.size,
+      type: optimizedFile.type,
+      size: optimizedFile.size,
     };
   },
 
   async uploadUserAsset(file: File, folder: string = 'profile'): Promise<string> {
-    return uploadToSupabaseStorage(file, folder);
+    const optimizedFile = await optimizeImageFile(file, getUploadOptimizationOptions(folder));
+    return uploadToSupabaseStorage(optimizedFile, folder);
   },
 
   async sendMessage(message: Omit<Message, 'id' | 'createdAt'>): Promise<Message> {

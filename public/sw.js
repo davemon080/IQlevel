@@ -1,4 +1,5 @@
 const APP_CACHE = 'studentlink-app-v2';
+const REMOTE_ASSET_HOSTS = new Set(['api.dicebear.com', 'cdn.simpleicons.org']);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -25,9 +26,12 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
+  const isSameOrigin = url.origin === self.location.origin;
+  const isRemoteAsset = REMOTE_ASSET_HOSTS.has(url.hostname);
 
-  if (request.mode === 'navigate') {
+  if (!isSameOrigin && !isRemoteAsset) return;
+
+  if (isSameOrigin && request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then((response) => {
