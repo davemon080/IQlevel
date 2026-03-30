@@ -42,6 +42,7 @@ export default function Chat({ profile }: ChatProps) {
   const [viewportOffsetTop, setViewportOffsetTop] = useState(0);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [presenceState, setPresenceState] = useState<Record<string, { userUid: string; onlineAt?: string; visibilityState?: string; typingTo?: string | null; viewingChatUid?: string | null; updatedAt?: string }>>({});
+  const [isComposerFocused, setIsComposerFocused] = useState(false);
   const typingTimeoutRef = useRef<number | null>(null);
 
   const mergeChats = React.useCallback((incomingChats: any[], recentChats: any[] = []) => {
@@ -514,6 +515,8 @@ export default function Chat({ profile }: ChatProps) {
   const keyboardInset = typeof window !== 'undefined'
     ? Math.max(0, window.innerHeight - viewportHeight - viewportOffsetTop)
     : 0;
+  const shouldLiftForKeyboard = isMobile && showChatOnMobile && isComposerFocused && keyboardInset > 0;
+  const chatViewportLift = shouldLiftForKeyboard ? keyboardInset : 0;
   const isSelectedContactOnline = selectedContact ? onlineUserIds.has(selectedContact.uid) : false;
   const selectedContactPresence = selectedContact ? presenceState[selectedContact.uid] : undefined;
   const isSelectedContactTyping = selectedContactPresence?.typingTo === profile.uid;
@@ -599,7 +602,9 @@ export default function Chat({ profile }: ChatProps) {
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <p className="text-xs text-gray-500 truncate font-medium">{chat.lastMessage || chat.user.role}</p>
+                    <p className={`text-xs truncate font-medium ${presenceState[chat.user.uid]?.typingTo === profile.uid ? 'text-emerald-600' : 'text-gray-500'}`}>
+                      {presenceState[chat.user.uid]?.typingTo === profile.uid ? 'Typing...' : chat.lastMessage || chat.user.role}
+                    </p>
                     {/* Placeholder for unread count */}
                     {/* <div className="bg-teal-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">2</div> */}
                   </div>
@@ -625,7 +630,10 @@ export default function Chat({ profile }: ChatProps) {
       </div>
 
       {/* Chat Area */}
-      <div className={`flex-1 flex flex-col bg-[#efeae2] transition-all duration-300 overflow-hidden ${!showChatOnMobile ? 'hidden md:flex' : 'flex'}`}>
+      <div
+        className={`flex-1 flex flex-col bg-[#efeae2] transition-all duration-300 overflow-hidden ${!showChatOnMobile ? 'hidden md:flex' : 'flex'}`}
+        style={shouldLiftForKeyboard ? { transform: `translateY(-${chatViewportLift}px)` } : undefined}
+      >
         {selectedContact ? (
           <>
             {/* Chat Header */}
@@ -672,7 +680,8 @@ export default function Chat({ profile }: ChatProps) {
               style={{
                 backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`,
                 backgroundBlendMode: 'overlay',
-                backgroundColor: '#efeae2'
+                backgroundColor: '#efeae2',
+                paddingBottom: `${shouldLiftForKeyboard ? 24 : 0}px`,
               }}
             >
               {messagesLoading ? (
@@ -813,7 +822,7 @@ export default function Chat({ profile }: ChatProps) {
             {/* Message Input - WhatsApp Style */}
             <div
               className="flex-none p-3 bg-[#f0f2f5] border-t border-gray-200 transition-[padding] duration-200"
-              style={{ paddingBottom: `${Math.max(12, keyboardInset + 12)}px` }}
+              style={{ paddingBottom: `${Math.max(12, shouldLiftForKeyboard ? 12 : keyboardInset + 12)}px` }}
             >
               {/* File Previews */}
               {selectedFiles.length > 0 && (
@@ -932,6 +941,15 @@ export default function Chat({ profile }: ChatProps) {
                     rows={1}
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
+                    onFocus={() => {
+                      setIsComposerFocused(true);
+                      window.setTimeout(() => {
+                        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                      }, 120);
+                    }}
+                    onBlur={() => {
+                      window.setTimeout(() => setIsComposerFocused(false), 120);
+                    }}
                     placeholder="Type a message"
                     className="w-full px-4 py-2.5 bg-white border-transparent focus:ring-0 rounded-xl text-base transition-all shadow-sm resize-none overflow-y-auto max-h-40"
                   />
