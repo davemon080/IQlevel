@@ -7,6 +7,7 @@ import CachedImage, { preloadCachedImage } from './CachedImage';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatMoneyFromUSD } from '../utils/currency';
 import { formatDistanceToNow } from 'date-fns';
+import { MARKET_CATEGORIES } from '../constants/market';
 
 interface MarketProps {
   profile: UserProfile;
@@ -17,6 +18,7 @@ export default function Market({ profile }: MarketProps) {
   const [items, setItems] = useState<MarketItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [negotiableOnly, setNegotiableOnly] = useState(false);
+  const [category, setCategory] = useState('All');
   const [sortBy, setSortBy] = useState<'newest' | 'price-low' | 'price-high'>('newest');
 
   useEffect(() => {
@@ -28,8 +30,9 @@ export default function Market({ profile }: MarketProps) {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     let nextItems = items.filter((item) => {
       if (negotiableOnly && !item.isNegotiable) return false;
+      if (category !== 'All' && item.category !== category) return false;
       if (!normalizedQuery) return true;
-      return [item.title, item.description || '', item.seller?.displayName || '']
+      return [item.title, item.description || '', item.seller?.displayName || '', item.category]
         .some((value) => value.toLowerCase().includes(normalizedQuery));
     });
 
@@ -40,7 +43,7 @@ export default function Market({ profile }: MarketProps) {
     });
 
     return nextItems;
-  }, [items, negotiableOnly, searchQuery, sortBy]);
+  }, [category, items, negotiableOnly, searchQuery, sortBy]);
 
   useEffect(() => {
     filteredItems.slice(0, 8).forEach((item) => {
@@ -87,6 +90,19 @@ export default function Market({ profile }: MarketProps) {
               Negotiable only
             </label>
 
+            <div className="inline-flex items-center gap-2 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2">
+              <select
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+                className="bg-transparent text-sm font-semibold text-gray-700 outline-none"
+              >
+                <option value="All">All categories</option>
+                {MARKET_CATEGORIES.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="ml-auto text-xs font-bold uppercase tracking-wider text-gray-400">
               {filteredItems.length} item{filteredItems.length === 1 ? '' : 's'}
             </div>
@@ -117,7 +133,10 @@ export default function Market({ profile }: MarketProps) {
 
               <div className="space-y-3 p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <h2 className="line-clamp-2 text-base font-bold text-gray-900">{item.title}</h2>
+                  <div>
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">{item.category}</p>
+                    <h2 className="line-clamp-2 text-base font-bold text-gray-900">{item.title}</h2>
+                  </div>
                   {item.isNegotiable && (
                     <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
                       Negotiable

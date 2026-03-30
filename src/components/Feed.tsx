@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatMoneyFromUSD } from '../utils/currency';
 import CachedImage from './CachedImage';
+import { useConfirmDialog } from './ConfirmDialog';
 
 interface FeedProps {
   profile: UserProfile;
@@ -37,6 +38,7 @@ export default function Feed({ profile }: FeedProps) {
   const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>(() => initialFeedSnapshot?.profileByUid || {});
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     supabaseService.writeFeedCacheSnapshot({
@@ -399,7 +401,13 @@ export default function Feed({ profile }: FeedProps) {
                       <button
                         type="button"
                         onClick={async () => {
-                          if (!window.confirm('Delete this post permanently?')) return;
+                          const confirmed = await confirm({
+                            title: 'Delete this post?',
+                            description: 'This will permanently remove the post, its likes, and its comments.',
+                            confirmLabel: 'Delete',
+                            tone: 'danger',
+                          });
+                          if (!confirmed) return;
                           await supabaseService.deletePost(post.id);
                         }}
                         className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-600 hover:bg-red-100"
@@ -641,6 +649,7 @@ export default function Feed({ profile }: FeedProps) {
           </>
         )}
       </AnimatePresence>
+      {confirmDialog}
     </div>
   );
 }

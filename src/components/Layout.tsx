@@ -8,6 +8,7 @@ import { twMerge } from 'tailwind-merge';
 import { supabaseService } from '../services/supabaseService';
 import GlobalSearch from './GlobalSearch';
 import CachedImage from './CachedImage';
+import { useConfirmDialog } from './ConfirmDialog';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -27,6 +28,7 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
   const [isSearchOpen, setIsSearchOpen] = React.useState(false);
   const [unreadNotifications, setUnreadNotifications] = React.useState(0);
   const [unreadMessages, setUnreadMessages] = React.useState(0);
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const navItems = [
     { icon: Home, label: 'Feed', path: '/' },
@@ -114,8 +116,14 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
             )}
           </div>
           <button
-            onClick={() => {
-              if (!window.confirm('Log out of your account now?')) return;
+            onClick={async () => {
+              const confirmed = await confirm({
+                title: 'Log out now?',
+                description: 'You will need to sign back in to continue using your account.',
+                confirmLabel: 'Log Out',
+                tone: 'danger',
+              });
+              if (!confirmed) return;
               onLogout();
             }}
             className={cn(
@@ -226,6 +234,7 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
         </nav>
       )}
       <GlobalSearch isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+      {confirmDialog}
     </div>
   );
 }

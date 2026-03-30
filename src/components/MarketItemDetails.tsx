@@ -7,6 +7,7 @@ import CachedImage from './CachedImage';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatMoneyFromUSD } from '../utils/currency';
 import { formatDistanceToNow } from 'date-fns';
+import { useConfirmDialog } from './ConfirmDialog';
 
 interface MarketItemDetailsProps {
   profile: UserProfile;
@@ -20,6 +21,7 @@ export default function MarketItemDetails({ profile }: MarketItemDetailsProps) {
   const [loading, setLoading] = useState(true);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const isOwnItem = item?.sellerUid === profile.uid;
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     let active = true;
@@ -129,6 +131,7 @@ export default function MarketItemDetails({ profile }: MarketItemDetailsProps) {
             </div>
 
             <div className="flex flex-wrap gap-2 text-xs font-bold uppercase tracking-wider">
+              <span className="rounded-full bg-gray-100 px-3 py-1.5 text-gray-600">{item.category}</span>
               {item.isNegotiable && <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-700">Negotiable</span>}
               <span className="rounded-full bg-gray-100 px-3 py-1.5 text-gray-600">
                 {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
@@ -167,7 +170,13 @@ export default function MarketItemDetails({ profile }: MarketItemDetailsProps) {
                 <button
                   type="button"
                   onClick={async () => {
-                    if (!window.confirm('Delete this item permanently?')) return;
+                    const confirmed = await confirm({
+                      title: 'Delete this item?',
+                      description: 'This will permanently remove the market listing from the database.',
+                      confirmLabel: 'Delete',
+                      tone: 'danger',
+                    });
+                    if (!confirmed) return;
                     await supabaseService.deleteMarketItem(item.id);
                     navigate('/market');
                   }}
@@ -190,6 +199,7 @@ export default function MarketItemDetails({ profile }: MarketItemDetailsProps) {
           </div>
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

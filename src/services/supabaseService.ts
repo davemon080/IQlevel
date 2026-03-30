@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 
@@ -78,12 +78,22 @@ type DbMarketItem = {
   id: string;
   seller_uid: string;
   title: string;
+  category: string;
   description?: string | null;
   price: number;
   is_negotiable: boolean;
   is_anonymous: boolean;
   image_urls: string[];
   created_at: string;
+};
+
+type DbMarketSettings = {
+  user_uid: string;
+  phone_number: string | null;
+  location: string | null;
+  brand_name: string | null;
+  is_registered: boolean | null;
+  registered_at: string | null;
 };
 
 type DbMessage = {
@@ -356,6 +366,7 @@ function mapMarketItemFromDb(row: DbMarketItem, seller?: UserProfile): MarketIte
     id: row.id,
     sellerUid: row.seller_uid,
     title: row.title,
+    category: row.category,
     description: row.description || undefined,
     price: row.price,
     isNegotiable: row.is_negotiable,
@@ -363,6 +374,17 @@ function mapMarketItemFromDb(row: DbMarketItem, seller?: UserProfile): MarketIte
     imageUrls: row.image_urls || [],
     createdAt: row.created_at,
     seller,
+  };
+}
+
+function mapMarketSettingsFromDb(row: DbMarketSettings): MarketSettings {
+  return {
+    userUid: row.user_uid,
+    phoneNumber: row.phone_number || '',
+    location: row.location || '',
+    brandName: row.brand_name || '',
+    isRegistered: !!row.is_registered,
+    registeredAt: row.registered_at || undefined,
   };
 }
 
@@ -1537,6 +1559,7 @@ export const supabaseService = {
       supabase.from('market_items').insert({
         seller_uid: item.sellerUid,
         title: item.title,
+        category: item.category,
         description: item.description || null,
         price: item.price,
         is_negotiable: item.isNegotiable,
@@ -1555,6 +1578,7 @@ export const supabaseService = {
         .from('market_items')
         .update({
           title: updates.title,
+          category: updates.category,
           description: updates.description || null,
           price: updates.price,
           is_negotiable: updates.isNegotiable,
@@ -1620,6 +1644,132 @@ export const supabaseService = {
   subscribeToMarketItems(callback: (items: MarketItem[]) => void, onError?: (error: any) => void) {
     const fetcher = async () => this.listMarketItems();
     return subscribeToTable('market_items', fetcher, callback, undefined, onError, 'market:all');
+  },
+
+  async getMarketSettings(uid: string): Promise<MarketSettings> {
+    const cacheKey = `market:settings:${uid}`;
+    const cached = readCache<MarketSettings>(cacheKey, CACHE_TTL.users);
+    if (cached) return cached;
+
+    const row = await runQuery<DbMarketSettings | null>(
+      supabase.from('market_settings').select('*').eq('user_uid', uid).maybeSingle(),
+      'getMarketSettings'
+    );
+
+    if (row) {
+      const mapped = mapMarketSettingsFromDb(row);
+      writeCache(cacheKey, mapped);
+      return mapped;
+    }
+
+    const fallback: MarketSettings = {
+      userUid: uid,
+      phoneNumber: '',
+      location: '',
+      brandName: '',
+      isRegistered: false,
+    };
+    writeCache(cacheKey, fallback);
+    return fallback;
+  },
+
+  async updateMarketSettings(uid: string, updates: Pick<MarketSettings, 'phoneNumber' | 'location' | 'brandName'>): Promise<MarketSettings> {
+    const existing = await this.getMarketSettings(uid);
+    const row = await runQuery<DbMarketSettings>(
+      supabase
+        .from('market_settings')
+        .upsert(
+          {
+            user_uid: uid,
+            phone_number: updates.phoneNumber || null,
+            location: updates.location || null,
+            brand_name: updates.brandName || null,
+            is_registered: existing.isRegistered,
+            registered_at: existing.registeredAt || null,
+          },
+          { onConflict: 'user_uid' }
+        )
+        .select('*')
+        .single(),
+      'updateMarketSettings'
+    );
+
+    const mapped = mapMarketSettingsFromDb(row);
+    writeCache(`market:settings:${uid}`, mapped);
+    await this.updateUserProfile(uid, {
+      phoneNumber: mapped.phoneNumber,
+      location: mapped.location,
+      companyInfo: {
+        name: mapped.brandName,
+        about: this.profileCache.get(uid)?.companyInfo?.about || '',
+      },
+    });
+    return mapped;
+  },
+
+  async registerMarketplace(uid: string): Promise<MarketSettings> {
+    const settings = await this.getMarketSettings(uid);
+    if (settings.isRegistered) {
+      throw new Error('Marketplace registration has already been completed.');
+    }
+
+    const wallet = await this.getOrCreateWallet(uid);
+    if (wallet.ngnBalance < 500) {
+      throw new Error('You need at least N500 in your NGN wallet balance to register.');
+    }
+
+    const timestamp = new Date().toISOString();
+    await runQuery(
+      supabase
+        .from('wallets')
+        .update({
+          usd_balance: wallet.usdBalance,
+          ngn_balance: wallet.ngnBalance - 500,
+          eur_balance: wallet.eurBalance,
+          updated_at: timestamp,
+        })
+        .eq('user_uid', uid),
+      'registerMarketplace:wallet'
+    );
+
+    await runQuery(
+      supabase.from('wallet_transactions').insert({
+        user_uid: uid,
+        currency: 'NGN',
+        type: 'withdraw',
+        method: 'transfer',
+        amount: 500,
+        status: 'completed',
+        created_at: timestamp,
+        reference: 'Marketplace registration',
+      }),
+      'registerMarketplace:transaction'
+    );
+
+    const row = await runQuery<DbMarketSettings>(
+      supabase
+        .from('market_settings')
+        .upsert(
+          {
+            user_uid: uid,
+            phone_number: settings.phoneNumber || null,
+            location: settings.location || null,
+            brand_name: settings.brandName || null,
+            is_registered: true,
+            registered_at: timestamp,
+          },
+          { onConflict: 'user_uid' }
+        )
+        .select('*')
+        .single(),
+      'registerMarketplace:settings'
+    );
+
+    removeCache(`wallet:${uid}`);
+    removeCache(`wallet:transactions:${uid}`);
+    const mapped = mapMarketSettingsFromDb(row);
+    writeCache(`market:settings:${uid}`, mapped);
+    return mapped;
   },
 
   // Messages

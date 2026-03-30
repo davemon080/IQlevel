@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Post, PostComment, PostCommentLike, UserProfile } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
+import { useConfirmDialog } from './ConfirmDialog';
 
 interface CommentsProps {
   profile: UserProfile;
@@ -24,6 +25,7 @@ export default function Comments({ profile }: CommentsProps) {
   const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>({});
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState('');
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     if (!postId) return;
@@ -250,7 +252,13 @@ export default function Comments({ profile }: CommentsProps) {
                     <button
                       type="button"
                       onClick={async () => {
-                        if (!window.confirm('Delete this comment permanently?')) return;
+                        const confirmed = await confirm({
+                          title: 'Delete this comment?',
+                          description: 'This will permanently remove the comment from the discussion.',
+                          confirmLabel: 'Delete',
+                          tone: 'danger',
+                        });
+                        if (!confirmed) return;
                         await supabaseService.deletePostComment(comment.id);
                       }}
                       className="inline-flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-red-600 transition-colors"
@@ -364,6 +372,7 @@ export default function Comments({ profile }: CommentsProps) {
           </form>
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

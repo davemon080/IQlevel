@@ -6,6 +6,7 @@ import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
 import { useCurrency } from '../context/CurrencyContext';
 import { convertToUSD } from '../utils/currency';
+import { MARKET_CATEGORIES } from '../constants/market';
 
 interface SellItemProps {
   profile: UserProfile;
@@ -16,6 +17,7 @@ export default function SellItem({ profile }: SellItemProps) {
   const { currency } = useCurrency();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState<(typeof MARKET_CATEGORIES)[number]>(MARKET_CATEGORIES[0]);
   const [price, setPrice] = useState('');
   const [isNegotiable, setIsNegotiable] = useState(false);
   const [isAnonymous, setIsAnonymous] = useState(false);
@@ -55,6 +57,7 @@ export default function SellItem({ profile }: SellItemProps) {
       await supabaseService.createMarketItem({
         sellerUid: profile.uid,
         title: title.trim(),
+        category,
         description: description.trim() || undefined,
         price: Number(convertToUSD(numericPrice, currency).toFixed(2)),
         isNegotiable,
@@ -135,6 +138,19 @@ export default function SellItem({ profile }: SellItemProps) {
             placeholder="Describe the item, condition, and what buyers should know."
             className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-teal-200 focus:bg-white focus:ring-2 focus:ring-teal-500"
           />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-bold text-gray-700">Category</label>
+          <select
+            value={category}
+            onChange={(event) => setCategory(event.target.value as (typeof MARKET_CATEGORIES)[number])}
+            className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-teal-200 focus:bg-white focus:ring-2 focus:ring-teal-500"
+          >
+            {MARKET_CATEGORIES.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

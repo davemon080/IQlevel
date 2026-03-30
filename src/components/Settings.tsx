@@ -17,10 +17,12 @@ import {
   Moon,
   Smartphone,
   Wallet,
-  Copy
+  Copy,
+  Store
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CachedImage from './CachedImage';
+import { useConfirmDialog } from './ConfirmDialog';
 
 interface SettingsProps {
   profile: UserProfile;
@@ -29,7 +31,7 @@ interface SettingsProps {
 }
 
 export default function Settings({ profile, onLogout, onProfileUpdate }: SettingsProps) {
-  const [activeSection, setActiveSection] = useState<'main' | 'profile' | 'security' | 'notifications'>('main');
+  const [activeSection, setActiveSection] = useState<'main' | 'profile' | 'security' | 'notifications' | 'market'>('main');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
@@ -51,10 +53,28 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   });
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [marketPhone, setMarketPhone] = useState(profile.phoneNumber || '');
+  const [marketLocation, setMarketLocation] = useState(profile.location || '');
+  const [marketBrandName, setMarketBrandName] = useState(profile.companyInfo?.name || '');
+  const [marketRegistered, setMarketRegistered] = useState(false);
+  const [marketRegisteredAt, setMarketRegisteredAt] = useState<string | undefined>(undefined);
+  const [savingMarket, setSavingMarket] = useState(false);
+  const [registeringMarket, setRegisteringMarket] = useState(false);
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   React.useEffect(() => {
     setNotificationSettings(supabaseService.getNotificationSettings(profile.uid));
   }, [profile.uid]);
+
+  React.useEffect(() => {
+    supabaseService.getMarketSettings(profile.uid).then((settings) => {
+      setMarketPhone(settings.phoneNumber || profile.phoneNumber || '');
+      setMarketLocation(settings.location || profile.location || '');
+      setMarketBrandName(settings.brandName || profile.companyInfo?.name || '');
+      setMarketRegistered(settings.isRegistered);
+      setMarketRegisteredAt(settings.registeredAt);
+    });
+  }, [profile.companyInfo?.name, profile.location, profile.phoneNumber, profile.uid]);
 
   const handleUpdateProfile = async () => {
     setLoading(true);
@@ -134,6 +154,70 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
     await navigator.clipboard.writeText(value);
     setCopiedId(true);
     setTimeout(() => setCopiedId(false), 1200);
+  };
+
+  const handleSaveMarketSettings = async () => {
+    setSavingMarket(true);
+    setMessage(null);
+    try {
+      const updated = await supabaseService.updateMarketSettings(profile.uid, {
+        phoneNumber: marketPhone.trim(),
+        location: marketLocation.trim(),
+        brandName: marketBrandName.trim(),
+      });
+      setMarketRegistered(updated.isRegistered);
+      setMarketRegisteredAt(updated.registeredAt);
+      onProfileUpdate({
+        ...profile,
+        phoneNumber: updated.phoneNumber,
+        location: updated.location,
+        companyInfo: {
+          name: updated.brandName,
+          about: profile.companyInfo?.about || '',
+        },
+      });
+      setMessage({ type: 'success', text: 'Market settings updated.' });
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Failed to save market settings.' });
+    } finally {
+      setSavingMarket(false);
+    }
+  };
+
+  const handleRegisterMarketplace = async () => {
+    const confirmed = await confirm({
+      title: 'Register for the marketplace?',
+      description: 'A one-time N500 fee will be charged from your NGN wallet balance.',
+      confirmLabel: 'Pay N500',
+    });
+    if (!confirmed) return;
+
+    setRegisteringMarket(true);
+    setMessage(null);
+    try {
+      const saved = await supabaseService.updateMarketSettings(profile.uid, {
+        phoneNumber: marketPhone.trim(),
+        location: marketLocation.trim(),
+        brandName: marketBrandName.trim(),
+      });
+      const registered = await supabaseService.registerMarketplace(profile.uid);
+      setMarketRegistered(registered.isRegistered);
+      setMarketRegisteredAt(registered.registeredAt);
+      onProfileUpdate({
+        ...profile,
+        phoneNumber: saved.phoneNumber,
+        location: saved.location,
+        companyInfo: {
+          name: saved.brandName,
+          about: profile.companyInfo?.about || '',
+        },
+      });
+      setMessage({ type: 'success', text: 'Marketplace registration completed successfully.' });
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Marketplace registration failed.' });
+    } finally {
+      setRegisteringMarket(false);
+    }
   };
 
   const SettingItem = ({ icon: Icon, label, sublabel, onClick, color = "text-gray-600" }: any) => (
@@ -254,6 +338,13 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
                   sublabel="Balances, top-ups, withdrawals"
                   color="text-emerald-600"
                 />
+                <SettingItem
+                  icon={Store}
+                  label="Market"
+                  sublabel={marketRegistered ? 'Marketplace registered' : 'Marketplace profile and registration'}
+                  onClick={() => setActiveSection('market')}
+                  color="text-fuchsia-600"
+                />
               </div>
 
               <div className="py-2 border-t border-gray-100">
@@ -267,8 +358,14 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
 
               <div className="p-4 bg-gray-50/50">
                 <button 
-                  onClick={() => {
-                    if (!window.confirm('Log out of your account now?')) return;
+                  onClick={async () => {
+                    const confirmed = await confirm({
+                      title: 'Log out now?',
+                      description: 'You will need to sign back in to continue using your account.',
+                      confirmLabel: 'Log Out',
+                      tone: 'danger',
+                    });
+                    if (!confirmed) return;
                     onLogout();
                   }}
                   className="w-full flex items-center justify-center gap-2 p-4 text-red-600 font-bold hover:bg-red-50 rounded-2xl transition-all"
@@ -502,8 +599,89 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
               </button>
             </motion.div>
           )}
+
+          {activeSection === 'market' && (
+            <motion.div
+              key="market"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="p-6 space-y-6"
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <button onClick={() => setActiveSection('main')} className="p-2 hover:bg-gray-100 rounded-xl transition-all">
+                  <ChevronRight size={24} className="rotate-180" />
+                </button>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Market</h2>
+                  <p className="text-sm text-gray-500">Set your marketplace details and complete registration.</p>
+                </div>
+              </div>
+
+              <div className={`p-4 rounded-2xl border text-sm font-semibold ${marketRegistered ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                {marketRegistered
+                  ? `Marketplace registered${marketRegisteredAt ? ` on ${new Date(marketRegisteredAt).toLocaleDateString()}` : ''}.`
+                  : 'Marketplace not registered yet. One-time registration fee: N500 from your NGN wallet.'}
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Phone Number</label>
+                  <input
+                    type="text"
+                    value={marketPhone}
+                    onChange={(e) => setMarketPhone(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-sm transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Location</label>
+                  <input
+                    type="text"
+                    value={marketLocation}
+                    onChange={(e) => setMarketLocation(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-sm transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Brand Name</label>
+                  <input
+                    type="text"
+                    value={marketBrandName}
+                    onChange={(e) => setMarketBrandName(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-sm transition-all"
+                  />
+                </div>
+              </div>
+
+              {message && (
+                <div className={`p-4 rounded-xl flex items-center gap-3 text-sm ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                  {message.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}
+                  {message.text}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  onClick={handleSaveMarketSettings}
+                  disabled={savingMarket}
+                  className="flex-1 bg-gray-900 text-white font-bold py-4 rounded-2xl hover:bg-gray-800 disabled:opacity-50 transition-all"
+                >
+                  {savingMarket ? 'Saving...' : 'Save Market Settings'}
+                </button>
+                <button
+                  onClick={handleRegisterMarketplace}
+                  disabled={registeringMarket || marketRegistered}
+                  className="flex-1 bg-teal-700 text-white font-bold py-4 rounded-2xl hover:bg-teal-800 disabled:opacity-50 transition-all"
+                >
+                  {marketRegistered ? 'Registered' : registeringMarket ? 'Processing...' : 'Register for N500'}
+                </button>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
+      {confirmDialog}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
 import { useCurrency } from '../context/CurrencyContext';
 import { convertFromUSD, convertToUSD } from '../utils/currency';
+import { MARKET_CATEGORIES } from '../constants/market';
 
 interface EditMarketItemProps {
   profile: UserProfile;
@@ -19,6 +20,7 @@ export default function EditMarketItem({ profile }: EditMarketItemProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState('');
+  const [category, setCategory] = useState<(typeof MARKET_CATEGORIES)[number]>(MARKET_CATEGORIES[0]);
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [isNegotiable, setIsNegotiable] = useState(false);
@@ -36,6 +38,7 @@ export default function EditMarketItem({ profile }: EditMarketItemProps) {
         return;
       }
       setTitle(item.title);
+      setCategory((item.category as (typeof MARKET_CATEGORIES)[number]) || MARKET_CATEGORIES[0]);
       setDescription(item.description || '');
       setPrice(convertFromUSD(item.price, currency).toFixed(2));
       setIsNegotiable(item.isNegotiable);
@@ -75,6 +78,7 @@ export default function EditMarketItem({ profile }: EditMarketItemProps) {
       const uploads = await Promise.all(newFiles.map((file) => supabaseService.uploadFile(file, 'market')));
       await supabaseService.updateMarketItem(itemId, {
         title: title.trim(),
+        category,
         description: description.trim() || undefined,
         price: Number(convertToUSD(numericPrice, currency).toFixed(2)),
         isNegotiable,
@@ -151,6 +155,19 @@ export default function EditMarketItem({ profile }: EditMarketItemProps) {
         <div className="space-y-2">
           <label className="text-sm font-bold text-gray-700">Product details</label>
           <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-500" />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-bold text-gray-700">Category</label>
+          <select
+            value={category}
+            onChange={(event) => setCategory(event.target.value as (typeof MARKET_CATEGORIES)[number])}
+            className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-500"
+          >
+            {MARKET_CATEGORIES.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

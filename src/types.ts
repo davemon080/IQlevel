@@ -72,6 +72,7 @@ export interface MarketItem {
   id: string;
   sellerUid: string;
   title: string;
+  category: string;
   description?: string;
   price: number;
   isNegotiable: boolean;
@@ -79,6 +80,15 @@ export interface MarketItem {
   imageUrls: string[];
   createdAt: string;
   seller?: UserProfile;
+}
+
+export interface MarketSettings {
+  userUid: string;
+  phoneNumber: string;
+  location: string;
+  brandName: string;
+  isRegistered: boolean;
+  registeredAt?: string;
 }
 
 export interface Attachment {

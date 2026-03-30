@@ -5,6 +5,7 @@ import { supabaseService } from '../services/supabaseService';
 import { ArrowLeft, Briefcase, Users, CheckCircle2, XCircle, Trash2, Search } from 'lucide-react';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatMoneyFromUSD } from '../utils/currency';
+import { useConfirmDialog } from './ConfirmDialog';
 
 interface ManageGigsProps {
   profile: UserProfile;
@@ -22,6 +23,7 @@ export default function ManageGigs({ profile }: ManageGigsProps) {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('all');
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     if (profile.role !== 'client') {
@@ -66,7 +68,13 @@ export default function ManageGigs({ profile }: ManageGigsProps) {
   };
 
   const handleDeleteJob = async (jobId: string) => {
-    if (!window.confirm('Delete this gig permanently?')) return;
+    const confirmed = await confirm({
+      title: 'Delete this gig?',
+      description: 'This will permanently remove the gig and cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     await supabaseService.deleteJob(jobId);
     if (selectedJob?.id === jobId) setSelectedJob(null);
   };
@@ -236,6 +244,7 @@ export default function ManageGigs({ profile }: ManageGigsProps) {
           )}
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }
