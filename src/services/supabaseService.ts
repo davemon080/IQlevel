@@ -1155,6 +1155,50 @@ export const supabaseService = {
     return mapped;
   },
 
+  async updatePost(postId: string, updates: { content: string; imageUrl?: string | null }): Promise<Post> {
+    const row = await runQuery<DbPost>(
+      supabase
+        .from('posts')
+        .update({
+          content: updates.content,
+          image_url: updates.imageUrl || null,
+        })
+        .eq('id', postId)
+        .select('*')
+        .single(),
+      'updatePost'
+    );
+    const mapped = mapPostFromDb(row);
+    writeCache(`post:${postId}`, mapped);
+    removeCache('posts:all');
+    removeCacheByPrefix('posts:list:');
+    removeCacheByPrefix(`posts:user:${mapped.authorUid}`);
+    return mapped;
+  },
+
+  async deletePost(postId: string): Promise<void> {
+    await runQuery(
+      supabase.from('post_likes').delete().eq('post_id', postId),
+      'deletePost:likes'
+    );
+    await runQuery(
+      supabase.from('post_comments').delete().eq('post_id', postId),
+      'deletePost:comments'
+    );
+    await runQuery(
+      supabase.from('posts').delete().eq('id', postId),
+      'deletePost'
+    );
+    removeCache(`post:${postId}`);
+    removeCache('posts:all');
+    removeCache('posts:likes');
+    removeCache('posts:comments:all');
+    removeCacheByPrefix('posts:list:');
+    removeCacheByPrefix('posts:user:');
+    removeCacheByPrefix('posts:comments:');
+    removeCacheByPrefix('posts:comment-likes:');
+  },
+
   subscribeToPosts(callback: (posts: Post[]) => void) {
     const fetcher = async () => {
       const rows = await runQuery<DbPost[]>(
@@ -1398,6 +1442,41 @@ export const supabaseService = {
     removeCacheByPrefix('posts:comment-likes:');
   },
 
+  async updatePostComment(commentId: string, content: string): Promise<void> {
+    const existing = await runQuery<Pick<DbPostComment, 'post_id'> | null>(
+      supabase.from('post_comments').select('post_id').eq('id', commentId).maybeSingle(),
+      'updatePostComment:lookup'
+    );
+    await runQuery(
+      supabase.from('post_comments').update({ content }).eq('id', commentId),
+      'updatePostComment'
+    );
+    if (existing?.post_id) {
+      removeCache(`posts:comments:${existing.post_id}`);
+    }
+    removeCache('posts:comments:all');
+  },
+
+  async deletePostComment(commentId: string): Promise<void> {
+    const existing = await runQuery<Pick<DbPostComment, 'post_id'> | null>(
+      supabase.from('post_comments').select('post_id').eq('id', commentId).maybeSingle(),
+      'deletePostComment:lookup'
+    );
+    await runQuery(
+      supabase.from('post_comment_likes').delete().eq('comment_id', commentId),
+      'deletePostComment:likes'
+    );
+    await runQuery(
+      supabase.from('post_comments').delete().eq('id', commentId),
+      'deletePostComment'
+    );
+    if (existing?.post_id) {
+      removeCache(`posts:comments:${existing.post_id}`);
+    }
+    removeCache('posts:comments:all');
+    removeCacheByPrefix('posts:comment-likes:');
+  },
+
   // Jobs
   async createJob(job: Omit<Job, 'id' | 'createdAt' | 'status'>): Promise<void> {
     await runQuery(
@@ -1467,6 +1546,40 @@ export const supabaseService = {
       }),
       'createMarketItem'
     );
+    removeCache('market:all');
+  },
+
+  async updateMarketItem(itemId: string, updates: Omit<MarketItem, 'id' | 'createdAt' | 'seller' | 'sellerUid'> & { sellerUid?: string }): Promise<MarketItem> {
+    const row = await runQuery<DbMarketItem>(
+      supabase
+        .from('market_items')
+        .update({
+          title: updates.title,
+          description: updates.description || null,
+          price: updates.price,
+          is_negotiable: updates.isNegotiable,
+          is_anonymous: updates.isAnonymous,
+          image_urls: updates.imageUrls,
+        })
+        .eq('id', itemId)
+        .select('*')
+        .single(),
+      'updateMarketItem'
+    );
+    const seller =
+      this.profileCache.get(row.seller_uid) || (await this.getUserProfile(row.seller_uid));
+    const mapped = mapMarketItemFromDb(row, seller || undefined);
+    writeCache(`market:${itemId}`, mapped);
+    removeCache('market:all');
+    return mapped;
+  },
+
+  async deleteMarketItem(itemId: string): Promise<void> {
+    await runQuery(
+      supabase.from('market_items').delete().eq('id', itemId),
+      'deleteMarketItem'
+    );
+    removeCache(`market:${itemId}`);
     removeCache('market:all');
   },
 

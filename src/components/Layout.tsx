@@ -114,7 +114,10 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
             )}
           </div>
           <button
-            onClick={onLogout}
+            onClick={() => {
+              if (!window.confirm('Log out of your account now?')) return;
+              onLogout();
+            }}
             className={cn(
               "w-full flex items-center gap-3 px-4 py-3 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-xl transition-colors font-medium",
               isMessagesPage && "px-0 justify-center"

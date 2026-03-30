@@ -28,6 +28,8 @@ import Comments from './components/Comments';
 import Market from './components/Market';
 import SellItem from './components/SellItem';
 import MarketItemDetails from './components/MarketItemDetails';
+import EditMarketItem from './components/EditMarketItem';
+import EditPost from './components/EditPost';
 
 export default function App() {
   const ONBOARDING_KEY = 'connect_onboarding_uid';
@@ -324,6 +326,7 @@ export default function App() {
           <Route path="/market" element={<Market profile={profile} />} />
           <Route path="/market/sell" element={<SellItem profile={profile} />} />
           <Route path="/market/:itemId" element={<MarketItemDetails profile={profile} />} />
+          <Route path="/market/:itemId/edit" element={<EditMarketItem profile={profile} />} />
           <Route path="/network" element={<Network profile={profile} />} />
           <Route path="/requests" element={<FriendRequests profile={profile} />} />
           <Route path="/manage-gigs" element={<ManageGigs profile={profile} />} />
@@ -334,6 +337,7 @@ export default function App() {
           <Route path="/wallets/transfer" element={<ProcessTransfer profile={profile} />} />
           <Route path="/wallets/transfer/details" element={<ProcessTransferDetails profile={profile} />} />
           <Route path="/comments/:postId" element={<Comments profile={profile} />} />
+          <Route path="/posts/:postId/edit" element={<EditPost profile={profile} />} />
           <Route path="/settings" element={<Settings profile={profile} onLogout={handleLogout} onProfileUpdate={setProfile} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

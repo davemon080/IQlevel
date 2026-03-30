@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, MessageCircle, Pencil, Trash2 } from 'lucide-react';
 import { UserProfile, MarketItem } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
@@ -19,6 +19,7 @@ export default function MarketItemDetails({ profile }: MarketItemDetailsProps) {
   const [item, setItem] = useState<MarketItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const isOwnItem = item?.sellerUid === profile.uid;
 
   useEffect(() => {
     let active = true;
@@ -153,15 +154,39 @@ export default function MarketItemDetails({ profile }: MarketItemDetailsProps) {
               </div>
             )}
 
-            <button
-              type="button"
-              disabled={item.sellerUid === profile.uid}
-              onClick={() => navigate(`/messages?uid=${item.sellerUid}`)}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-teal-700 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-gray-300"
-            >
-              <MessageCircle size={18} />
-              {item.sellerUid === profile.uid ? 'This is your item' : 'Message Seller'}
-            </button>
+            {isOwnItem ? (
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/market/${item.id}/edit`)}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 px-4 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <Pencil size={16} />
+                  Edit Item
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!window.confirm('Delete this item permanently?')) return;
+                    await supabaseService.deleteMarketItem(item.id);
+                    navigate('/market');
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-red-700"
+                >
+                  <Trash2 size={16} />
+                  Delete Item
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => navigate(`/messages?uid=${item.sellerUid}`)}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-teal-700 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-teal-800"
+              >
+                <MessageCircle size={18} />
+                Message Seller
+              </button>
+            )}
           </div>
         </div>
       </div>

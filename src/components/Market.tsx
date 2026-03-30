@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, SlidersHorizontal, Tag, MessageCircle, Plus } from 'lucide-react';
 import { UserProfile, MarketItem } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import CachedImage from './CachedImage';
+import CachedImage, { preloadCachedImage } from './CachedImage';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatMoneyFromUSD } from '../utils/currency';
 import { formatDistanceToNow } from 'date-fns';
@@ -41,6 +41,12 @@ export default function Market({ profile }: MarketProps) {
 
     return nextItems;
   }, [items, negotiableOnly, searchQuery, sortBy]);
+
+  useEffect(() => {
+    filteredItems.slice(0, 8).forEach((item) => {
+      preloadCachedImage(item.imageUrls[0]);
+    });
+  }, [filteredItems]);
 
   return (
     <div className="relative space-y-5 pb-24">
@@ -90,21 +96,22 @@ export default function Market({ profile }: MarketProps) {
 
       {filteredItems.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filteredItems.map((item) => (
+          {filteredItems.map((item, index) => (
             <Link
               key={item.id}
               to={`/market/${item.id}`}
               className="overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm transition-all hover:-translate-y-1 hover:border-teal-200 hover:shadow-lg"
             >
               <div className="aspect-[4/3] bg-gray-100">
-                <CachedImage
-                  src={item.imageUrls[0]}
-                  alt={item.title}
-                  loading="lazy"
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                  wrapperClassName="h-full w-full"
-                  imgClassName="h-full w-full object-cover"
+                  <CachedImage
+                    src={item.imageUrls[0]}
+                    alt={item.title}
+                    loading={index < 4 ? 'eager' : 'lazy'}
+                    decoding="async"
+                    fetchPriority={index < 4 ? 'high' : 'auto'}
+                    referrerPolicy="no-referrer"
+                    wrapperClassName="h-full w-full"
+                    imgClassName="h-full w-full object-cover"
                 />
               </div>
 

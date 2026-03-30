@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CornerDownRight, Heart, Send, X } from 'lucide-react';
+import { ArrowLeft, CornerDownRight, Heart, Pencil, Send, Trash2, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Post, PostComment, PostCommentLike, UserProfile } from '../types';
 import { supabaseService } from '../services/supabaseService';
@@ -22,6 +22,8 @@ export default function Comments({ profile }: CommentsProps) {
   const [likingCommentIds, setLikingCommentIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>({});
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState('');
 
   useEffect(() => {
     if (!postId) return;
@@ -154,6 +156,7 @@ export default function Comments({ profile }: CommentsProps) {
   const renderComment = (comment: PostComment, depth = 0): React.ReactNode => {
     const replies = commentsByParent[comment.id] || [];
     const displayProfile = profileByUid[comment.userUid];
+    const isEditing = editingCommentId === comment.id;
 
     return (
       <div key={comment.id} className={`${depth > 0 ? 'ml-6 border-l border-gray-200 pl-4' : ''}`}>
@@ -175,7 +178,42 @@ export default function Comments({ profile }: CommentsProps) {
                   {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
                 </p>
               </div>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap mt-1">{comment.content}</p>
+              {isEditing ? (
+                <div className="mt-2 space-y-2">
+                  <textarea
+                    value={editingContent}
+                    onChange={(event) => setEditingContent(event.target.value)}
+                    rows={3}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!editingContent.trim()) return;
+                        await supabaseService.updatePostComment(comment.id, editingContent.trim());
+                        setEditingCommentId(null);
+                        setEditingContent('');
+                      }}
+                      className="rounded-xl bg-teal-700 px-3 py-1.5 text-xs font-bold text-white"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCommentId(null);
+                        setEditingContent('');
+                      }}
+                      className="rounded-xl bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-600"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-700 whitespace-pre-wrap mt-1">{comment.content}</p>
+              )}
               <div className="mt-3 flex items-center gap-4">
                 <button
                   type="button"
@@ -196,6 +234,32 @@ export default function Comments({ profile }: CommentsProps) {
                   <CornerDownRight size={13} />
                   Reply
                 </button>
+                {comment.userUid === profile.uid && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCommentId(comment.id);
+                        setEditingContent(comment.content);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-teal-700 transition-colors"
+                    >
+                      <Pencil size={13} />
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!window.confirm('Delete this comment permanently?')) return;
+                        await supabaseService.deletePostComment(comment.id);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-red-600 transition-colors"
+                    >
+                      <Trash2 size={13} />
+                      Delete
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>

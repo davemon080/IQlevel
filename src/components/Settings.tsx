@@ -267,7 +267,10 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
 
               <div className="p-4 bg-gray-50/50">
                 <button 
-                  onClick={onLogout}
+                  onClick={() => {
+                    if (!window.confirm('Log out of your account now?')) return;
+                    onLogout();
+                  }}
                   className="w-full flex items-center justify-center gap-2 p-4 text-red-600 font-bold hover:bg-red-50 rounded-2xl transition-all"
                 >
                   <LogOut size={20} />

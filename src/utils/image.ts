@@ -98,5 +98,8 @@ export function getUploadOptimizationOptions(folder: string): OptimizeImageOptio
   if (folder.includes('posts')) {
     return { maxWidth: 1600, maxHeight: 1600, quality: 0.82 };
   }
+  if (folder.includes('market')) {
+    return { maxWidth: 1200, maxHeight: 1200, quality: 0.76 };
+  }
   return { maxWidth: 1280, maxHeight: 1280, quality: 0.8 };
 }

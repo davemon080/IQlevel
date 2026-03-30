@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { UserProfile, Post, Job, PostLike, PostComment } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { Image, Send, Briefcase, Star, MapPin, DollarSign, Plus, X, Heart, MessageCircle, Share2, Copy, Link as LinkIcon } from 'lucide-react';
+import { Image, Send, Briefcase, Star, MapPin, DollarSign, Plus, X, Heart, MessageCircle, Share2, Copy, Link as LinkIcon, Pencil, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCurrency } from '../context/CurrencyContext';
@@ -385,6 +385,29 @@ export default function Feed({ profile }: FeedProps) {
                     <span className="px-2 py-0.5 sm:px-3 sm:py-1 bg-teal-50 text-teal-700 text-[8px] sm:text-[10px] font-bold uppercase tracking-wider rounded-full">
                       Job Highlight
                     </span>
+                  )}
+                  {post.authorUid === profile.uid && !post.id.startsWith('temp-') && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/posts/${post.id}/edit`)}
+                        className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold text-gray-600 hover:bg-gray-200"
+                      >
+                        <Pencil size={12} />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm('Delete this post permanently?')) return;
+                          await supabaseService.deletePost(post.id);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-600 hover:bg-red-100"
+                      >
+                        <Trash2 size={12} />
+                        Delete
+                      </button>
+                    </div>
                   )}
                 </div>
                 <p className="text-gray-700 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>

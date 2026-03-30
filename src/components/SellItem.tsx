@@ -4,6 +4,8 @@ import { ArrowLeft, ImagePlus, Loader2, X } from 'lucide-react';
 import { UserProfile } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
+import { useCurrency } from '../context/CurrencyContext';
+import { convertToUSD } from '../utils/currency';
 
 interface SellItemProps {
   profile: UserProfile;
@@ -11,6 +13,7 @@ interface SellItemProps {
 
 export default function SellItem({ profile }: SellItemProps) {
   const navigate = useNavigate();
+  const { currency } = useCurrency();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
@@ -53,7 +56,7 @@ export default function SellItem({ profile }: SellItemProps) {
         sellerUid: profile.uid,
         title: title.trim(),
         description: description.trim() || undefined,
-        price: numericPrice,
+        price: Number(convertToUSD(numericPrice, currency).toFixed(2)),
         isNegotiable,
         isAnonymous,
         imageUrls: uploads.map((upload) => upload.url),
@@ -147,6 +150,7 @@ export default function SellItem({ profile }: SellItemProps) {
               required
               className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-teal-200 focus:bg-white focus:ring-2 focus:ring-teal-500"
             />
+            <p className="text-xs text-gray-500">This will be saved using your current wallet currency: {currency}.</p>
           </div>
 
           <div className="space-y-3 rounded-[1.5rem] border border-gray-200 bg-gray-50 p-4">
