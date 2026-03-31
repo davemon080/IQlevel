@@ -243,6 +243,8 @@ export default function Chat({ profile }: ChatProps) {
   // Handle targetUid from search params separately to ensure it updates correctly
   useEffect(() => {
     if (!targetUid) {
+      setSelectedContact(null);
+      setShowChatOnMobile(false);
       isInitialLoad.current = false;
       return;
     }
