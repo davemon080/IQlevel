@@ -58,6 +58,7 @@ export default function Chat({ profile }: ChatProps) {
   const [showKeyboardDock, setShowKeyboardDock] = useState(false);
   const [keyboardLayout, setKeyboardLayout] = useState<'letters' | 'symbols'>('letters');
   const [keyboardShift, setKeyboardShift] = useState(true);
+  const [keyboardPane, setKeyboardPane] = useState<'keys' | 'emoji'>('keys');
   const typingTimeoutRef = useRef<number | null>(null);
   const holdTimeoutRef = useRef<number | null>(null);
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
@@ -72,6 +73,12 @@ export default function Chat({ profile }: ChatProps) {
     ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
     ['@', '#', '$', '&', '*', '(', ')', '-', '+'],
     ['.', ',', '?', '!', ':', ';', '/', '"', "'"],
+  ];
+  const emojiGroups = [
+    { label: 'Faces', items: ['😀', '😂', '😍', '🥹', '😎', '🤔', '😭', '😴'] },
+    { label: 'Gestures', items: ['👍', '👏', '🙌', '🤝', '🙏', '👌', '💪', '👀'] },
+    { label: 'Work', items: ['🔥', '✅', '📌', '🧠', '💼', '📅', '📎', '💬'] },
+    { label: 'Mood', items: ['❤️', '✨', '🎉', '🌍', '🚀', '🎯', '⚡', '💡'] },
   ];
 
   const mergeChats = React.useCallback((incomingChats: ChatSummary[], recentChats: ChatSummary[] = []) => {
@@ -185,6 +192,17 @@ export default function Chat({ profile }: ChatProps) {
       input.scrollIntoView({ behavior: 'smooth', block: 'center' });
       composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }, 40);
+  }, []);
+
+  const openCustomKeyboard = React.useCallback((pane: 'keys' | 'emoji' = 'keys', cursorPosition?: number) => {
+    setKeyboardPane(pane);
+    focusComposer(cursorPosition);
+  }, [focusComposer]);
+
+  const hideCustomKeyboard = React.useCallback(() => {
+    setShowKeyboardDock(false);
+    setKeyboardPane('keys');
+    setIsComposerFocused(false);
   }, []);
 
   const updateMessageAtSelection = React.useCallback((replacement: string, options?: { keepShift?: boolean }) => {
@@ -681,6 +699,7 @@ export default function Chat({ profile }: ChatProps) {
     setMessageActionsMessage(null);
     setKeyboardLayout('letters');
     setKeyboardShift(false);
+    setKeyboardPane('keys');
     window.setTimeout(() => {
       focusComposer(message.content.length);
     }, 80);
@@ -730,6 +749,7 @@ export default function Chat({ profile }: ChatProps) {
     setShowKeyboardDock(false);
     setKeyboardLayout('letters');
     setKeyboardShift(true);
+    setKeyboardPane('keys');
     setSearchParams({}, { replace: true });
     navigate('/messages', { replace: replaceHistory });
   }, [navigate, setSearchParams]);
@@ -1310,7 +1330,7 @@ export default function Chat({ profile }: ChatProps) {
                     inputMode="none"
                     onClick={() => {
                       syncSelection();
-                      focusComposer(inputRef.current?.selectionStart ?? newMessage.length);
+                      openCustomKeyboard('keys', inputRef.current?.selectionStart ?? newMessage.length);
                     }}
                     onSelect={() => syncSelection()}
                     onFocus={() => {
@@ -1334,10 +1354,13 @@ export default function Chat({ profile }: ChatProps) {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowKeyboardDock((prev) => !prev);
-                      window.setTimeout(() => focusComposer(selectionRef.current.end), 60);
+                      if (showKeyboardDock && keyboardPane === 'emoji') {
+                        hideCustomKeyboard();
+                        return;
+                      }
+                      openCustomKeyboard('emoji', selectionRef.current.end);
                     }}
-                    className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 transition-all ${showKeyboardDock ? 'bg-teal-50 text-teal-600' : 'text-gray-400 hover:text-gray-600'}`}
+                    className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 transition-all ${(showKeyboardDock && keyboardPane === 'emoji') ? 'bg-teal-50 text-teal-600' : 'text-gray-400 hover:text-gray-600'}`}
                   >
                     <Smile size={20} />
                   </button>
@@ -1353,19 +1376,35 @@ export default function Chat({ profile }: ChatProps) {
                   </button>
                 )}
               </form>
-              {(showKeyboardDock || isMobile) && (
-                <div className="mt-2 rounded-3xl bg-white px-2 py-2 shadow-sm border border-gray-100">
-                  <div className="flex items-center justify-between px-2 pb-2">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Connect Keyboard</p>
+              {showKeyboardDock && (
+                <div className="mt-2 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-gradient-to-b from-slate-50 to-white shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+                  <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setKeyboardPane('keys')}
+                        className={`rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${keyboardPane === 'keys' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                      >
+                        Keyboard
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setKeyboardPane('emoji')}
+                        className={`rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${keyboardPane === 'emoji' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600'}`}
+                      >
+                        Emoji
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setShowKeyboardDock((prev) => !prev)}
-                      className="text-[11px] font-bold text-teal-700"
+                      onClick={hideCustomKeyboard}
+                      className="rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-slate-600 transition-all hover:bg-slate-200"
                     >
-                      {showKeyboardDock ? 'Hide' : 'Show'}
+                      Hide
                     </button>
                   </div>
-                  <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                  <div className="border-b border-slate-100 px-3 py-2">
+                    <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
                     {quickKeyboardActions.map((snippet) => (
                       <button
                         key={snippet}
@@ -1376,25 +1415,20 @@ export default function Chat({ profile }: ChatProps) {
                         {snippet}
                       </button>
                     ))}
-                    <button
-                      type="button"
-                      onClick={() => insertQuickMessage('😊')}
-                      className="shrink-0 rounded-full bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-teal-50 hover:text-teal-700"
-                    >
-                      Emoji
-                    </button>
+                    </div>
                   </div>
-                  <div className="mt-3 space-y-2">
-                    {(keyboardLayout === 'letters' ? letterRows : symbolRows).map((row, rowIndex) => (
+                  {keyboardPane === 'keys' ? (
+                    <div className="space-y-2 bg-gradient-to-b from-slate-100 to-slate-200/80 px-2.5 py-3">
+                      {(keyboardLayout === 'letters' ? letterRows : symbolRows).map((row, rowIndex) => (
                       <div
                         key={`${keyboardLayout}-${rowIndex}`}
-                        className={`grid gap-2 ${rowIndex === 1 ? 'grid-cols-9 px-3' : rowIndex === 2 ? 'grid-cols-[auto_repeat(7,minmax(0,1fr))_auto] md:grid-cols-[auto_repeat(7,minmax(0,1fr))_auto]' : 'grid-cols-10'}`}
+                        className={`grid gap-2 ${rowIndex === 1 ? 'grid-cols-9 px-3 sm:px-7' : rowIndex === 2 ? 'grid-cols-[auto_repeat(7,minmax(0,1fr))_auto]' : 'grid-cols-10'}`}
                       >
                         {rowIndex === 2 && (
                           <button
                             type="button"
                             onClick={() => setKeyboardShift((prev) => !prev)}
-                            className={`rounded-2xl px-3 py-3 text-xs font-black transition-all ${keyboardShift ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                            className={`rounded-[1.1rem] px-3 py-3 text-[11px] font-black uppercase tracking-wider shadow-sm transition-all ${keyboardShift ? 'bg-teal-600 text-white' : 'bg-white text-slate-700'}`}
                           >
                             Shift
                           </button>
@@ -1404,7 +1438,7 @@ export default function Chat({ profile }: ChatProps) {
                             key={key}
                             type="button"
                             onClick={() => insertKeyboardValue(key)}
-                            className="rounded-2xl bg-gray-100 px-2 py-3 text-sm font-bold text-gray-800 transition-all hover:bg-teal-50 hover:text-teal-700 active:scale-[0.98]"
+                            className="rounded-[1.1rem] bg-white px-2 py-3 text-sm font-bold text-slate-800 shadow-sm transition-all hover:bg-teal-50 hover:text-teal-700 active:scale-[0.98]"
                           >
                             {keyboardLayout === 'letters' && keyboardShift ? key.toUpperCase() : key}
                           </button>
@@ -1413,67 +1447,88 @@ export default function Chat({ profile }: ChatProps) {
                           <button
                             type="button"
                             onClick={deleteBeforeCursor}
-                            className="rounded-2xl bg-gray-900 px-3 py-3 text-xs font-black text-white transition-all hover:bg-black"
+                            className="rounded-[1.1rem] bg-slate-900 px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white shadow-sm transition-all hover:bg-black"
                           >
-                            Back
+                            Del
                           </button>
                         )}
                       </div>
-                    ))}
-                    <div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-2">
+                      ))}
+                      <div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-2">
                       <button
                         type="button"
                         onClick={() => setKeyboardLayout((prev) => prev === 'letters' ? 'symbols' : 'letters')}
-                        className="rounded-2xl bg-gray-100 px-3 py-3 text-xs font-black text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                        className="rounded-[1.1rem] bg-white px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
                       >
                         {keyboardLayout === 'letters' ? '123' : 'ABC'}
                       </button>
                       <button
                         type="button"
                         onClick={() => updateMessageAtSelection('\n', { keepShift: true })}
-                        className="rounded-2xl bg-gray-100 px-3 py-3 text-xs font-black text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                        className="rounded-[1.1rem] bg-white px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
                       >
                         Enter
                       </button>
                       <button
                         type="button"
                         onClick={() => updateMessageAtSelection(' ', { keepShift: true })}
-                        className="rounded-2xl bg-gray-100 px-3 py-3 text-sm font-black text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                        className="rounded-[1.1rem] bg-white px-3 py-3 text-sm font-black text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
                       >
                         Space
                       </button>
                       <button
                         type="button"
                         onClick={() => moveCursor('left')}
-                        className="rounded-2xl bg-gray-100 px-3 py-3 text-xs font-black text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                        className="rounded-[1.1rem] bg-white px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
                       >
                         Left
                       </button>
                       <button
                         type="button"
                         onClick={() => moveCursor('right')}
-                        className="rounded-2xl bg-gray-100 px-3 py-3 text-xs font-black text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                        className="rounded-[1.1rem] bg-white px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
                       >
                         Right
                       </button>
-                    </div>
-                    <div className="grid grid-cols-[auto_1fr] gap-2">
+                      </div>
+                      <div className="grid grid-cols-[auto_1fr] gap-2">
                       <button
                         type="button"
                         onClick={clearComposerText}
-                        className="rounded-2xl bg-red-50 px-4 py-3 text-xs font-black text-red-600 hover:bg-red-100"
+                        className="rounded-[1.1rem] bg-red-50 px-4 py-3 text-[11px] font-black uppercase tracking-wider text-red-600 hover:bg-red-100"
                       >
                         Clear
                       </button>
                       <button
                         type="button"
                         onClick={() => insertQuickMessage('👍')}
-                        className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-black text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                        className="rounded-[1.1rem] bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
                       >
                         Quick reaction
                       </button>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="space-y-3 bg-gradient-to-b from-amber-50 to-white px-3 py-3">
+                      {emojiGroups.map((group) => (
+                        <div key={group.label} className="space-y-2">
+                          <p className="px-1 text-[11px] font-black uppercase tracking-wider text-slate-400">{group.label}</p>
+                          <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+                            {group.items.map((emoji) => (
+                              <button
+                                key={`${group.label}-${emoji}`}
+                                type="button"
+                                onClick={() => updateMessageAtSelection(emoji, { keepShift: true })}
+                                className="rounded-[1.1rem] bg-white px-3 py-3 text-2xl shadow-sm transition-all hover:-translate-y-0.5 hover:bg-teal-50"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               {editingMessageId && (
