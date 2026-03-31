@@ -82,14 +82,6 @@ export interface CompanyPartnerRequest {
   createdAt: string;
 }
 
-export interface CompanyDashboardAccess {
-  userUid: string;
-  email: string;
-  companyName: string;
-  companyLogoUrl: string;
-  passwordSet: boolean;
-}
-
 export interface MarketItem {
   id: string;
   sellerUid: string;

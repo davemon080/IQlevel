@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserProfile, FriendRequest, Connection, Post } from '../types';
+import { UserProfile, FriendRequest, Connection, Post, CompanyPartnerRequest } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Star, MessageSquare, UserPlus, Users, Check, Sparkles, TrendingUp } from 'lucide-react';
+import { Search, Star, MessageSquare, UserPlus, Users, Check, Sparkles, TrendingUp, Building2, Globe, MapPin } from 'lucide-react';
 import { motion } from 'motion/react';
 import CachedImage from './CachedImage';
 
@@ -18,6 +18,7 @@ export default function Network({ profile }: NetworkProps) {
   const [outgoingRequests, setOutgoingRequests] = useState<FriendRequest[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [highlights, setHighlights] = useState<Post[]>([]);
+  const [partners, setPartners] = useState<CompanyPartnerRequest[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'suggested' | 'discover'>('suggested');
@@ -59,7 +60,9 @@ export default function Network({ profile }: NetworkProps) {
       try {
         await loadMoreUsers(true);
         const posts = await supabaseService.getHighlights(10);
+        const approvedPartners = await supabaseService.listApprovedCompanyPartnerRequests(15);
         setHighlights(posts);
+        setPartners(approvedPartners);
       } catch (error) {
         console.error('Error fetching network data:', error);
       } finally {
@@ -320,51 +323,98 @@ export default function Network({ profile }: NetworkProps) {
           </div>
         </>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {highlights.map((post) => (
-            <motion.div
-              key={post.id}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-all"
-            >
-              <div className="p-4 flex items-center gap-3 border-b border-gray-50">
-                <CachedImage
-                  src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto}
-                  loading="lazy"
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                  wrapperClassName="w-10 h-10 rounded-xl"
-                  imgClassName="w-full h-full rounded-xl object-cover"
-                  alt=""
-                />
-                <div>
-                  <p className="font-bold text-gray-900 text-sm">{post.authorName}</p>
-                  <p className="text-[10px] text-teal-600 font-semibold">
-                    {profileByUid[post.authorUid]?.skills?.[0] || profileByUid[post.authorUid]?.role || 'Freelancer'}
-                  </p>
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Recent Highlight</p>
-                </div>
-              </div>
-              <div className="p-4">
-                <p className="text-gray-600 text-sm line-clamp-3 mb-4">{post.content}</p>
-                {post.imageUrl && (
+        <div className="space-y-8">
+          <div>
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h3 className="text-xs sm:text-sm font-bold text-gray-900 tracking-wide">
+                Our partners
+              </h3>
+              <span className="text-[10px] sm:text-xs font-semibold text-teal-700">
+                Approved companies on Connect
+              </span>
+            </div>
+            <div className="flex items-start gap-5 sm:gap-6 overflow-x-auto px-1 pb-2">
+              {partners.length > 0 ? (
+                partners.map((partner) => (
+                  <Link
+                    key={partner.id}
+                    to={`/profile/${partner.userUid}`}
+                    className="shrink-0 flex flex-col items-center gap-2 min-w-[92px] sm:min-w-[110px]"
+                  >
+                    <div className="relative">
+                      <CachedImage
+                        src={partner.companyLogoUrl}
+                        alt={partner.companyName}
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                        wrapperClassName="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-teal-100"
+                        imgClassName="w-full h-full rounded-full object-cover"
+                      />
+                      <span className="absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-white shadow-sm">
+                        <Building2 size={12} className="text-teal-700" />
+                      </span>
+                    </div>
+                    <span className="text-[10px] sm:text-xs font-semibold text-gray-700 text-center truncate w-20 sm:w-24">
+                      {partner.companyName}
+                    </span>
+                    <span className="text-[9px] sm:text-[10px] text-teal-600 font-medium text-center truncate w-20 sm:w-24">
+                      {partner.location}
+                    </span>
+                  </Link>
+                ))
+              ) : (
+                <p className="text-xs text-gray-400 italic">No approved partners yet.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {highlights.map((post) => (
+              <motion.div
+                key={post.id}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-all"
+              >
+                <div className="p-4 flex items-center gap-3 border-b border-gray-50">
                   <CachedImage
-                    src={post.imageUrl}
+                    src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto}
                     loading="lazy"
                     decoding="async"
-                    wrapperClassName="w-full h-48 rounded-2xl mb-4"
-                    imgClassName="w-full h-full rounded-2xl object-cover"
+                    referrerPolicy="no-referrer"
+                    wrapperClassName="w-10 h-10 rounded-xl"
+                    imgClassName="w-full h-full rounded-xl object-cover"
                     alt=""
                   />
-                )}
-                <Link to={`/profile/${post.authorUid}`} className="inline-flex items-center gap-2 text-teal-600 font-bold text-xs hover:gap-3 transition-all">
-                  View Portfolio
-                  <TrendingUp size={14} />
-                </Link>
-              </div>
-            </motion.div>
-          ))}
+                  <div>
+                    <p className="font-bold text-gray-900 text-sm">{post.authorName}</p>
+                    <p className="text-[10px] text-teal-600 font-semibold">
+                      {profileByUid[post.authorUid]?.skills?.[0] || profileByUid[post.authorUid]?.role || 'Freelancer'}
+                    </p>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Recent Highlight</p>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <p className="text-gray-600 text-sm line-clamp-3 mb-4">{post.content}</p>
+                  {post.imageUrl && (
+                    <CachedImage
+                      src={post.imageUrl}
+                      loading="lazy"
+                      decoding="async"
+                      wrapperClassName="w-full h-48 rounded-2xl mb-4"
+                      imgClassName="w-full h-full rounded-2xl object-cover"
+                      alt=""
+                    />
+                  )}
+                  <Link to={`/profile/${post.authorUid}`} className="inline-flex items-center gap-2 text-teal-600 font-bold text-xs hover:gap-3 transition-all">
+                    View Portfolio
+                    <TrendingUp size={14} />
+                  </Link>
+                </div>
+              </motion.div>
+            ))}
+          </div>
         </div>
       )}
     </div>

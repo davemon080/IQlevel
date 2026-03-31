@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Globe, Link2, Loader2, Lock, Send, Upload, BadgeCheck } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Building2, Globe, Link2, Loader2, Send, Upload, BadgeCheck } from 'lucide-react';
 import { UserProfile, CompanyPartnerRequest } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
@@ -37,12 +37,7 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [registrationFiles, setRegistrationFiles] = useState<File[]>([]);
-  const [companyPassword, setCompanyPassword] = useState('');
-  const [confirmCompanyPassword, setConfirmCompanyPassword] = useState('');
-  const [settingCompanyPassword, setSettingCompanyPassword] = useState(false);
-  const [companyPasswordSet, setCompanyPasswordSet] = useState(false);
   const [successEffect, setSuccessEffect] = useState<string | null>(null);
-  const [redirectingToLogin, setRedirectingToLogin] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
@@ -58,7 +53,6 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
       }
       setLoading(false);
     });
-    supabaseService.hasCompanyDashboardPassword(profile.uid).then(setCompanyPasswordSet).catch(() => undefined);
     return () => unsubscribe();
   }, [profile]);
 
@@ -119,40 +113,6 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
     }
   };
 
-  const handleSetCompanyPassword = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!profile) return;
-    if (companyPassword.trim().length < 6) {
-      setMessage('Company dashboard password must be at least 6 characters.');
-      return;
-    }
-    if (companyPassword !== confirmCompanyPassword) {
-      setMessage('Company dashboard password confirmation does not match.');
-      return;
-    }
-
-    setSettingCompanyPassword(true);
-    setMessage(null);
-    try {
-      await supabaseService.setCompanyDashboardPassword(profile.uid, companyPassword);
-      setCompanyPasswordSet(true);
-      setCompanyPassword('');
-      setConfirmCompanyPassword('');
-      setRedirectingToLogin(true);
-      setMessage('Company dashboard password saved successfully. Redirecting to the company login page...');
-      setSuccessEffect('Password saved. Company login is opening...');
-      window.setTimeout(() => {
-        setSuccessEffect(null);
-        navigate('/company/dashboard-login', { replace: true });
-      }, 1800);
-    } catch (error: any) {
-      setRedirectingToLogin(false);
-      setMessage(error?.message || 'Failed to save company dashboard password.');
-    } finally {
-      setSettingCompanyPassword(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-8">
       <AnimatePresence>
@@ -189,8 +149,8 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
                 Company Partnership
               </span>
               <h2 className="text-3xl font-black text-gray-900">Register your company and hire the right freelancers.</h2>
-              <p className="text-sm leading-relaxed text-gray-600">
-                Companies can submit a partnership request with their logo, links, documents, and business profile. After approval, they get access to a company dashboard for posting and managing gigs.
+            <p className="text-sm leading-relaxed text-gray-600">
+                Companies can submit a partnership request with their logo, links, documents, and business profile. After approval, they can manage gigs directly from their normal account.
               </p>
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-700">
                 Sign in or create an account first to submit a partnership request.
@@ -362,7 +322,7 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
                 </div>
                 <p className="mt-3 text-sm text-gray-500">
                   {request?.status === 'approved'
-                    ? 'Your company has been approved. You can open the company dashboard to post and manage gigs.'
+                    ? 'Your company has been approved. You can now manage gigs directly from this account.'
                     : request?.status === 'rejected'
                     ? 'Your previous request was not approved. Update your details and submit again.'
                     : request
@@ -372,61 +332,13 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
               </div>
 
               {request?.status === 'approved' && (
-                <form onSubmit={handleSetCompanyPassword} className="rounded-[1.5rem] border border-gray-200 p-5">
-                  <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
-                    <Lock size={16} className="text-teal-700" />
-                    {companyPasswordSet ? 'Update Company Dashboard Password' : 'Set Company Dashboard Password'}
-                  </div>
-                  <p className="mt-2 text-sm text-gray-500">
-                    This password is what your approved company will use on the dedicated company dashboard login page with the same account email.
-                  </p>
-                  <div className="mt-4 space-y-3">
-                    <input
-                      type="password"
-                      value={companyPassword}
-                      onChange={(event) => setCompanyPassword(event.target.value)}
-                      placeholder="Enter company dashboard password"
-                      className="w-full rounded-2xl bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:bg-white focus:ring-2 focus:ring-teal-500"
-                    />
-                    <input
-                      type="password"
-                      value={confirmCompanyPassword}
-                      onChange={(event) => setConfirmCompanyPassword(event.target.value)}
-                      placeholder="Confirm company dashboard password"
-                      className="w-full rounded-2xl bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:bg-white focus:ring-2 focus:ring-teal-500"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={settingCompanyPassword || redirectingToLogin}
-                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gray-900 px-4 py-3 text-sm font-bold text-white hover:bg-teal-700 disabled:opacity-70"
-                  >
-                    {settingCompanyPassword || redirectingToLogin ? <Loader2 size={18} className="animate-spin" /> : <Lock size={16} />}
-                    {redirectingToLogin
-                      ? 'Opening Company Login...'
-                      : companyPasswordSet
-                      ? 'Update Company Password'
-                      : 'Set Company Password'}
-                  </button>
-                </form>
-              )}
-
-              {request?.status === 'approved' && (
                 <div className="space-y-3">
-                  <button
-                    type="button"
-                    onClick={() => navigate('/company/dashboard')}
-                    className="w-full rounded-2xl bg-gray-900 px-4 py-4 text-sm font-bold text-white hover:bg-gray-800"
+                  <Link
+                    to="/manage-gigs"
+                    className="block w-full rounded-2xl bg-gray-900 px-4 py-4 text-center text-sm font-bold text-white hover:bg-gray-800"
                   >
-                    Open Company Dashboard
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/company/dashboard-login')}
-                    className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-4 text-sm font-bold text-gray-700 hover:bg-gray-50"
-                  >
-                    Open Company Dashboard Login
-                  </button>
+                    Open Gig Manager
+                  </Link>
                 </div>
               )}
 
@@ -434,7 +346,7 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
                 <p className="text-sm font-bold text-gray-900">What happens next?</p>
                 <ul className="mt-3 space-y-3 text-sm text-gray-600">
                   <li>1. We review your company details and registration documents.</li>
-                  <li>2. Once approved, your company can post gigs and manage applicants.</li>
+                  <li>2. Once approved, your company can post gigs and manage applicants from the same account.</li>
                   <li>3. Your approved company logo shows on jobs you publish.</li>
                 </ul>
               </div>

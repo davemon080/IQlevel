@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate, Link, useNavigate, useLocation } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { supabaseService } from './services/supabaseService';
@@ -31,8 +31,6 @@ import MarketItemDetails from './components/MarketItemDetails';
 import EditMarketItem from './components/EditMarketItem';
 import EditPost from './components/EditPost';
 import PartnershipPage from './components/PartnershipPage';
-import CompanyDashboard from './components/CompanyDashboard';
-import CompanyDashboardLogin from './components/CompanyDashboardLogin';
 
 export default function App() {
   const ONBOARDING_KEY = 'connect_onboarding_uid';
@@ -215,8 +213,6 @@ export default function App() {
             path="/partner-with-connect"
             element={<PartnershipPage onBack={() => window.history.length > 1 ? window.history.back() : undefined} />}
           />
-          <Route path="/company/dashboard-login" element={<CompanyDashboardLogin />} />
-          <Route path="/company/dashboard" element={<Navigate to="/company/dashboard-login" replace />} />
           <Route
             path="*"
             element={
@@ -255,60 +251,34 @@ export default function App() {
           </div>
         )
       ) : (
-        <AuthenticatedApp profile={profile} user={user} onLogout={handleLogout} onProfileUpdate={setProfile} />
+        <Layout user={user} profile={profile} onLogout={handleLogout}>
+          <Routes>
+            <Route path="/" element={<Feed profile={profile} />} />
+            <Route path="/jobs" element={<JobBoard profile={profile} />} />
+            <Route path="/jobs/:jobId" element={<JobDetails profile={profile} />} />
+            <Route path="/jobs/:jobId/apply" element={<JobApply profile={profile} />} />
+            <Route path="/market" element={<Market profile={profile} />} />
+            <Route path="/market/sell" element={<SellItem profile={profile} />} />
+            <Route path="/market/:itemId" element={<MarketItemDetails profile={profile} />} />
+            <Route path="/market/:itemId/edit" element={<EditMarketItem profile={profile} />} />
+            <Route path="/network" element={<Network profile={profile} />} />
+            <Route path="/requests" element={<FriendRequests profile={profile} />} />
+            <Route path="/manage-gigs" element={<ManageGigs profile={profile} />} />
+            <Route path="/notifications" element={<Notifications profile={profile} />} />
+            <Route path="/profile/:uid" element={<Profile profile={profile} />} />
+            <Route path="/messages" element={<Chat profile={profile} />} />
+            <Route path="/wallets" element={<Wallets profile={profile} />} />
+            <Route path="/wallets/transfer" element={<ProcessTransfer profile={profile} />} />
+            <Route path="/wallets/transfer/details" element={<ProcessTransferDetails profile={profile} />} />
+            <Route path="/comments/:postId" element={<Comments profile={profile} />} />
+            <Route path="/posts/:postId/edit" element={<EditPost profile={profile} />} />
+            <Route path="/settings" element={<Settings profile={profile} onLogout={handleLogout} onProfileUpdate={setProfile} />} />
+            <Route path="/partner-with-connect" element={<PartnershipPage profile={profile} />} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </Layout>
       )}
     </Router>
-  );
-}
-
-interface AuthenticatedAppProps {
-  user: User;
-  profile: UserProfile;
-  onLogout: () => Promise<void>;
-  onProfileUpdate: React.Dispatch<React.SetStateAction<UserProfile | null>>;
-}
-
-function AuthenticatedApp({ user, profile, onLogout, onProfileUpdate }: AuthenticatedAppProps) {
-  const location = useLocation();
-  const isCompanyWorkspace = location.pathname.startsWith('/company/dashboard');
-
-  if (isCompanyWorkspace) {
-    return (
-      <Routes>
-        <Route path="/company/dashboard" element={<CompanyDashboard profile={profile} />} />
-        <Route path="*" element={<Navigate to="/company/dashboard" replace />} />
-      </Routes>
-    );
-  }
-
-  return (
-    <Layout user={user} profile={profile} onLogout={onLogout}>
-      <Routes>
-        <Route path="/" element={<Feed profile={profile} />} />
-        <Route path="/jobs" element={<JobBoard profile={profile} />} />
-        <Route path="/jobs/:jobId" element={<JobDetails profile={profile} />} />
-        <Route path="/jobs/:jobId/apply" element={<JobApply profile={profile} />} />
-        <Route path="/market" element={<Market profile={profile} />} />
-        <Route path="/market/sell" element={<SellItem profile={profile} />} />
-        <Route path="/market/:itemId" element={<MarketItemDetails profile={profile} />} />
-        <Route path="/market/:itemId/edit" element={<EditMarketItem profile={profile} />} />
-        <Route path="/network" element={<Network profile={profile} />} />
-        <Route path="/requests" element={<FriendRequests profile={profile} />} />
-        <Route path="/manage-gigs" element={<ManageGigs profile={profile} />} />
-        <Route path="/notifications" element={<Notifications profile={profile} />} />
-        <Route path="/profile/:uid" element={<Profile profile={profile} />} />
-        <Route path="/messages" element={<Chat profile={profile} />} />
-        <Route path="/wallets" element={<Wallets profile={profile} />} />
-        <Route path="/wallets/transfer" element={<ProcessTransfer profile={profile} />} />
-        <Route path="/wallets/transfer/details" element={<ProcessTransferDetails profile={profile} />} />
-        <Route path="/comments/:postId" element={<Comments profile={profile} />} />
-        <Route path="/posts/:postId/edit" element={<EditPost profile={profile} />} />
-        <Route path="/settings" element={<Settings profile={profile} onLogout={onLogout} onProfileUpdate={onProfileUpdate} />} />
-        <Route path="/partner-with-connect" element={<PartnershipPage profile={profile} />} />
-        <Route path="/company/dashboard-login" element={<CompanyDashboardLogin />} />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </Layout>
   );
 }
 
@@ -446,13 +416,6 @@ function AuthScreen({
           className="mt-5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-white hover:border-teal-200"
         >
           Partner With Us
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate('/company/dashboard-login')}
-          className="mt-3 w-full rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-sm font-bold text-teal-700 hover:bg-white hover:border-teal-200"
-        >
-          Company Dashboard Login
         </button>
         <p className="mt-3 text-center text-xs text-gray-500">
           Companies can also open the dedicated <Link to="/partner-with-connect" className="font-bold text-teal-700 hover:underline">partnership page</Link>.

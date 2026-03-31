@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest, CompanyDashboardAccess } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 
@@ -123,13 +123,6 @@ type DbMarketSellerRating = {
   created_at: string;
 };
 
-type DbCompanyDashboardSecurity = {
-  user_uid: string;
-  password_hash: string;
-  updated_at: string;
-  created_at: string;
-};
-
 type DbMessage = {
   id: string;
   sender_uid: string;
@@ -218,7 +211,6 @@ const CHAT_READ_EVENT = 'connect:chat-read-updated';
 const APP_CACHE_PREFIX = 'connect_app_cache_v2:';
 const LEGACY_APP_CACHE_PREFIXES = ['connect_app_cache_v1:'];
 const PRESENCE_CHANNEL_NAME = 'connect:presence';
-const COMPANY_PASSWORD_HINT_KEY_PREFIX = 'connect_company_dashboard_password_';
 
 const CACHE_TTL = {
   users: 1000 * 60 * 60 * 6,
@@ -561,31 +553,6 @@ function loadJsonFromStorage<T>(key: string, fallback: T): T {
   }
 }
 
-function getCompanyPasswordHintKey(uid: string) {
-  return `${COMPANY_PASSWORD_HINT_KEY_PREFIX}${uid}`;
-}
-
-function readCompanyPasswordHint(uid: string) {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.localStorage.getItem(getCompanyPasswordHintKey(uid)) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-function writeCompanyPasswordHint(uid: string, value: boolean) {
-  if (typeof window === 'undefined') return;
-  try {
-    if (value) {
-      window.localStorage.setItem(getCompanyPasswordHintKey(uid), 'true');
-      return;
-    }
-    window.localStorage.removeItem(getCompanyPasswordHintKey(uid));
-  } catch {
-    // Ignore localStorage failures for this non-critical UI hint.
-  }
-}
 
 function readMemoryCache<T>(key: string, maxAgeMs: number): T | null {
   const cached = memoryCache.get(key) as CacheEntry<T> | undefined;
@@ -1807,155 +1774,6 @@ export const supabaseService = {
       return mapped;
     },
 
-  async hasCompanyDashboardPassword(uid: string): Promise<boolean> {
-    try {
-      const row = await runQuery<Pick<DbCompanyDashboardSecurity, 'user_uid'> | null>(
-        supabase.from('company_dashboard_security').select('user_uid').eq('user_uid', uid).maybeSingle(),
-        'hasCompanyDashboardPassword'
-      );
-      const exists = !!row;
-      if (exists) {
-        writeCompanyPasswordHint(uid, true);
-      }
-      return exists || readCompanyPasswordHint(uid);
-    } catch {
-      return readCompanyPasswordHint(uid);
-    }
-  },
-
-  async setCompanyDashboardPassword(uid: string, password: string): Promise<void> {
-    if (password.trim().length < 6) {
-      throw new Error('Company dashboard password must be at least 6 characters.');
-    }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user || user.id !== uid) {
-      throw new Error('You must be signed in as this company account to set the company dashboard password.');
-    }
-
-    const { error: authError } = await supabase.auth.updateUser({ password });
-    if (authError) {
-      throw new Error(authError.message || 'Unable to update account password for company dashboard access.');
-    }
-
-    writeCompanyPasswordHint(uid, true);
-
-    const nextHash = await hashSecret(password);
-    const now = new Date().toISOString();
-    try {
-      await runQuery(
-        supabase.from('company_dashboard_security').upsert(
-          {
-            user_uid: uid,
-            password_hash: nextHash,
-            updated_at: now,
-            created_at: now,
-          },
-          { onConflict: 'user_uid' }
-        ),
-        'setCompanyDashboardPassword'
-      );
-    } catch (error) {
-      console.error('Company dashboard password marker could not be persisted:', error);
-    }
-  },
-
-  async getCompanyDashboardAccessByEmail(email: string): Promise<CompanyDashboardAccess | null> {
-    const profile = await this.getUserProfileByEmail(email);
-    if (!profile) return null;
-
-    const [partnerRequest, passwordSet] = await Promise.all([
-      this.getMyCompanyPartnerRequest(profile.uid),
-      this.hasCompanyDashboardPassword(profile.uid),
-    ]);
-
-    if (!partnerRequest || partnerRequest.status !== 'approved') {
-      return null;
-    }
-
-    return {
-      userUid: profile.uid,
-      email: profile.email,
-      companyName: partnerRequest.companyName,
-      companyLogoUrl: partnerRequest.companyLogoUrl,
-      passwordSet,
-    };
-  },
-
-  async verifyCompanyDashboardLogin(email: string, password: string): Promise<CompanyDashboardAccess> {
-    const { data, error } = await supabase.rpc('verify_company_dashboard_login', {
-      p_email: email.trim().toLowerCase(),
-      p_password: password,
-    });
-
-    if (error) {
-      throw new Error(error.message || 'Unable to verify company dashboard login.');
-    }
-
-    const row = Array.isArray(data) ? data[0] : data;
-    if (!row) {
-      throw new Error('Invalid company email or company dashboard password.');
-    }
-
-    return {
-      userUid: row.user_uid,
-      email: row.email,
-      companyName: row.company_name,
-      companyLogoUrl: row.company_logo_url,
-      passwordSet: true,
-    };
-  },
-
-  async listAcceptedCompanyApplicants(clientUid: string): Promise<Array<{ proposal: Proposal; job: Job; freelancer: UserProfile }>> {
-    const jobs = await runQuery<DbJob[]>(
-      supabase
-        .from('jobs')
-        .select('*')
-        .eq('client_uid', clientUid)
-        .order('created_at', { ascending: false }),
-      'listAcceptedCompanyApplicants:jobs'
-    );
-
-    if (jobs.length === 0) {
-      return [];
-    }
-
-    const jobIds = jobs.map((job) => job.id);
-    const proposals = await runQuery<DbProposal[]>(
-      supabase
-        .from('proposals')
-        .select('*')
-        .in('job_id', jobIds)
-        .eq('status', 'accepted')
-        .order('created_at', { ascending: false }),
-      'listAcceptedCompanyApplicants:proposals'
-    );
-
-    if (proposals.length === 0) {
-      return [];
-    }
-
-    const freelancerUids = Array.from(new Set(proposals.map((proposal) => proposal.freelancer_uid)));
-    const freelancers = await this.getUsersByUids(freelancerUids);
-    const jobsById = new Map(jobs.map((job) => [job.id, mapJobFromDb(job)]));
-    const freelancersByUid = new Map(freelancers.map((freelancer) => [freelancer.uid, freelancer]));
-
-    return proposals
-      .map((proposal) => {
-        const job = jobsById.get(proposal.job_id);
-        const freelancer = freelancersByUid.get(proposal.freelancer_uid);
-        if (!job || !freelancer) return null;
-        return {
-          proposal: mapProposalFromDb(proposal),
-          job,
-          freelancer,
-        };
-      })
-      .filter((item): item is { proposal: Proposal; job: Job; freelancer: UserProfile } => !!item);
-  },
-
   async getApprovedCompanyPartnerRequestsByUserUids(userUids: string[]): Promise<Record<string, CompanyPartnerRequest>> {
     const uniqueUids = Array.from(new Set(userUids.filter(Boolean)));
     if (uniqueUids.length === 0) return {};
@@ -1967,6 +1785,19 @@ export const supabaseService = {
       acc[row.user_uid] = mapCompanyPartnerRequestFromDb(row);
       return acc;
     }, {});
+  },
+
+  async listApprovedCompanyPartnerRequests(limitCount: number = 12): Promise<CompanyPartnerRequest[]> {
+    const rows = await runQuery<DbCompanyPartnerRequest[]>(
+      supabase
+        .from('company_partner_requests')
+        .select('*')
+        .eq('status', 'approved')
+        .order('created_at', { ascending: false })
+        .limit(limitCount),
+      'listApprovedCompanyPartnerRequests'
+    );
+    return rows.map(mapCompanyPartnerRequestFromDb);
   },
 
   async listMarketSellerRatings(): Promise<MarketSellerRating[]> {
