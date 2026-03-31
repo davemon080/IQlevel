@@ -4,6 +4,7 @@ import { ArrowLeft, Building2, Globe, Link2, Loader2, Lock, Send, Upload, BadgeC
 import { UserProfile, CompanyPartnerRequest } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
+import { AnimatePresence, motion } from 'motion/react';
 
 interface PartnershipPageProps {
   profile?: UserProfile | null;
@@ -40,6 +41,7 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
   const [confirmCompanyPassword, setConfirmCompanyPassword] = useState('');
   const [settingCompanyPassword, setSettingCompanyPassword] = useState(false);
   const [companyPasswordSet, setCompanyPasswordSet] = useState(false);
+  const [successEffect, setSuccessEffect] = useState<string | null>(null);
 
   useEffect(() => {
     if (!profile) return;
@@ -132,10 +134,16 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
     setMessage(null);
     try {
       await supabaseService.setCompanyDashboardPassword(profile.uid, companyPassword);
+      const passwordSaved = await supabaseService.hasCompanyDashboardPassword(profile.uid);
+      if (!passwordSaved) {
+        throw new Error('Company password did not finish saving. Please try again.');
+      }
       setCompanyPasswordSet(true);
       setCompanyPassword('');
       setConfirmCompanyPassword('');
       setMessage('Company dashboard password saved successfully.');
+      setSuccessEffect('Company password saved successfully.');
+      window.setTimeout(() => setSuccessEffect(null), 2600);
     } catch (error: any) {
       setMessage(error?.message || 'Failed to save company dashboard password.');
     } finally {
@@ -145,6 +153,18 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
 
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-8">
+      <AnimatePresence>
+        {successEffect && (
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 24, scale: 0.96 }}
+            className="fixed right-4 top-4 z-50 rounded-2xl bg-emerald-600 px-5 py-4 text-sm font-bold text-white shadow-2xl"
+          >
+            {successEffect}
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="mx-auto max-w-5xl space-y-6">
         <div className="flex items-center gap-3">
           <button
