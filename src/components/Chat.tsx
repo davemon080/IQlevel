@@ -561,9 +561,8 @@ export default function Chat({ profile }: ChatProps) {
     setShowAttachmentMenu(false);
     setShowChatOnMobile(false);
     setSelectedContact(null);
-    setSearchParams({}, { replace: replaceHistory });
     navigate('/messages', { replace: replaceHistory });
-  }, [navigate, setSearchParams]);
+  }, [navigate]);
 
   const handleBackToChatList = React.useCallback(() => {
     closeChatView(true);
