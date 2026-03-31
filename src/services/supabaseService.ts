@@ -2309,6 +2309,13 @@ export const supabaseService = {
     callback: (messages: Message[]) => void,
     onError?: (error: any) => void
   ) {
+    const cacheKey = `messages:${uid}:${otherUid}`;
+    const cached = readCacheAnyAge<Message[]>(cacheKey);
+    if (cached) callback(cached);
+
+    let active = true;
+    let fetchVersion = 0;
+
     const fetcher = async () => {
       try {
         const rows = await runQuery<DbMessage[]>(
@@ -2331,7 +2338,52 @@ export const supabaseService = {
       }
     };
 
-    return subscribeToTable('messages', fetcher, callback, undefined, onError, `messages:${uid}:${otherUid}`);
+    const refresh = async () => {
+      const currentVersion = ++fetchVersion;
+      try {
+        const messages = await fetcher();
+        writeCache(cacheKey, messages);
+        if (active && currentVersion === fetchVersion) {
+          callback(messages);
+        }
+      } catch (error) {
+        console.error('Supabase fetch error (subscribeToMessages):', error);
+      }
+    };
+
+    refresh();
+
+    const channels = [
+      supabase.channel(`realtime:conversation:sender:${uid}:${otherUid}:${Math.random().toString(36).slice(2)}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `sender_uid=eq.${uid}` },
+        refresh
+      ),
+      supabase.channel(`realtime:conversation:receiver:${uid}:${otherUid}:${Math.random().toString(36).slice(2)}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `receiver_uid=eq.${uid}` },
+        refresh
+      ),
+      supabase.channel(`realtime:conversation:sender:${otherUid}:${uid}:${Math.random().toString(36).slice(2)}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `sender_uid=eq.${otherUid}` },
+        refresh
+      ),
+      supabase.channel(`realtime:conversation:receiver:${otherUid}:${uid}:${Math.random().toString(36).slice(2)}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `receiver_uid=eq.${otherUid}` },
+        refresh
+      ),
+    ];
+
+    channels.forEach((channel) => channel.subscribe());
+    const interval = window.setInterval(refresh, 2500);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      channels.forEach((channel) => supabase.removeChannel(channel));
+    };
   },
 
   async markMessagesAsRead(uid: string, otherUid: string, readAt: string = new Date().toISOString()) {
@@ -2374,8 +2426,51 @@ export const supabaseService = {
   },
 
   subscribeToUnreadMessageCounts(uid: string, callback: (counts: Record<string, number>) => void, onError?: (error: any) => void) {
+    const cacheKey = `unread:messages:${uid}`;
+    const cached = readCacheAnyAge<Record<string, number>>(cacheKey);
+    if (cached) callback(cached);
+
+    let active = true;
+    let fetchVersion = 0;
     const fetcher = async () => this.getUnreadMessageCounts(uid);
-    return subscribeToTable('messages', fetcher, callback, `receiver_uid=eq.${uid}`, onError, `unread:messages:${uid}`);
+
+    const refresh = async () => {
+      const currentVersion = ++fetchVersion;
+      try {
+        const counts = await fetcher();
+        writeCache(cacheKey, counts);
+        if (active && currentVersion === fetchVersion) {
+          callback(counts);
+        }
+      } catch (error) {
+        console.error('Supabase fetch error (subscribeToUnreadMessageCounts):', error);
+        onError?.(error);
+      }
+    };
+
+    refresh();
+
+    const receiverChannel = supabase.channel(`realtime:unread:receiver:${uid}:${Math.random().toString(36).slice(2)}`).on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'messages', filter: `receiver_uid=eq.${uid}` },
+      refresh
+    );
+    const senderChannel = supabase.channel(`realtime:unread:sender:${uid}:${Math.random().toString(36).slice(2)}`).on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'messages', filter: `sender_uid=eq.${uid}` },
+      refresh
+    );
+
+    receiverChannel.subscribe();
+    senderChannel.subscribe();
+    const interval = window.setInterval(refresh, 2500);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      supabase.removeChannel(receiverChannel);
+      supabase.removeChannel(senderChannel);
+    };
   },
 
   subscribeToMessageEvents(
