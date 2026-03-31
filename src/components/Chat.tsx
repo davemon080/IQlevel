@@ -56,10 +56,23 @@ export default function Chat({ profile }: ChatProps) {
   const [messageActionsMessage, setMessageActionsMessage] = useState<LocalMessage | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [showKeyboardDock, setShowKeyboardDock] = useState(false);
+  const [keyboardLayout, setKeyboardLayout] = useState<'letters' | 'symbols'>('letters');
+  const [keyboardShift, setKeyboardShift] = useState(true);
   const typingTimeoutRef = useRef<number | null>(null);
   const holdTimeoutRef = useRef<number | null>(null);
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
+  const selectionRef = useRef({ start: 0, end: 0 });
   const quickKeyboardActions = ['Hello', 'Thanks', 'On it', 'Can we talk?', 'I have an update', 'Please check this'];
+  const letterRows = [
+    ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+    ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
+    ['z', 'x', 'c', 'v', 'b', 'n', 'm'],
+  ];
+  const symbolRows = [
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+    ['@', '#', '$', '&', '*', '(', ')', '-', '+'],
+    ['.', ',', '?', '!', ':', ';', '/', '"', "'"],
+  ];
 
   const mergeChats = React.useCallback((incomingChats: ChatSummary[], recentChats: ChatSummary[] = []) => {
     const merged = new Map<string, ChatSummary>();
@@ -151,6 +164,73 @@ export default function Chat({ profile }: ChatProps) {
     inputRef.current.style.height = '0px';
     inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 168)}px`;
   };
+
+  const syncSelection = React.useCallback((start?: number, end?: number) => {
+    const input = inputRef.current;
+    const nextStart = Math.max(0, Math.min(start ?? input?.selectionStart ?? newMessage.length, newMessage.length));
+    const nextEnd = Math.max(nextStart, Math.min(end ?? input?.selectionEnd ?? nextStart, newMessage.length));
+    selectionRef.current = { start: nextStart, end: nextEnd };
+  }, [newMessage.length]);
+
+  const focusComposer = React.useCallback((cursorPosition?: number) => {
+    setIsComposerFocused(true);
+    setShowKeyboardDock(true);
+    window.setTimeout(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      const nextCursor = Math.max(0, Math.min(cursorPosition ?? selectionRef.current.end, input.value.length));
+      input.setSelectionRange(nextCursor, nextCursor);
+      selectionRef.current = { start: nextCursor, end: nextCursor };
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 40);
+  }, []);
+
+  const updateMessageAtSelection = React.useCallback((replacement: string, options?: { keepShift?: boolean }) => {
+    const start = Math.max(0, Math.min(selectionRef.current.start, newMessage.length));
+    const end = Math.max(start, Math.min(selectionRef.current.end, newMessage.length));
+    const nextValue = `${newMessage.slice(0, start)}${replacement}${newMessage.slice(end)}`;
+    const nextCursor = start + replacement.length;
+    setNewMessage(nextValue);
+    if (!options?.keepShift && keyboardLayout === 'letters' && keyboardShift && /[a-z]/i.test(replacement)) {
+      setKeyboardShift(false);
+    }
+    if (/[.!?]\s*$/.test(replacement)) {
+      setKeyboardShift(true);
+    }
+    focusComposer(nextCursor);
+  }, [focusComposer, keyboardLayout, keyboardShift, newMessage]);
+
+  const insertKeyboardValue = React.useCallback((value: string) => {
+    const nextValue = keyboardLayout === 'letters' && keyboardShift ? value.toUpperCase() : value;
+    updateMessageAtSelection(nextValue);
+  }, [keyboardLayout, keyboardShift, updateMessageAtSelection]);
+
+  const deleteBeforeCursor = React.useCallback(() => {
+    const { start, end } = selectionRef.current;
+    if (start !== end) {
+      updateMessageAtSelection('', { keepShift: true });
+      return;
+    }
+    if (start === 0) return;
+    selectionRef.current = { start: start - 1, end };
+    const nextValue = `${newMessage.slice(0, start - 1)}${newMessage.slice(end)}`;
+    setNewMessage(nextValue);
+    focusComposer(start - 1);
+  }, [focusComposer, newMessage, updateMessageAtSelection]);
+
+  const moveCursor = React.useCallback((direction: 'left' | 'right') => {
+    const delta = direction === 'left' ? -1 : 1;
+    const nextCursor = Math.max(0, Math.min((selectionRef.current.end ?? newMessage.length) + delta, newMessage.length));
+    focusComposer(nextCursor);
+  }, [focusComposer, newMessage.length]);
+
+  const clearComposerText = React.useCallback(() => {
+    setNewMessage('');
+    setKeyboardShift(true);
+    focusComposer(0);
+  }, [focusComposer]);
 
   useEffect(() => {
     if (!window.visualViewport) return;
@@ -427,6 +507,17 @@ export default function Chat({ profile }: ChatProps) {
     adjustComposerHeight();
   }, [newMessage]);
 
+  useEffect(() => {
+    if (!newMessage) {
+      selectionRef.current = { start: 0, end: 0 };
+    } else {
+      syncSelection(
+        Math.min(selectionRef.current.start, newMessage.length),
+        Math.min(selectionRef.current.end, newMessage.length)
+      );
+    }
+  }, [newMessage, syncSelection]);
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const messageText = newMessage.trim();
@@ -588,9 +679,10 @@ export default function Chat({ profile }: ChatProps) {
     setEditingMessageId(message.id);
     setNewMessage(message.content);
     setMessageActionsMessage(null);
+    setKeyboardLayout('letters');
+    setKeyboardShift(false);
     window.setTimeout(() => {
-      inputRef.current?.focus();
-      inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      focusComposer(message.content.length);
     }, 80);
   };
 
@@ -610,16 +702,9 @@ export default function Chat({ profile }: ChatProps) {
   };
 
   const insertQuickMessage = (snippet: string) => {
-    setNewMessage((prev) => {
-      const trimmed = prev.trim();
-      if (!trimmed) return snippet;
-      return `${prev}${prev.endsWith(' ') ? '' : ' '}${snippet}`;
-    });
-    setShowKeyboardDock(true);
-    window.setTimeout(() => {
-      inputRef.current?.focus();
-      inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 80);
+    const prefix = newMessage.trim() ? `${newMessage}${newMessage.endsWith(' ') ? '' : ' '}` : '';
+    setNewMessage(`${prefix}${snippet}`);
+    focusComposer(`${prefix}${snippet}`.length);
   };
 
   const handleClearCurrentChat = async () => {
@@ -643,6 +728,8 @@ export default function Chat({ profile }: ChatProps) {
     setSelectedFiles([]);
     setNewMessage('');
     setShowKeyboardDock(false);
+    setKeyboardLayout('letters');
+    setKeyboardShift(true);
     setSearchParams({}, { replace: true });
     navigate('/messages', { replace: replaceHistory });
   }, [navigate, setSearchParams]);
@@ -1219,7 +1306,13 @@ export default function Chat({ profile }: ChatProps) {
                     ref={inputRef}
                     rows={1}
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    readOnly
+                    inputMode="none"
+                    onClick={() => {
+                      syncSelection();
+                      focusComposer(inputRef.current?.selectionStart ?? newMessage.length);
+                    }}
+                    onSelect={() => syncSelection()}
                     onFocus={() => {
                       setIsComposerFocused(true);
                       setShowKeyboardDock(true);
@@ -1233,16 +1326,16 @@ export default function Chat({ profile }: ChatProps) {
                     }}
                     placeholder={editingMessageId ? 'Edit your message' : 'Type a message'}
                     enterKeyHint="send"
-                    autoCapitalize="sentences"
-                    autoCorrect="on"
-                    spellCheck
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     className="w-full rounded-[1.75rem] border-transparent bg-transparent px-4 py-3 pr-12 text-[15px] transition-all focus:ring-0 resize-none overflow-y-auto max-h-40"
                   />
                   <button
                     type="button"
                     onClick={() => {
                       setShowKeyboardDock((prev) => !prev);
-                      window.setTimeout(() => inputRef.current?.focus(), 60);
+                      window.setTimeout(() => focusComposer(selectionRef.current.end), 60);
                     }}
                     className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 transition-all ${showKeyboardDock ? 'bg-teal-50 text-teal-600' : 'text-gray-400 hover:text-gray-600'}`}
                   >
@@ -1261,9 +1354,9 @@ export default function Chat({ profile }: ChatProps) {
                 )}
               </form>
               {(showKeyboardDock || isMobile) && (
-                <div className="mt-2 rounded-2xl bg-white px-2 py-2 shadow-sm">
+                <div className="mt-2 rounded-3xl bg-white px-2 py-2 shadow-sm border border-gray-100">
                   <div className="flex items-center justify-between px-2 pb-2">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Quick Keyboard</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Connect Keyboard</p>
                     <button
                       type="button"
                       onClick={() => setShowKeyboardDock((prev) => !prev)}
@@ -1290,6 +1383,96 @@ export default function Chat({ profile }: ChatProps) {
                     >
                       Emoji
                     </button>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {(keyboardLayout === 'letters' ? letterRows : symbolRows).map((row, rowIndex) => (
+                      <div
+                        key={`${keyboardLayout}-${rowIndex}`}
+                        className={`grid gap-2 ${rowIndex === 1 ? 'grid-cols-9 px-3' : rowIndex === 2 ? 'grid-cols-[auto_repeat(7,minmax(0,1fr))_auto] md:grid-cols-[auto_repeat(7,minmax(0,1fr))_auto]' : 'grid-cols-10'}`}
+                      >
+                        {rowIndex === 2 && (
+                          <button
+                            type="button"
+                            onClick={() => setKeyboardShift((prev) => !prev)}
+                            className={`rounded-2xl px-3 py-3 text-xs font-black transition-all ${keyboardShift ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                          >
+                            Shift
+                          </button>
+                        )}
+                        {row.map((key) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => insertKeyboardValue(key)}
+                            className="rounded-2xl bg-gray-100 px-2 py-3 text-sm font-bold text-gray-800 transition-all hover:bg-teal-50 hover:text-teal-700 active:scale-[0.98]"
+                          >
+                            {keyboardLayout === 'letters' && keyboardShift ? key.toUpperCase() : key}
+                          </button>
+                        ))}
+                        {rowIndex === 2 && (
+                          <button
+                            type="button"
+                            onClick={deleteBeforeCursor}
+                            className="rounded-2xl bg-gray-900 px-3 py-3 text-xs font-black text-white transition-all hover:bg-black"
+                          >
+                            Back
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setKeyboardLayout((prev) => prev === 'letters' ? 'symbols' : 'letters')}
+                        className="rounded-2xl bg-gray-100 px-3 py-3 text-xs font-black text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                      >
+                        {keyboardLayout === 'letters' ? '123' : 'ABC'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateMessageAtSelection('\n', { keepShift: true })}
+                        className="rounded-2xl bg-gray-100 px-3 py-3 text-xs font-black text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                      >
+                        Enter
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateMessageAtSelection(' ', { keepShift: true })}
+                        className="rounded-2xl bg-gray-100 px-3 py-3 text-sm font-black text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                      >
+                        Space
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveCursor('left')}
+                        className="rounded-2xl bg-gray-100 px-3 py-3 text-xs font-black text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                      >
+                        Left
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveCursor('right')}
+                        className="rounded-2xl bg-gray-100 px-3 py-3 text-xs font-black text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                      >
+                        Right
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-[auto_1fr] gap-2">
+                      <button
+                        type="button"
+                        onClick={clearComposerText}
+                        className="rounded-2xl bg-red-50 px-4 py-3 text-xs font-black text-red-600 hover:bg-red-100"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => insertQuickMessage('👍')}
+                        className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-black text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                      >
+                        Quick reaction
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
