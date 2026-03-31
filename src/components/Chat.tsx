@@ -548,12 +548,15 @@ export default function Chat({ profile }: ChatProps) {
     navigate(`/wallets/transfer/details?${params.toString()}`);
   };
 
-  const filteredActiveChats = activeChats.filter(chat => 
-    chat.user.displayName.toLowerCase().includes(sidebarSearchQuery.toLowerCase()) ||
-    chat.lastMessage?.toLowerCase().includes(sidebarSearchQuery.toLowerCase())
-  );
+  const filteredActiveChats = activeChats.filter((chat) => {
+    if (!chat?.user?.uid || !chat.user.displayName) return false;
+    return (
+      chat.user.displayName.toLowerCase().includes(sidebarSearchQuery.toLowerCase()) ||
+      String(chat.lastMessage || '').toLowerCase().includes(sidebarSearchQuery.toLowerCase())
+    );
+  });
 
-  const filteredNewChatUsers = allUsers.filter(user =>
+  const filteredNewChatUsers = allUsers.filter((user) =>
     user.displayName.toLowerCase().includes(newChatSearchQuery.toLowerCase()) ||
     user.role.toLowerCase().includes(newChatSearchQuery.toLowerCase())
   );

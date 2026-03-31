@@ -42,7 +42,7 @@ export default function JobApply({ profile }: JobApplyProps) {
         freelancerUid: profile.uid,
         jobId,
         content,
-        budget: convertToUSD(budget, currency),
+        budget: Number(convertToUSD(budget, currency).toFixed(6)),
       });
       navigate('/jobs');
     } catch (err: any) {

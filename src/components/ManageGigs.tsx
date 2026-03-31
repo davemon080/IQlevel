@@ -190,7 +190,11 @@ export default function ManageGigs({ profile }: ManageGigsProps) {
 
   const launchApplicantPayment = (application: Proposal) => {
     const applicant = applicantProfiles[application.freelancerUid];
-    const agreedUsdAmount = application.budget > 0 ? application.budget : selectedJob?.budget || 0;
+    const selectedJobBudget = selectedJob?.budget || 0;
+    const agreedUsdAmount =
+      application.budget > 0 && Math.abs(application.budget - selectedJobBudget) >= 0.01
+        ? application.budget
+        : selectedJobBudget;
     const amountInWalletCurrency = Number(convertAmount(agreedUsdAmount, 'USD', currency).toFixed(2));
     const params = new URLSearchParams({
       recipient: encodeURIComponent(applicant?.publicId || applicant?.uid || application.freelancerUid),
@@ -198,6 +202,8 @@ export default function ManageGigs({ profile }: ManageGigsProps) {
       amount: amountInWalletCurrency.toString(),
       currency,
       autoPin: '1',
+      source: 'gig-payment',
+      jobId: selectedJob?.id || '',
     });
     navigate(`/wallets/transfer/details?${params.toString()}`);
   };
