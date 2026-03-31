@@ -609,39 +609,6 @@ export default function Chat({ profile }: ChatProps) {
     </div>
   );
 
-  if (loading) return (
-    <div className="h-full bg-white flex">
-      <div className="w-full md:w-96 border-r border-gray-200 flex flex-col">
-        <div className="p-4 border-b border-gray-100 bg-gray-50/30">
-          <div className="h-8 bg-gray-200 rounded w-1/2 mb-4 animate-pulse"></div>
-          <div className="h-10 bg-gray-200 rounded w-full animate-pulse"></div>
-        </div>
-        <ChatSkeleton />
-      </div>
-      <div className="hidden md:flex flex-1 bg-gray-50 items-center justify-center">
-        <div className="text-center animate-pulse">
-          <MessageSquare size={48} className="text-gray-200 mx-auto mb-4" />
-          <div className="h-4 bg-gray-200 rounded w-48 mx-auto"></div>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (error) return (
-    <div className="h-full flex flex-col items-center justify-center p-6 text-center">
-      <div className="bg-red-50 text-red-600 p-4 rounded-2xl mb-4 max-w-md">
-        <p className="font-bold mb-1">Something went wrong</p>
-        <p className="text-sm">{error}</p>
-      </div>
-      <button 
-        onClick={() => window.location.reload()}
-        className="px-6 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold"
-      >
-        Retry
-      </button>
-    </div>
-  );
-
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
   const mobileViewportHeight = typeof window !== 'undefined' ? Math.max(320, viewportHeight || window.innerHeight) : 320;
   const keyboardInset = typeof window !== 'undefined'
@@ -684,6 +651,39 @@ export default function Chat({ profile }: ChatProps) {
   }, [showAttachmentMenu]);
 
   useEffect(() => cancelHold, []);
+
+  if (loading) return (
+    <div className="h-full bg-white flex">
+      <div className="w-full md:w-96 border-r border-gray-200 flex flex-col">
+        <div className="p-4 border-b border-gray-100 bg-gray-50/30">
+          <div className="h-8 bg-gray-200 rounded w-1/2 mb-4 animate-pulse"></div>
+          <div className="h-10 bg-gray-200 rounded w-full animate-pulse"></div>
+        </div>
+        <ChatSkeleton />
+      </div>
+      <div className="hidden md:flex flex-1 bg-gray-50 items-center justify-center">
+        <div className="text-center animate-pulse">
+          <MessageSquare size={48} className="text-gray-200 mx-auto mb-4" />
+          <div className="h-4 bg-gray-200 rounded w-48 mx-auto"></div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (error) return (
+    <div className="h-full flex flex-col items-center justify-center p-6 text-center">
+      <div className="bg-red-50 text-red-600 p-4 rounded-2xl mb-4 max-w-md">
+        <p className="font-bold mb-1">Something went wrong</p>
+        <p className="text-sm">{error}</p>
+      </div>
+      <button 
+        onClick={() => window.location.reload()}
+        className="px-6 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold"
+      >
+        Retry
+      </button>
+    </div>
+  );
 
   return (
     <div 
