@@ -99,7 +99,7 @@ export default function Chat({ profile }: ChatProps) {
     return '';
   }, []);
 
-  const openChat = React.useCallback((user: UserProfile, options?: { otherUid?: string; lastMessage?: string; updatedAt?: string }) => {
+  const openChat = React.useCallback((user: UserProfile, options?: { otherUid?: string; lastMessage?: string; updatedAt?: string; syncUrl?: boolean }) => {
     const otherUid = options?.otherUid || user.uid;
     setSelectedContact(user);
     setShowChatOnMobile(true);
@@ -110,7 +110,9 @@ export default function Chat({ profile }: ChatProps) {
       updatedAt: options?.updatedAt || new Date().toISOString(),
     });
     clearUnreadForChat(otherUid);
-    setSearchParams({ uid: otherUid });
+    if (options?.syncUrl !== false) {
+      setSearchParams({ uid: otherUid });
+    }
     supabaseService.markMessagesAsRead(profile.uid, otherUid).catch(() => undefined);
   }, [clearUnreadForChat, profile.uid, setSearchParams, upsertLocalChat]);
 
@@ -256,7 +258,7 @@ export default function Chat({ profile }: ChatProps) {
       // Check if user is already in active chats to avoid extra fetch
       const activeChat = activeChats.find((c) => c.otherUid === targetUid);
       if (activeChat) {
-        openChat(activeChat.user, activeChat);
+        openChat(activeChat.user, { ...activeChat, syncUrl: false });
       } else if (isInitialLoad.current || !selectedContact) {
         // Fetch user if not in active chats or if it's the initial load
         try {
@@ -266,6 +268,7 @@ export default function Chat({ profile }: ChatProps) {
               otherUid: user.uid,
               lastMessage: '',
               updatedAt: new Date().toISOString(),
+              syncUrl: false,
             });
           }
         } catch (err) {
@@ -561,8 +564,9 @@ export default function Chat({ profile }: ChatProps) {
     setShowAttachmentMenu(false);
     setShowChatOnMobile(false);
     setSelectedContact(null);
+    setSearchParams({}, { replace: true });
     navigate('/messages', { replace: replaceHistory });
-  }, [navigate]);
+  }, [navigate, setSearchParams]);
 
   const handleBackToChatList = React.useCallback(() => {
     closeChatView(true);
