@@ -1,10 +1,27 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { UserProfile, Message, Attachment } from '../types';
-import { supabaseService } from '../services/supabaseService';
-import { Send, Search, MessageSquare, MoreVertical, ArrowLeft, Smile, PlusSquare, Lock, FileIcon, X, Download, Image as ImageIcon, Loader2, Check, Video, CircleDollarSign } from 'lucide-react';
+import React from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format, isToday, isYesterday } from 'date-fns';
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  ArrowLeft,
+  Check,
+  CircleDollarSign,
+  Download,
+  FileIcon,
+  Image as ImageIcon,
+  Loader2,
+  Lock,
+  MessageSquare,
+  MoreVertical,
+  PlusSquare,
+  Search,
+  Send,
+  Smile,
+  Video,
+  X,
+} from 'lucide-react';
+import { Attachment, Message, UserProfile } from '../types';
+import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
 
 interface ChatProps {
@@ -12,6 +29,7 @@ interface ChatProps {
 }
 
 type LocalMessage = Message & { localStatus?: 'pending' | 'sent' | 'failed' };
+
 type ChatSummary = {
   otherUid: string;
   user: UserProfile;
@@ -19,107 +37,272 @@ type ChatSummary = {
   updatedAt: string;
 };
 
+type PresenceInfo = {
+  userUid: string;
+  onlineAt?: string;
+  visibilityState?: string;
+  typingTo?: string | null;
+  viewingChatUid?: string | null;
+  updatedAt?: string;
+};
+
+type KeyboardPane = 'keys' | 'emoji';
+type KeyboardLayout = 'letters' | 'symbols';
+
+const LONG_PRESS_DELAY_MS = 520;
+const LETTER_ROWS = [
+  ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+  ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
+  ['z', 'x', 'c', 'v', 'b', 'n', 'm'],
+];
+const SYMBOL_ROWS = [
+  ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+  ['@', '#', '$', '&', '*', '(', ')', '-', '+'],
+  ['.', ',', '?', '!', ':', ';', '/', '"', "'"],
+];
+const QUICK_PHRASES = ['Hello', 'Thanks', 'On it', 'Can we talk?', 'I have an update', 'Please check this'];
+const EMOJI_GROUPS = [
+  { label: 'Faces', items: ['😀', '😂', '😍', '🥹', '😎', '🤔', '😭', '😴'] },
+  { label: 'Gestures', items: ['👍', '👏', '🙌', '🤝', '🙏', '👌', '💪', '👀'] },
+  { label: 'Work', items: ['🔥', '✅', '📌', '🧠', '💼', '📅', '📎', '💬'] },
+  { label: 'Mood', items: ['❤️', '✨', '🎉', '🌍', '🚀', '🎯', '⚡', '💡'] },
+];
+
+function mergeChatSummaries(incoming: ChatSummary[], existing: ChatSummary[] = []) {
+  const map = new Map<string, ChatSummary>();
+  [...incoming, ...existing].forEach((chat) => {
+    if (!chat?.otherUid || !chat.user?.uid || !chat.user.displayName) return;
+    const prev = map.get(chat.otherUid);
+    if (!prev || new Date(chat.updatedAt || 0).getTime() >= new Date(prev.updatedAt || 0).getTime()) {
+      map.set(chat.otherUid, chat);
+    }
+  });
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+  );
+}
+
+function ensureDate(value?: string | Date | null) {
+  if (!value) return new Date();
+  if (value instanceof Date) return value;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function getPreviewText(message?: Pick<Message, 'content' | 'attachments'> | null) {
+  if (!message) return '';
+  const content = message.content?.trim();
+  if (content) return content;
+  if (Array.isArray(message.attachments) && message.attachments.length > 0) {
+    return message.attachments.length > 1 ? 'Attachments' : 'Attachment';
+  }
+  return '';
+}
+
+function formatChatListTimestamp(dateValue?: string) {
+  if (!dateValue) return '';
+  const date = ensureDate(dateValue);
+  if (isToday(date)) return format(date, 'HH:mm');
+  if (isYesterday(date)) return 'Yesterday';
+  return format(date, 'dd/MM/yy');
+}
+
+function getSafeAttachments(message: LocalMessage): Attachment[] {
+  if (!Array.isArray(message.attachments)) return [];
+  return message.attachments.filter(
+    (attachment): attachment is Attachment =>
+      !!attachment &&
+      typeof attachment.name === 'string' &&
+      typeof attachment.type === 'string' &&
+      typeof attachment.url === 'string' &&
+      typeof attachment.size === 'number'
+  );
+}
+
+function messagesMatchOptimistic(local: LocalMessage, server: Message) {
+  return (
+    local.id.startsWith('temp-') &&
+    local.senderUid === server.senderUid &&
+    local.receiverUid === server.receiverUid &&
+    local.content === server.content &&
+    Math.abs(new Date(local.createdAt).getTime() - new Date(server.createdAt).getTime()) < 10000
+  );
+}
+
+function mergeServerConversation(existing: LocalMessage[], serverMessages: Message[]) {
+  const serverLocals: LocalMessage[] = serverMessages.map((message) => ({
+    ...message,
+    localStatus: 'sent' as const,
+  }));
+  const leftovers = existing.filter((message) => {
+    if (message.localStatus === 'failed') return true;
+    if (!message.id.startsWith('temp-')) return false;
+    return !serverMessages.some((serverMessage) => messagesMatchOptimistic(message, serverMessage));
+  });
+  const merged = new Map<string, LocalMessage>();
+  [...serverLocals, ...leftovers].forEach((message) => merged.set(message.id, message));
+  return Array.from(merged.values()).sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+}
+
+function upsertRealtimeMessage(existing: LocalMessage[], incoming: Message, currentUid: string, otherUid: string) {
+  const belongs =
+    (incoming.senderUid === currentUid && incoming.receiverUid === otherUid) ||
+    (incoming.senderUid === otherUid && incoming.receiverUid === currentUid);
+  if (!belongs) return existing;
+
+  const existingIndex = existing.findIndex((message) => message.id === incoming.id);
+  if (existingIndex >= 0) {
+    const next = [...existing];
+    next[existingIndex] = { ...next[existingIndex], ...incoming, localStatus: 'sent' };
+    return next.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
+
+  const withoutTempDuplicate = existing.filter((message) => !messagesMatchOptimistic(message, incoming));
+  return [...withoutTempDuplicate, { ...incoming, localStatus: 'sent' as const }].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+}
+
+function getOutgoingReceiptState(message: LocalMessage, otherUserOnline: boolean) {
+  if (message.localStatus === 'pending') return 'pending';
+  if (message.localStatus === 'failed') return 'failed';
+  if (message.readAt) return 'read';
+  if (otherUserOnline) return 'delivered';
+  return 'sent';
+}
+
 export default function Chat({ profile }: ChatProps) {
-  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const targetUid = searchParams.get('uid');
-  
-  const [messages, setMessages] = useState<LocalMessage[]>([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [activeChats, setActiveChats] = useState<ChatSummary[]>([]);
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
-  const [selectedContact, setSelectedContact] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
-  const [newChatSearchQuery, setNewChatSearchQuery] = useState('');
-  const [showChatOnMobile, setShowChatOnMobile] = useState(false);
-  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [activeUploads, setActiveUploads] = useState(0);
+
+  const [isMobileLayout, setIsMobileLayout] = React.useState(
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [messagesLoading, setMessagesLoading] = React.useState(false);
+  const [messagesError, setMessagesError] = React.useState<string | null>(null);
+  const [activeChats, setActiveChats] = React.useState<ChatSummary[]>([]);
+  const [messages, setMessages] = React.useState<LocalMessage[]>([]);
+  const [allUsers, setAllUsers] = React.useState<UserProfile[]>([]);
+  const [selectedContact, setSelectedContact] = React.useState<UserProfile | null>(null);
+  const [showChatOnMobile, setShowChatOnMobile] = React.useState(false);
+  const [sidebarSearchQuery, setSidebarSearchQuery] = React.useState('');
+  const [newChatSearchQuery, setNewChatSearchQuery] = React.useState('');
+  const [isNewChatModalOpen, setIsNewChatModalOpen] = React.useState(false);
+  const [selectedFiles, setSelectedFiles] = React.useState<File[]>([]);
+  const [activeUploads, setActiveUploads] = React.useState(0);
+  const [showAttachmentMenu, setShowAttachmentMenu] = React.useState(false);
+  const [newMessage, setNewMessage] = React.useState('');
+  const [editingMessageId, setEditingMessageId] = React.useState<string | null>(null);
+  const [chatActionsUser, setChatActionsUser] = React.useState<UserProfile | null>(null);
+  const [messageActionsMessage, setMessageActionsMessage] = React.useState<LocalMessage | null>(null);
+  const [onlineUserIds, setOnlineUserIds] = React.useState<Set<string>>(new Set());
+  const [presenceState, setPresenceState] = React.useState<Record<string, PresenceInfo>>({});
+  const [unreadCounts, setUnreadCounts] = React.useState<Record<string, number>>({});
+  const [showKeyboard, setShowKeyboard] = React.useState(false);
+  const [keyboardPane, setKeyboardPane] = React.useState<KeyboardPane>('keys');
+  const [keyboardLayout, setKeyboardLayout] = React.useState<KeyboardLayout>('letters');
+  const [keyboardShift, setKeyboardShift] = React.useState(true);
+  const [composerHeight, setComposerHeight] = React.useState(88);
+  const [keyboardHeight, setKeyboardHeight] = React.useState(0);
+
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const composerRef = React.useRef<HTMLDivElement>(null);
+  const keyboardRef = React.useRef<HTMLDivElement>(null);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const attachmentMenuRef = React.useRef<HTMLDivElement>(null);
+  const initialLoadRef = React.useRef(true);
+  const selectionRef = React.useRef({ start: 0, end: 0 });
+  const holdTimeoutRef = React.useRef<number | null>(null);
+  const typingTimeoutRef = React.useRef<number | null>(null);
+
   const uploading = activeUploads > 0;
-  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const composerRef = useRef<HTMLDivElement>(null);
-  const isInitialLoad = useRef(true);
-  const [messagesLoading, setMessagesLoading] = useState(false);
-  const [messagesError, setMessagesError] = useState<string | null>(null);
-  const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 0);
-  const [viewportOffsetTop, setViewportOffsetTop] = useState(0);
-  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
-  const [presenceState, setPresenceState] = useState<Record<string, { userUid: string; onlineAt?: string; visibilityState?: string; typingTo?: string | null; viewingChatUid?: string | null; updatedAt?: string }>>({});
-  const [isComposerFocused, setIsComposerFocused] = useState(false);
-  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
-  const [chatActionsUser, setChatActionsUser] = useState<UserProfile | null>(null);
-  const [messageActionsMessage, setMessageActionsMessage] = useState<LocalMessage | null>(null);
-  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
-  const [showKeyboardDock, setShowKeyboardDock] = useState(false);
-  const [keyboardLayout, setKeyboardLayout] = useState<'letters' | 'symbols'>('letters');
-  const [keyboardShift, setKeyboardShift] = useState(true);
-  const [keyboardPane, setKeyboardPane] = useState<'keys' | 'emoji'>('keys');
-  const typingTimeoutRef = useRef<number | null>(null);
-  const holdTimeoutRef = useRef<number | null>(null);
-  const attachmentMenuRef = useRef<HTMLDivElement>(null);
-  const selectionRef = useRef({ start: 0, end: 0 });
-  const quickKeyboardActions = ['Hello', 'Thanks', 'On it', 'Can we talk?', 'I have an update', 'Please check this'];
-  const letterRows = [
-    ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
-    ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
-    ['z', 'x', 'c', 'v', 'b', 'n', 'm'],
-  ];
-  const symbolRows = [
-    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
-    ['@', '#', '$', '&', '*', '(', ')', '-', '+'],
-    ['.', ',', '?', '!', ':', ';', '/', '"', "'"],
-  ];
-  const emojiGroups = [
-    { label: 'Faces', items: ['😀', '😂', '😍', '🥹', '😎', '🤔', '😭', '😴'] },
-    { label: 'Gestures', items: ['👍', '👏', '🙌', '🤝', '🙏', '👌', '💪', '👀'] },
-    { label: 'Work', items: ['🔥', '✅', '📌', '🧠', '💼', '📅', '📎', '💬'] },
-    { label: 'Mood', items: ['❤️', '✨', '🎉', '🌍', '🚀', '🎯', '⚡', '💡'] },
-  ];
+  const selectedContactPresence = selectedContact ? presenceState[selectedContact.uid] : undefined;
+  const selectedContactOnline = selectedContact ? onlineUserIds.has(selectedContact.uid) : false;
+  const selectedContactTyping = selectedContactPresence?.typingTo === profile.uid;
+  const conversationBottomPadding = composerHeight + (showKeyboard ? keyboardHeight : 0) + 32;
 
-  const mergeChats = React.useCallback((incomingChats: ChatSummary[], recentChats: ChatSummary[] = []) => {
-    const merged = new Map<string, ChatSummary>();
-    [...incomingChats, ...recentChats].forEach((chat) => {
-      if (!chat?.otherUid || !chat?.user?.uid || !chat.user.displayName) return;
-      const existing = merged.get(chat.otherUid);
-      if (!existing) {
-        merged.set(chat.otherUid, chat);
-        return;
-      }
-
-      if (new Date(chat.updatedAt || 0).getTime() >= new Date(existing.updatedAt || 0).getTime()) {
-        merged.set(chat.otherUid, chat);
-      }
-    });
-
-    return Array.from(merged.values()).sort(
-      (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+  const filteredActiveChats = React.useMemo(() => {
+    const query = sidebarSearchQuery.trim().toLowerCase();
+    if (!query) return activeChats;
+    return activeChats.filter(
+      (chat) =>
+        chat.user.displayName.toLowerCase().includes(query) ||
+        String(chat.lastMessage || '').toLowerCase().includes(query)
     );
+  }, [activeChats, sidebarSearchQuery]);
+
+  const filteredNewChatUsers = React.useMemo(() => {
+    const query = newChatSearchQuery.trim().toLowerCase();
+    if (!query) return allUsers;
+    return allUsers.filter(
+      (user) =>
+        user.displayName.toLowerCase().includes(query) ||
+        user.role.toLowerCase().includes(query) ||
+        (user.publicId || '').toLowerCase().includes(query)
+    );
+  }, [allUsers, newChatSearchQuery]);
+
+  const findKnownUser = React.useCallback(
+    (uid: string) => {
+      if (selectedContact?.uid === uid) return selectedContact;
+      const chatUser = activeChats.find((chat) => chat.otherUid === uid)?.user;
+      if (chatUser) return chatUser;
+      const modalUser = allUsers.find((user) => user.uid === uid);
+      if (modalUser) return modalUser;
+      return supabaseService.profileCache.get(uid) || null;
+    },
+    [activeChats, allUsers, selectedContact]
+  );
+
+  const syncSelection = React.useCallback(
+    (start?: number, end?: number) => {
+      const input = inputRef.current;
+      const nextStart = Math.max(0, Math.min(start ?? input?.selectionStart ?? newMessage.length, newMessage.length));
+      const nextEnd = Math.max(nextStart, Math.min(end ?? input?.selectionEnd ?? nextStart, newMessage.length));
+      selectionRef.current = { start: nextStart, end: nextEnd };
+    },
+    [newMessage.length]
+  );
+
+  const focusInput = React.useCallback((cursorPosition?: number) => {
+    window.setTimeout(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      const nextCursor = Math.max(0, Math.min(cursorPosition ?? selectionRef.current.end, input.value.length));
+      input.setSelectionRange(nextCursor, nextCursor);
+      selectionRef.current = { start: nextCursor, end: nextCursor };
+    }, 20);
   }, []);
 
-  const upsertLocalChat = React.useCallback((chat: ChatSummary) => {
-    setActiveChats((prev) => mergeChats([chat], prev));
-  }, [mergeChats]);
+  const openKeyboard = React.useCallback(
+    (pane: KeyboardPane = 'keys', cursorPosition?: number) => {
+      setKeyboardPane(pane);
+      setShowKeyboard(true);
+      focusInput(cursorPosition);
+    },
+    [focusInput]
+  );
 
-  const updateChatRowLocally = React.useCallback((otherUid: string, user: UserProfile, preview: string, updatedAt: string) => {
+  const hideKeyboard = React.useCallback(() => {
+    setShowKeyboard(false);
+    setKeyboardPane('keys');
+  }, []);
+
+  const updateChatRow = React.useCallback((otherUid: string, user: UserProfile, lastMessage: string, updatedAt: string) => {
     setActiveChats((prev) =>
-      mergeChats(
-        [
-          {
-            otherUid,
-            user,
-            lastMessage: preview,
-            updatedAt,
-          },
-        ],
+      mergeChatSummaries(
+        [{ otherUid, user, lastMessage, updatedAt }],
         prev
       )
     );
-  }, [mergeChats]);
+  }, []);
 
   const clearUnreadForChat = React.useCallback((otherUid: string) => {
     setUnreadCounts((prev) => {
@@ -130,33 +313,6 @@ export default function Chat({ profile }: ChatProps) {
     });
   }, []);
 
-  const getPreviewText = React.useCallback((message?: Pick<Message, 'content' | 'attachments'> | null) => {
-    if (!message) return '';
-    const content = message.content?.trim();
-    if (content) return content;
-    if (message.attachments && message.attachments.length > 0) {
-      return message.attachments.length > 1 ? 'Attachments' : 'Attachment';
-    }
-    return '';
-  }, []);
-
-  const openChat = React.useCallback((user: UserProfile, options?: { otherUid?: string; lastMessage?: string; updatedAt?: string; syncUrl?: boolean }) => {
-    const otherUid = options?.otherUid || user.uid;
-    setSelectedContact(user);
-    setShowChatOnMobile(true);
-    upsertLocalChat({
-      otherUid,
-      user,
-      lastMessage: options?.lastMessage || '',
-      updatedAt: options?.updatedAt || new Date().toISOString(),
-    });
-    clearUnreadForChat(otherUid);
-    if (options?.syncUrl !== false) {
-      setSearchParams({ uid: otherUid });
-    }
-    supabaseService.markMessagesAsRead(profile.uid, otherUid).catch(() => undefined);
-  }, [clearUnreadForChat, profile.uid, setSearchParams, upsertLocalChat]);
-
   const updateUnreadForChat = React.useCallback((otherUid: string, updater: (current: number) => number) => {
     setUnreadCounts((prev) => {
       const nextValue = Math.max(0, updater(prev[otherUid] || 0));
@@ -166,308 +322,451 @@ export default function Chat({ profile }: ChatProps) {
         delete next[otherUid];
         return next;
       }
-      return {
-        ...prev,
-        [otherUid]: nextValue,
-      };
+      return { ...prev, [otherUid]: nextValue };
     });
   }, []);
 
-  const findKnownUser = React.useCallback((uid: string) => {
-    if (selectedContact?.uid === uid) return selectedContact;
-    const activeUser = activeChats.find((chat) => chat.otherUid === uid)?.user;
-    if (activeUser) return activeUser;
-    const knownUser = allUsers.find((user) => user.uid === uid);
-    if (knownUser) return knownUser;
-    return supabaseService.profileCache.get(uid) || null;
-  }, [activeChats, allUsers, selectedContact]);
+  const closeConversation = React.useCallback(
+    (replaceHistory: boolean = false) => {
+      setSelectedContact(null);
+      setShowChatOnMobile(false);
+      setMessages([]);
+      setMessagesError(null);
+      setEditingMessageId(null);
+      setSelectedFiles([]);
+      setShowAttachmentMenu(false);
+      hideKeyboard();
+      setSearchParams({}, { replace: true });
+      navigate('/messages', { replace: replaceHistory });
+    },
+    [hideKeyboard, navigate, setSearchParams]
+  );
 
-  const adjustComposerHeight = () => {
-    if (!inputRef.current) return;
-    inputRef.current.style.height = '0px';
-    inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 168)}px`;
-  };
+  const openConversation = React.useCallback(
+    (
+      user: UserProfile,
+      options?: { otherUid?: string; lastMessage?: string; updatedAt?: string; syncUrl?: boolean }
+    ) => {
+      const otherUid = options?.otherUid || user.uid;
+      setSelectedContact(user);
+      setShowChatOnMobile(true);
+      updateChatRow(otherUid, user, options?.lastMessage || '', options?.updatedAt || new Date().toISOString());
+      clearUnreadForChat(otherUid);
+      setMessagesError(null);
+      setEditingMessageId(null);
+      setSelectedFiles([]);
+      hideKeyboard();
+      if (options?.syncUrl !== false) {
+        setSearchParams({ uid: otherUid });
+      }
+      supabaseService.markMessagesAsRead(profile.uid, otherUid).catch(() => undefined);
+    },
+    [clearUnreadForChat, hideKeyboard, profile.uid, setSearchParams, updateChatRow]
+  );
 
-  const syncSelection = React.useCallback((start?: number, end?: number) => {
+  const adjustComposerHeight = React.useCallback(() => {
     const input = inputRef.current;
-    const nextStart = Math.max(0, Math.min(start ?? input?.selectionStart ?? newMessage.length, newMessage.length));
-    const nextEnd = Math.max(nextStart, Math.min(end ?? input?.selectionEnd ?? nextStart, newMessage.length));
-    selectionRef.current = { start: nextStart, end: nextEnd };
-  }, [newMessage.length]);
-
-  const focusComposer = React.useCallback((cursorPosition?: number) => {
-    setIsComposerFocused(true);
-    setShowKeyboardDock(true);
-    window.setTimeout(() => {
-      const input = inputRef.current;
-      if (!input) return;
-      input.focus({ preventScroll: true });
-      const nextCursor = Math.max(0, Math.min(cursorPosition ?? selectionRef.current.end, input.value.length));
-      input.setSelectionRange(nextCursor, nextCursor);
-      selectionRef.current = { start: nextCursor, end: nextCursor };
-      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }, 40);
+    if (!input) return;
+    input.style.height = '0px';
+    input.style.height = `${Math.min(input.scrollHeight, 168)}px`;
   }, []);
 
-  const openCustomKeyboard = React.useCallback((pane: 'keys' | 'emoji' = 'keys', cursorPosition?: number) => {
-    setKeyboardPane(pane);
-    focusComposer(cursorPosition);
-  }, [focusComposer]);
+  const insertAtSelection = React.useCallback(
+    (replacement: string, options?: { keepShift?: boolean }) => {
+      const start = Math.max(0, Math.min(selectionRef.current.start, newMessage.length));
+      const end = Math.max(start, Math.min(selectionRef.current.end, newMessage.length));
+      const nextValue = `${newMessage.slice(0, start)}${replacement}${newMessage.slice(end)}`;
+      const nextCursor = start + replacement.length;
+      setNewMessage(nextValue);
+      if (!options?.keepShift && keyboardLayout === 'letters' && keyboardShift && /[a-z]/i.test(replacement)) {
+        setKeyboardShift(false);
+      }
+      if (/[.!?]\s*$/.test(replacement)) {
+        setKeyboardShift(true);
+      }
+      openKeyboard(keyboardPane, nextCursor);
+    },
+    [keyboardLayout, keyboardPane, keyboardShift, newMessage, openKeyboard]
+  );
 
-  const hideCustomKeyboard = React.useCallback(() => {
-    setShowKeyboardDock(false);
-    setKeyboardPane('keys');
-    setIsComposerFocused(false);
-  }, []);
-
-  const updateMessageAtSelection = React.useCallback((replacement: string, options?: { keepShift?: boolean }) => {
-    const start = Math.max(0, Math.min(selectionRef.current.start, newMessage.length));
-    const end = Math.max(start, Math.min(selectionRef.current.end, newMessage.length));
-    const nextValue = `${newMessage.slice(0, start)}${replacement}${newMessage.slice(end)}`;
-    const nextCursor = start + replacement.length;
-    setNewMessage(nextValue);
-    if (!options?.keepShift && keyboardLayout === 'letters' && keyboardShift && /[a-z]/i.test(replacement)) {
-      setKeyboardShift(false);
-    }
-    if (/[.!?]\s*$/.test(replacement)) {
-      setKeyboardShift(true);
-    }
-    focusComposer(nextCursor);
-  }, [focusComposer, keyboardLayout, keyboardShift, newMessage]);
-
-  const insertKeyboardValue = React.useCallback((value: string) => {
-    const nextValue = keyboardLayout === 'letters' && keyboardShift ? value.toUpperCase() : value;
-    updateMessageAtSelection(nextValue);
-  }, [keyboardLayout, keyboardShift, updateMessageAtSelection]);
+  const insertKeyboardValue = React.useCallback(
+    (value: string) => {
+      const nextValue = keyboardLayout === 'letters' && keyboardShift ? value.toUpperCase() : value;
+      insertAtSelection(nextValue);
+    },
+    [insertAtSelection, keyboardLayout, keyboardShift]
+  );
 
   const deleteBeforeCursor = React.useCallback(() => {
     const { start, end } = selectionRef.current;
     if (start !== end) {
-      updateMessageAtSelection('', { keepShift: true });
+      insertAtSelection('', { keepShift: true });
       return;
     }
     if (start === 0) return;
     selectionRef.current = { start: start - 1, end };
     const nextValue = `${newMessage.slice(0, start - 1)}${newMessage.slice(end)}`;
     setNewMessage(nextValue);
-    focusComposer(start - 1);
-  }, [focusComposer, newMessage, updateMessageAtSelection]);
+    openKeyboard(keyboardPane, start - 1);
+  }, [insertAtSelection, keyboardPane, newMessage, openKeyboard]);
 
-  const moveCursor = React.useCallback((direction: 'left' | 'right') => {
-    const delta = direction === 'left' ? -1 : 1;
-    const nextCursor = Math.max(0, Math.min((selectionRef.current.end ?? newMessage.length) + delta, newMessage.length));
-    focusComposer(nextCursor);
-  }, [focusComposer, newMessage.length]);
+  const moveCursor = React.useCallback(
+    (direction: 'left' | 'right') => {
+      const delta = direction === 'left' ? -1 : 1;
+      const nextCursor = Math.max(0, Math.min(selectionRef.current.end + delta, newMessage.length));
+      openKeyboard(keyboardPane, nextCursor);
+    },
+    [keyboardPane, newMessage.length, openKeyboard]
+  );
 
-  const clearComposerText = React.useCallback(() => {
-    setNewMessage('');
-    setKeyboardShift(true);
-    focusComposer(0);
-  }, [focusComposer]);
+  const insertQuickPhrase = React.useCallback(
+    (phrase: string) => {
+      const prefix = newMessage.trim() ? `${newMessage}${newMessage.endsWith(' ') ? '' : ' '}` : '';
+      const nextValue = `${prefix}${phrase}`;
+      setNewMessage(nextValue);
+      openKeyboard(keyboardPane, nextValue.length);
+    },
+    [keyboardPane, newMessage, openKeyboard]
+  );
 
-  const keyboardPanelHeight = showKeyboardDock ? 'min(40vh, 320px)' : '0px';
+  const removeFile = React.useCallback((index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== index));
+  }, []);
 
-  useEffect(() => {
-    if (!window.visualViewport) return;
+  const cancelHold = React.useCallback(() => {
+    if (holdTimeoutRef.current) {
+      window.clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = null;
+    }
+  }, []);
 
+  const beginHold = React.useCallback(
+    (action: () => void) => {
+      cancelHold();
+      holdTimeoutRef.current = window.setTimeout(() => {
+        action();
+        holdTimeoutRef.current = null;
+      }, LONG_PRESS_DELAY_MS);
+    },
+    [cancelHold]
+  );
+
+  const goToPayUser = React.useCallback(
+    (user: UserProfile) => {
+      const params = new URLSearchParams({
+        recipient: encodeURIComponent(user.publicId || user.uid),
+        name: encodeURIComponent(user.displayName),
+      });
+      setChatActionsUser(null);
+      navigate(`/wallets/transfer/details?${params.toString()}`);
+    },
+    [navigate]
+  );
+
+  const handleFileSelect = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.files) return;
+    const files = Array.from(event.target.files);
+    setSelectedFiles((prev) => [...prev, ...files]);
+    event.target.value = '';
+  }, []);
+
+  const handleEditMessage = React.useCallback(
+    (message: LocalMessage) => {
+      if (message.senderUid !== profile.uid || message.isDeleted) return;
+      setEditingMessageId(message.id);
+      setNewMessage(message.content);
+      setMessageActionsMessage(null);
+      setKeyboardLayout('letters');
+      setKeyboardShift(false);
+      openKeyboard('keys', message.content.length);
+    },
+    [openKeyboard, profile.uid]
+  );
+
+  const handleDeleteMessage = React.useCallback(
+    async (message: LocalMessage) => {
+      if (message.senderUid !== profile.uid || message.isDeleted) return;
+      try {
+        await supabaseService.deleteMessage(message.id, profile.uid);
+        if (editingMessageId === message.id) {
+          setEditingMessageId(null);
+          setNewMessage('');
+        }
+        setMessageActionsMessage(null);
+      } catch (nextError) {
+        console.error('Error deleting message:', nextError);
+        setError('Failed to delete message.');
+      }
+    },
+    [editingMessageId, profile.uid]
+  );
+
+  const handleClearCurrentChat = React.useCallback(async () => {
+    if (!selectedContact) return;
+    try {
+      await supabaseService.clearConversation(profile.uid, selectedContact.uid);
+      setChatActionsUser(null);
+      closeConversation(true);
+    } catch (nextError) {
+      console.error('Error clearing chat:', nextError);
+      setError('Failed to clear chat.');
+    }
+  }, [closeConversation, profile.uid, selectedContact]);
+
+  const handleSendMessage = React.useCallback(
+    async (event?: React.FormEvent) => {
+      event?.preventDefault();
+      if (!selectedContact) return;
+
+      const trimmedMessage = newMessage.trim();
+      const files = [...selectedFiles];
+      if (!trimmedMessage && files.length === 0) return;
+
+      if (editingMessageId) {
+        try {
+          await supabaseService.updateMessage(editingMessageId, profile.uid, trimmedMessage);
+          setEditingMessageId(null);
+          setNewMessage('');
+          setKeyboardShift(true);
+        } catch (nextError) {
+          console.error('Error editing message:', nextError);
+          setError('Failed to update message.');
+        }
+        return;
+      }
+
+      if (files.length > 0 && uploading) return;
+
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const createdAt = new Date().toISOString();
+      const optimisticMessage: LocalMessage = {
+        id: tempId,
+        senderUid: profile.uid,
+        receiverUid: selectedContact.uid,
+        content: trimmedMessage,
+        createdAt,
+        attachments: files.map((file) => ({
+          name: file.name,
+          url: '',
+          type: file.type,
+          size: file.size,
+        })),
+        localStatus: 'pending',
+      };
+
+      setMessages((prev) => [...prev, optimisticMessage]);
+      updateChatRow(
+        selectedContact.uid,
+        selectedContact,
+        trimmedMessage || (files.length > 1 ? 'Attachments' : files.length > 0 ? 'Attachment' : ''),
+        createdAt
+      );
+      setNewMessage('');
+      setSelectedFiles([]);
+      setKeyboardShift(true);
+      supabaseService.setPresenceTyping(null);
+
+      if (files.length > 0) {
+        setActiveUploads((prev) => prev + 1);
+      }
+
+      try {
+        const attachments = files.length > 0 ? await Promise.all(files.map((file) => supabaseService.uploadFile(file))) : [];
+        const sentMessage = await supabaseService.sendMessage({
+          senderUid: profile.uid,
+          receiverUid: selectedContact.uid,
+          content: trimmedMessage,
+          attachments: attachments.length > 0 ? attachments : undefined,
+        });
+
+        setMessages((prev) => upsertRealtimeMessage(prev, sentMessage, profile.uid, selectedContact.uid));
+        updateChatRow(selectedContact.uid, selectedContact, getPreviewText(sentMessage), sentMessage.createdAt);
+      } catch (nextError) {
+        console.error('Error sending message:', nextError);
+        setError(files.length > 0 ? 'Failed to send message with attachments.' : 'Failed to send message.');
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === tempId
+              ? {
+                  ...message,
+                  localStatus: 'failed',
+                }
+              : message
+          )
+        );
+        if (trimmedMessage && !newMessage) {
+          setNewMessage(trimmedMessage);
+          openKeyboard('keys', trimmedMessage.length);
+        }
+      } finally {
+        if (files.length > 0) {
+          setActiveUploads((prev) => Math.max(0, prev - 1));
+        }
+      }
+    },
+    [
+      editingMessageId,
+      newMessage,
+      openKeyboard,
+      profile.uid,
+      selectedContact,
+      selectedFiles,
+      updateChatRow,
+      uploading,
+    ]
+  );
+
+  React.useEffect(() => {
     const handleResize = () => {
-      setViewportHeight(window.visualViewport!.height);
-      setViewportOffsetTop(window.visualViewport!.offsetTop);
+      setIsMobileLayout(window.innerWidth < 768);
     };
-
-    window.visualViewport.addEventListener('resize', handleResize);
-    window.visualViewport.addEventListener('scroll', handleResize);
     handleResize();
-    
-    return () => {
-      window.visualViewport?.removeEventListener('resize', handleResize);
-      window.visualViewport?.removeEventListener('scroll', handleResize);
-    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => {
-    return supabaseService.subscribeToOnlineUsers((uids) => {
-      setOnlineUserIds(new Set(uids));
+  React.useEffect(() => {
+    adjustComposerHeight();
+    syncSelection(
+      Math.min(selectionRef.current.start, newMessage.length),
+      Math.min(selectionRef.current.end, newMessage.length)
+    );
+  }, [adjustComposerHeight, newMessage, syncSelection]);
+
+  React.useEffect(() => {
+    const composerElement = composerRef.current;
+    if (!composerElement || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      setComposerHeight(entry.contentRect.height);
     });
-  }, []);
+    observer.observe(composerElement);
+    return () => observer.disconnect();
+  }, [selectedContact, showKeyboard, editingMessageId, selectedFiles.length, newMessage]);
 
-  useEffect(() => {
+  React.useEffect(() => {
+    const keyboardElement = keyboardRef.current;
+    if (!keyboardElement || typeof ResizeObserver === 'undefined') {
+      setKeyboardHeight(showKeyboard ? 300 : 0);
+      return;
+    }
+    const observer = new ResizeObserver(([entry]) => {
+      setKeyboardHeight(showKeyboard ? entry.contentRect.height : 0);
+    });
+    observer.observe(keyboardElement);
+    return () => observer.disconnect();
+  }, [showKeyboard, keyboardPane, keyboardLayout]);
+
+  React.useEffect(() => {
+    if (!showKeyboard) {
+      setKeyboardHeight(0);
+    }
+  }, [showKeyboard]);
+
+  React.useEffect(() => supabaseService.subscribeToOnlineUsers((uids) => setOnlineUserIds(new Set(uids))), []);
+
+  React.useEffect(() => {
     return supabaseService.subscribeToPresenceState((state) => {
       setPresenceState(state);
     });
   }, []);
 
-  useEffect(() => {
+  React.useEffect(() => {
     return supabaseService.subscribeToUnreadMessageCounts(profile.uid, setUnreadCounts);
   }, [profile.uid]);
 
-  useEffect(() => {
-    if (typeof navigator === 'undefined') return;
-    const virtualKeyboard = (navigator as any).virtualKeyboard;
-    if (!virtualKeyboard) return;
-    try {
-      virtualKeyboard.overlaysContent = false;
-    } catch {
-      // Ignore unsupported virtual keyboard settings.
-    }
-  }, []);
-
-  const ensureDate = (date: any): Date => {
-    try {
-      if (!date) return new Date();
-      if (date instanceof Date) return date;
-      if (typeof date === 'string') {
-        const d = new Date(date);
-        return isNaN(d.getTime()) ? new Date() : d;
-      }
-      return new Date();
-    } catch (e) {
-      return new Date();
-    }
-  };
-
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (loading) {
-        setLoading(false);
-        setError("Loading is taking longer than expected. Please check your connection.");
-      }
-    }, 15000); // Increased timeout to 15s
-
-    // Subscribe to active chats
+  React.useEffect(() => {
     const unsubscribe = supabaseService.subscribeToActiveChats(
-      profile.uid, 
+      profile.uid,
       async (chats) => {
-        clearTimeout(timeout);
         try {
           const recent = await supabaseService.getRecentConversations(profile.uid);
-          setActiveChats(mergeChats(chats, recent));
-        } catch (e) {
-          setActiveChats(mergeChats(chats));
+          setActiveChats(mergeChatSummaries(chats, recent));
+          setError(null);
+        } catch {
+          setActiveChats(mergeChatSummaries(chats));
+        } finally {
+          setLoading(false);
         }
-        setLoading(false);
-        setError(null);
       },
-      (err) => {
-        clearTimeout(timeout);
-        console.error("Chat subscription error:", err);
-        setError("Failed to load conversations. This might be due to a connection issue or missing permissions.");
+      (nextError) => {
+        console.error('Chat subscription error:', nextError);
+        setError('Failed to load conversations. Please check your connection.');
         setLoading(false);
       }
     );
-    
-    return () => {
-      clearTimeout(timeout);
-      unsubscribe();
-    };
-  }, [mergeChats, profile.uid]);
 
-  // Handle targetUid from search params separately to ensure it updates correctly
-  useEffect(() => {
+    return () => unsubscribe();
+  }, [profile.uid]);
+
+  React.useEffect(() => {
     if (!targetUid) {
       setSelectedContact(null);
       setShowChatOnMobile(false);
-      isInitialLoad.current = false;
+      initialLoadRef.current = false;
       return;
     }
 
-    const loadTargetUser = async () => {
-      // If we already have the selected contact and it matches targetUid, don't do anything
-      if (selectedContact?.uid === targetUid) return;
+    if (selectedContact?.uid === targetUid) return;
 
-      // Check if user is already in active chats to avoid extra fetch
-      const activeChat = activeChats.find((c) => c.otherUid === targetUid);
-      if (activeChat) {
-        openChat(activeChat.user, { ...activeChat, syncUrl: false });
-      } else if (isInitialLoad.current || !selectedContact) {
-        // Fetch user if not in active chats or if it's the initial load
-        try {
-          const user = await supabaseService.getUserProfile(targetUid);
-          if (user) {
-            openChat(user, {
-              otherUid: user.uid,
-              lastMessage: '',
-              updatedAt: new Date().toISOString(),
-              syncUrl: false,
-            });
-          }
-        } catch (err) {
-          console.error('Error loading target user:', err);
-          setError('Failed to load user profile');
-        }
-      }
-      isInitialLoad.current = false;
-    };
-
-    loadTargetUser();
-  }, [targetUid, activeChats, selectedContact, openChat]);
-
-  useEffect(() => {
-    if (isNewChatModalOpen) {
-      const fetchFriends = async () => {
-        const friends = await supabaseService.getFriends(profile.uid);
-        setAllUsers(friends);
-      };
-      fetchFriends();
+    const knownChat = activeChats.find((chat) => chat.otherUid === targetUid);
+    if (knownChat) {
+      openConversation(knownChat.user, { ...knownChat, syncUrl: false });
+      initialLoadRef.current = false;
+      return;
     }
+
+    if (!initialLoadRef.current && selectedContact) return;
+
+    let cancelled = false;
+    supabaseService
+      .getUserProfile(targetUid)
+      .then((user) => {
+        if (!cancelled && user) {
+          openConversation(user, {
+            otherUid: user.uid,
+            lastMessage: '',
+            updatedAt: new Date().toISOString(),
+            syncUrl: false,
+          });
+        }
+      })
+      .catch((nextError) => {
+        console.error('Error loading target user:', nextError);
+        if (!cancelled) {
+          setError('Failed to load that conversation.');
+        }
+      })
+      .finally(() => {
+        initialLoadRef.current = false;
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeChats, openConversation, selectedContact, targetUid]);
+
+  React.useEffect(() => {
+    if (!isNewChatModalOpen) return;
+    supabaseService.getFriends(profile.uid).then(setAllUsers).catch(() => undefined);
   }, [isNewChatModalOpen, profile.uid]);
 
-  useEffect(() => {
-    const upsertMessageInState = (incoming: LocalMessage) => {
-      setMessages((prev) => {
-        const isCurrentConversation =
-          selectedContact &&
-          ((incoming.senderUid === profile.uid && incoming.receiverUid === selectedContact.uid) ||
-            (incoming.senderUid === selectedContact.uid && incoming.receiverUid === profile.uid));
-
-        if (!isCurrentConversation) {
-          return prev;
-        }
-
-        const existingIndex = prev.findIndex((msg) => msg.id === incoming.id);
-        if (existingIndex >= 0) {
-          const next = [...prev];
-          next[existingIndex] = {
-            ...next[existingIndex],
-            ...incoming,
-            localStatus: 'sent' as const,
-          };
-          return next.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-        }
-
-        const withoutTempDuplicate = prev.filter((msg) => {
-          if (!msg.id.startsWith('temp-')) return true;
-          return !(
-            msg.senderUid === incoming.senderUid &&
-            msg.receiverUid === incoming.receiverUid &&
-            msg.content === incoming.content &&
-            Math.abs(new Date(msg.createdAt).getTime() - new Date(incoming.createdAt).getTime()) < 10000
-          );
-        });
-
-        return [...withoutTempDuplicate, { ...incoming, localStatus: 'sent' as const }].sort(
-          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        );
-      });
-    };
-
+  React.useEffect(() => {
     return supabaseService.subscribeToMessageEvents(profile.uid, async ({ type, message }) => {
       if (!message || type === 'DELETE') return;
 
       const otherUid = message.senderUid === profile.uid ? message.receiverUid : message.senderUid;
-      const knownUser = findKnownUser(otherUid) || (await supabaseService.getUserProfile(otherUid).catch(() => null));
-      const previewText = getPreviewText(message);
-      if (knownUser) {
-        updateChatRowLocally(otherUid, knownUser, previewText, message.createdAt);
+      const user = findKnownUser(otherUid) || (await supabaseService.getUserProfile(otherUid).catch(() => null));
+      if (user) {
+        updateChatRow(otherUid, user, getPreviewText(message), message.createdAt);
       }
 
-      upsertMessageInState({ ...message, localStatus: 'sent' });
+      if (selectedContact) {
+        setMessages((prev) => upsertRealtimeMessage(prev, message, profile.uid, selectedContact.uid));
+      }
 
-      const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 768;
-      const isOpenConversation = selectedContact?.uid === otherUid && (!isMobileViewport || showChatOnMobile);
+      const conversationOpen = selectedContact?.uid === otherUid && (!isMobileLayout || showChatOnMobile);
       if (message.receiverUid === profile.uid) {
-        if (isOpenConversation) {
+        if (conversationOpen) {
           clearUnreadForChat(otherUid);
           supabaseService.markMessagesAsRead(profile.uid, otherUid).catch(() => undefined);
         } else {
@@ -475,60 +774,56 @@ export default function Chat({ profile }: ChatProps) {
         }
       }
     });
-  }, [clearUnreadForChat, findKnownUser, getPreviewText, profile.uid, selectedContact, showChatOnMobile, updateChatRowLocally, updateUnreadForChat]);
+  }, [
+    clearUnreadForChat,
+    findKnownUser,
+    isMobileLayout,
+    profile.uid,
+    selectedContact,
+    showChatOnMobile,
+    updateChatRow,
+    updateUnreadForChat,
+  ]);
 
-  useEffect(() => {
-    if (selectedContact) {
-      setMessagesLoading(true);
-      setMessagesError(null);
-      
-      const unsubscribe = supabaseService.subscribeToMessages(
-        profile.uid,
-        selectedContact.uid,
-        (msgs) => {
-          const latestMessage = msgs[msgs.length - 1];
-          setMessages((prev) => {
-            const pendingOrFailed = prev.filter((m) => m.id.startsWith('temp-') || m.localStatus === 'failed');
-            const serverMessages: LocalMessage[] = msgs.map((m) => ({ ...m, localStatus: 'sent' }));
-            const merged = [...serverMessages, ...pendingOrFailed];
-            const unique = new Map<string, LocalMessage>();
-            merged.forEach((msg) => unique.set(msg.id, msg));
-            return Array.from(unique.values()).sort(
-              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-            );
-          });
-          if (latestMessage) {
-            upsertLocalChat({
-              otherUid: selectedContact.uid,
-              user: selectedContact,
-              lastMessage: getPreviewText(latestMessage),
-              updatedAt: latestMessage.createdAt,
-            });
-          }
-          setMessagesLoading(false);
-        },
-        (err) => {
-          console.error("Messages subscription error:", err);
-          setMessagesError("Failed to load messages. Please check your connection.");
-          setMessagesLoading(false);
-        }
-      );
-      return () => unsubscribe();
-    } else {
+  React.useEffect(() => {
+    if (!selectedContact) {
       setMessages([]);
-      setMessagesLoading(false);
       setMessagesError(null);
+      setMessagesLoading(false);
+      return;
     }
-  }, [getPreviewText, profile.uid, selectedContact, upsertLocalChat]);
 
-  useEffect(() => {
+    setMessagesLoading(true);
+    setMessagesError(null);
+    const unsubscribe = supabaseService.subscribeToMessages(
+      profile.uid,
+      selectedContact.uid,
+      (serverMessages) => {
+        setMessages((prev) => mergeServerConversation(prev, serverMessages));
+        setMessagesLoading(false);
+        const latest = serverMessages[serverMessages.length - 1];
+        if (latest) {
+          updateChatRow(selectedContact.uid, selectedContact, getPreviewText(latest), latest.createdAt);
+        }
+      },
+      (nextError) => {
+        console.error('Messages subscription error:', nextError);
+        setMessagesError('Failed to load messages. Please check your connection.');
+        setMessagesLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [profile.uid, selectedContact, updateChatRow]);
+
+  React.useEffect(() => {
     if (!selectedContact) return;
     clearUnreadForChat(selectedContact.uid);
     supabaseService.markMessagesAsRead(profile.uid, selectedContact.uid).catch(() => undefined);
-  }, [clearUnreadForChat, profile.uid, selectedContact, messages.length]);
+  }, [clearUnreadForChat, messages.length, profile.uid, selectedContact]);
 
-  useEffect(() => {
-    if (!selectedContact || !showChatOnMobile && typeof window !== 'undefined' && window.innerWidth < 768) {
+  React.useEffect(() => {
+    if (!selectedContact || (isMobileLayout && !showChatOnMobile)) {
       supabaseService.setPresenceViewingChat(null);
       return;
     }
@@ -537,9 +832,9 @@ export default function Chat({ profile }: ChatProps) {
     return () => {
       supabaseService.setPresenceViewingChat(null);
     };
-  }, [selectedContact, showChatOnMobile]);
+  }, [isMobileLayout, selectedContact, showChatOnMobile]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!selectedContact) {
       supabaseService.setPresenceTyping(null);
       return;
@@ -571,342 +866,11 @@ export default function Chat({ profile }: ChatProps) {
     };
   }, [newMessage, selectedContact]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  React.useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages, selectedContact?.uid, selectedContactTyping]);
 
-  useEffect(() => {
-    adjustComposerHeight();
-  }, [newMessage]);
-
-  useEffect(() => {
-    if (!newMessage) {
-      selectionRef.current = { start: 0, end: 0 };
-    } else {
-      syncSelection(
-        Math.min(selectionRef.current.start, newMessage.length),
-        Math.min(selectionRef.current.end, newMessage.length)
-      );
-    }
-  }, [newMessage, syncSelection]);
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const messageText = newMessage.trim();
-    const files = [...selectedFiles];
-    
-    if ((!messageText && files.length === 0) || !selectedContact) return;
-    if (editingMessageId) {
-      try {
-        await supabaseService.updateMessage(editingMessageId, profile.uid, messageText);
-        setEditingMessageId(null);
-        setNewMessage('');
-      } catch (err) {
-        console.error('Error editing message:', err);
-        setError('Failed to update message');
-      }
-      return;
-    }
-    
-    // If we're already uploading files, we can still send text-only messages,
-    // but we shouldn't allow sending more files until the current ones finish.
-    if (files.length > 0 && uploading) return;
-    
-    // Clear inputs immediately for smooth UX
-    setNewMessage('');
-    setSelectedFiles([]);
-    supabaseService.setPresenceTyping(null);
-
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const optimisticMessage: LocalMessage = {
-      id: tempId,
-      senderUid: profile.uid,
-      receiverUid: selectedContact.uid,
-      content: messageText,
-      attachments: files.map((file) => ({
-        name: file.name,
-        url: '',
-        type: file.type,
-        size: file.size,
-      })),
-      createdAt: new Date().toISOString(),
-      localStatus: 'pending',
-    };
-    setMessages((prev) => [...prev, optimisticMessage]);
-    upsertLocalChat({
-      otherUid: selectedContact.uid,
-      user: selectedContact,
-      lastMessage: messageText || (files.length > 1 ? 'Attachments' : files.length > 0 ? 'Attachment' : ''),
-      updatedAt: optimisticMessage.createdAt,
-    });
-    
-    // Increment active uploads if there are files
-    if (files.length > 0) {
-      setActiveUploads(prev => prev + 1);
-    }
-    
-    try {
-      let attachments: Attachment[] = [];
-      
-      if (files.length > 0) {
-        const uploadPromises = files.map(file => supabaseService.uploadFile(file));
-        attachments = await Promise.all(uploadPromises);
-      }
-
-      const messageData: any = {
-        senderUid: profile.uid,
-        receiverUid: selectedContact.uid,
-        content: messageText,
-      };
-
-      if (attachments.length > 0) {
-        messageData.attachments = attachments;
-      }
-
-      const inserted = await supabaseService.sendMessage(messageData);
-      upsertLocalChat({
-        otherUid: selectedContact.uid,
-        user: selectedContact,
-        lastMessage: getPreviewText({ content: inserted.content, attachments }),
-        updatedAt: inserted.createdAt,
-      });
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === tempId
-            ? {
-                ...inserted,
-                localStatus: 'sent',
-              }
-            : msg
-        )
-      );
-    } catch (err) {
-      console.error('Error sending message:', err);
-      setError(files.length > 0 ? 'Failed to send message with attachments' : 'Failed to send message');
-      setMessages((prev) =>
-        prev.map((msg) => (msg.id === tempId ? { ...msg, localStatus: 'failed' } : msg))
-      );
-      // Restore text if it failed
-      if (messageText && !newMessage) {
-        setNewMessage(messageText);
-      }
-    } finally {
-      if (files.length > 0) {
-        setActiveUploads(prev => Math.max(0, prev - 1));
-      }
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files);
-      setSelectedFiles(prev => [...prev, ...files]);
-      // Reset input value so the same file can be selected again
-      e.target.value = '';
-    }
-  };
-
-  const removeFile = (index: number) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const openUserActions = (user: UserProfile) => {
-    setChatActionsUser(user);
-  };
-
-  const cancelHold = () => {
-    if (holdTimeoutRef.current) {
-      window.clearTimeout(holdTimeoutRef.current);
-      holdTimeoutRef.current = null;
-    }
-  };
-
-  const beginHold = (user: UserProfile) => {
-    cancelHold();
-    holdTimeoutRef.current = window.setTimeout(() => {
-      openUserActions(user);
-      holdTimeoutRef.current = null;
-    }, 520);
-  };
-
-  const goToPayUser = (user: UserProfile) => {
-    const params = new URLSearchParams({
-      recipient: encodeURIComponent(user.publicId || user.uid),
-      name: encodeURIComponent(user.displayName),
-    });
-    setChatActionsUser(null);
-    navigate(`/wallets/transfer/details?${params.toString()}`);
-  };
-
-  const beginMessageHold = (message: LocalMessage) => {
-    cancelHold();
-    holdTimeoutRef.current = window.setTimeout(() => {
-      setMessageActionsMessage(message);
-      holdTimeoutRef.current = null;
-    }, 520);
-  };
-
-  const handleEditMessage = (message: LocalMessage) => {
-    if (message.senderUid !== profile.uid || message.isDeleted) return;
-    setEditingMessageId(message.id);
-    setNewMessage(message.content);
-    setMessageActionsMessage(null);
-    setKeyboardLayout('letters');
-    setKeyboardShift(false);
-    setKeyboardPane('keys');
-    window.setTimeout(() => {
-      focusComposer(message.content.length);
-    }, 80);
-  };
-
-  const handleDeleteMessage = async (message: LocalMessage) => {
-    if (message.senderUid !== profile.uid || message.isDeleted) return;
-    try {
-      await supabaseService.deleteMessage(message.id, profile.uid);
-      if (editingMessageId === message.id) {
-        setEditingMessageId(null);
-        setNewMessage('');
-      }
-      setMessageActionsMessage(null);
-    } catch (err) {
-      console.error('Error deleting message:', err);
-      setError('Failed to delete message');
-    }
-  };
-
-  const insertQuickMessage = (snippet: string) => {
-    const prefix = newMessage.trim() ? `${newMessage}${newMessage.endsWith(' ') ? '' : ' '}` : '';
-    setNewMessage(`${prefix}${snippet}`);
-    focusComposer(`${prefix}${snippet}`.length);
-  };
-
-  const handleClearCurrentChat = async () => {
-    if (!selectedContact) return;
-    try {
-      await supabaseService.clearConversation(profile.uid, selectedContact.uid);
-      closeChatView(true);
-    } catch (err) {
-      console.error('Error clearing chat:', err);
-      setError('Failed to clear chat');
-    }
-  };
-
-  const closeChatView = React.useCallback((replaceHistory: boolean = false) => {
-    setChatActionsUser(null);
-    setMessageActionsMessage(null);
-    setShowAttachmentMenu(false);
-    setShowChatOnMobile(false);
-    setSelectedContact(null);
-    setEditingMessageId(null);
-    setSelectedFiles([]);
-    setNewMessage('');
-    setShowKeyboardDock(false);
-    setKeyboardLayout('letters');
-    setKeyboardShift(true);
-    setKeyboardPane('keys');
-    setSearchParams({}, { replace: true });
-    navigate('/messages', { replace: replaceHistory });
-  }, [navigate, setSearchParams]);
-
-  const handleBackToChatList = React.useCallback(() => {
-    closeChatView(true);
-  }, [closeChatView]);
-
-  const filteredActiveChats = activeChats.filter((chat) => {
-    if (!chat?.user?.uid || !chat.user.displayName) return false;
-    return (
-      chat.user.displayName.toLowerCase().includes(sidebarSearchQuery.toLowerCase()) ||
-      String(chat.lastMessage || '').toLowerCase().includes(sidebarSearchQuery.toLowerCase())
-    );
-  });
-
-  const filteredNewChatUsers = allUsers.filter((user) =>
-    user.displayName.toLowerCase().includes(newChatSearchQuery.toLowerCase()) ||
-    user.role.toLowerCase().includes(newChatSearchQuery.toLowerCase())
-  );
-
-  const formatMessageDate = (date: Date) => {
-    try {
-      if (isToday(date)) return format(date, 'HH:mm');
-      if (isYesterday(date)) return 'Yesterday';
-      return format(date, 'dd/MM/yy');
-    } catch (e) {
-      return '';
-    }
-  };
-
-  const MessageDateHeader = ({ date }: { date: Date }) => (
-    <div className="flex justify-center my-4">
-      <div className="bg-white/80 backdrop-blur-sm px-3 py-1 rounded-lg text-[10px] font-bold text-gray-500 uppercase tracking-widest shadow-sm border border-gray-100">
-        {isToday(date) ? 'Today' : isYesterday(date) ? 'Yesterday' : format(date, 'MMMM d, yyyy')}
-      </div>
-    </div>
-  );
-
-  const ChatSkeleton = () => (
-    <div className="space-y-4 p-4">
-      {[1, 2, 3, 4, 5, 6].map(i => (
-        <div key={i} className="flex gap-3 animate-pulse">
-          <div className="w-12 h-12 bg-gray-200 rounded-2xl"></div>
-          <div className="flex-1 space-y-2 py-1">
-            <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-            <div className="h-3 bg-gray-200 rounded w-3/4"></div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  const MessageSkeleton = () => (
-    <div className="space-y-4 p-6">
-      {[1, 2, 3, 4].map(i => (
-        <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'} animate-pulse`}>
-          <div className={`h-12 w-2/3 bg-gray-200 rounded-2xl ${i % 2 === 0 ? 'rounded-tr-none' : 'rounded-tl-none'}`}></div>
-        </div>
-      ))}
-    </div>
-  );
-
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-  const mobileViewportHeight = typeof window !== 'undefined' ? Math.max(320, viewportHeight || window.innerHeight) : 320;
-  const keyboardInset = typeof window !== 'undefined'
-    ? Math.max(0, window.innerHeight - viewportHeight - viewportOffsetTop)
-    : 0;
-  const shouldLiftForKeyboard = isMobile && showChatOnMobile && isComposerFocused && keyboardInset > 0;
-  const isSelectedContactOnline = selectedContact ? onlineUserIds.has(selectedContact.uid) : false;
-  const selectedContactPresence = selectedContact ? presenceState[selectedContact.uid] : undefined;
-  const isSelectedContactTyping = selectedContactPresence?.typingTo === profile.uid;
-
-  useEffect(() => {
-    if (!isComposerFocused) return;
-    const timeout = window.setTimeout(() => {
-      composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }, 120);
-    return () => window.clearTimeout(timeout);
-  }, [isComposerFocused, keyboardInset, viewportHeight]);
-
-  const getOutgoingReceiptState = (message: LocalMessage): 'pending' | 'failed' | 'sent' | 'delivered' | 'read' => {
-    if (message.localStatus === 'pending') return 'pending';
-    if (message.localStatus === 'failed') return 'failed';
-    if (message.readAt) return 'read';
-    if (isSelectedContactOnline) return 'delivered';
-    return 'sent';
-  };
-
-  const getSafeAttachments = (message: LocalMessage): Attachment[] =>
-    Array.isArray(message.attachments)
-      ? message.attachments.filter(
-          (attachment): attachment is Attachment =>
-            !!attachment &&
-            typeof attachment.name === 'string' &&
-            typeof attachment.type === 'string' &&
-            typeof attachment.url === 'string' &&
-            typeof attachment.size === 'number'
-        )
-      : [];
-
-  useEffect(() => {
+  React.useEffect(() => {
     if (!showAttachmentMenu) return;
     const handlePointerDown = (event: MouseEvent) => {
       if (!attachmentMenuRef.current?.contains(event.target as Node)) {
@@ -917,161 +881,151 @@ export default function Chat({ profile }: ChatProps) {
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [showAttachmentMenu]);
 
-  useEffect(() => cancelHold, []);
+  React.useEffect(() => cancelHold, [cancelHold]);
 
-  if (loading) return (
-    <div className="h-full bg-white flex">
-      <div className="w-full md:w-96 border-r border-gray-200 flex flex-col">
-        <div className="p-4 border-b border-gray-100 bg-gray-50/30">
-          <div className="h-8 bg-gray-200 rounded w-1/2 mb-4 animate-pulse"></div>
-          <div className="h-10 bg-gray-200 rounded w-full animate-pulse"></div>
-        </div>
-        <ChatSkeleton />
-      </div>
-      <div className="hidden md:flex flex-1 bg-gray-50 items-center justify-center">
-        <div className="text-center animate-pulse">
-          <MessageSquare size={48} className="text-gray-200 mx-auto mb-4" />
-          <div className="h-4 bg-gray-200 rounded w-48 mx-auto"></div>
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center rounded-[2rem] border border-gray-200 bg-white">
+        <div className="text-center">
+          <Loader2 size={32} className="mx-auto animate-spin text-teal-600" />
+          <p className="mt-3 text-sm font-medium text-gray-500">Loading conversations...</p>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  if (error) return (
-    <div className="h-full flex flex-col items-center justify-center p-6 text-center">
-      <div className="bg-red-50 text-red-600 p-4 rounded-2xl mb-4 max-w-md">
-        <p className="font-bold mb-1">Something went wrong</p>
-        <p className="text-sm">{error}</p>
+  if (error) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center rounded-[2rem] border border-red-200 bg-white p-6 text-center">
+        <div className="rounded-2xl bg-red-50 px-4 py-3 text-red-700">
+          <p className="font-bold">Something went wrong</p>
+          <p className="mt-1 text-sm">{error}</p>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 rounded-2xl bg-teal-700 px-5 py-3 text-sm font-bold text-white hover:bg-teal-800"
+        >
+          Retry
+        </button>
       </div>
-      <button 
-        onClick={() => window.location.reload()}
-        className="px-6 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all font-bold"
-      >
-        Retry
-      </button>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div 
-      className={`h-[100dvh] md:h-screen min-h-0 bg-white flex relative overflow-hidden select-none ${isMobile && showChatOnMobile ? 'z-[60]' : ''}`}
-      style={isMobile && showChatOnMobile
-        ? {
-            minHeight: `${mobileViewportHeight}px`,
-            height: `${mobileViewportHeight}px`,
-            WebkitTouchCallout: 'none',
-          }
-        : { WebkitTouchCallout: 'none' }}
-    >
-      {/* Contacts Sidebar */}
-      <div className={`w-full md:w-[24rem] md:max-w-[24rem] border-r border-gray-200 flex flex-col bg-white transition-all duration-300 min-h-0 h-full ${showChatOnMobile ? 'hidden md:flex' : 'flex'}`}>
-        <div className="px-4 pt-4 pb-3 border-b border-gray-100 bg-white">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900">Chats</h2>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => setIsNewChatModalOpen(true)}
-                className="p-2 hover:bg-gray-200 rounded-full transition-all text-gray-600"
-              >
-                <PlusSquare size={20} />
-              </button>
-              <button className="p-2 hover:bg-gray-200 rounded-full transition-all text-gray-600"><MoreVertical size={20} /></button>
+    <div className="relative flex h-[100dvh] overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm md:h-screen">
+      <aside
+        className={`${
+          showChatOnMobile ? 'hidden md:flex' : 'flex'
+        } w-full flex-col border-r border-gray-200 bg-white md:w-[24rem] md:max-w-[24rem]`}
+      >
+        <div className="border-b border-gray-100 px-4 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-black text-gray-900">Messages</h1>
+              <p className="text-xs text-gray-500">Realtime chats, unread badges, and quick actions.</p>
             </div>
+            <button
+              onClick={() => setIsNewChatModalOpen(true)}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-50 text-teal-700 transition-all hover:bg-teal-100"
+              aria-label="Start new chat"
+            >
+              <PlusSquare size={20} />
+            </button>
           </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+          <div className="relative mt-4">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Search or start new chat"
               value={sidebarSearchQuery}
-              onChange={(e) => setSidebarSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-100 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
+              onChange={(event) => setSidebarSearchQuery(event.target.value)}
+              placeholder="Search messages"
+              className="w-full rounded-2xl border border-transparent bg-gray-100 py-3 pl-10 pr-4 text-sm transition-all focus:border-teal-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
             />
           </div>
         </div>
-        
-        <div className="flex-1 overflow-y-auto custom-scrollbar bg-white select-none">
-          {filteredActiveChats.length > 0 ? (
-            filteredActiveChats.map((chat) => (
-              <button
-                key={chat.otherUid}
-                onClick={() => openChat(chat.user, chat)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  openUserActions(chat.user);
-                }}
-                onTouchStart={() => beginHold(chat.user)}
-                onTouchEnd={cancelHold}
-                onTouchMove={cancelHold}
-                onTouchCancel={cancelHold}
-                className={`w-full px-4 py-3 flex items-center gap-3 transition-all border-b border-gray-50 select-none ${
-                  selectedContact?.uid === chat.otherUid ? 'bg-teal-50/50' : 'hover:bg-gray-50'
-                }`}
-              >
-                <div className="relative">
-                  <CachedImage
-                    src={chat.user.photoURL}
-                    alt={chat.user.displayName}
-                    loading="lazy"
-                    decoding="async"
-                    referrerPolicy="no-referrer"
-                    wrapperClassName="w-14 h-14 rounded-2xl shadow-sm"
-                    imgClassName="w-full h-full rounded-2xl object-cover"
-                  />
-                  {onlineUserIds.has(chat.user.uid) && (
-                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
-                  )}
-                </div>
-                <div className="flex-1 text-left min-w-0">
-                  <div className="flex justify-between items-start mb-0.5">
-                    <p className="text-sm font-bold text-gray-900 truncate">{chat.user.displayName}</p>
-                    <span className="text-[10px] text-gray-400 font-medium">
-                      {chat.updatedAt ? formatMessageDate(ensureDate(chat.updatedAt)) : ''}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <p className={`text-xs truncate font-medium ${presenceState[chat.user.uid]?.typingTo === profile.uid ? 'text-emerald-600' : 'text-gray-500'}`}>
-                      {presenceState[chat.user.uid]?.typingTo === profile.uid ? 'Typing...' : chat.lastMessage || chat.user.role}
-                    </p>
-                    {unreadCounts[chat.otherUid] > 0 && (
-                      <div className="bg-teal-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                        {unreadCounts[chat.otherUid] > 9 ? '9+' : unreadCounts[chat.otherUid]}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </button>
-            ))
-          ) : (
-            <div className="p-12 text-center">
-              <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <MessageSquare className="text-gray-300" size={32} />
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-white">
+          {filteredActiveChats.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-50 text-gray-300">
+                <MessageSquare size={30} />
               </div>
-              <p className="text-gray-500 font-medium mb-2">No chats yet</p>
-              <p className="text-xs text-gray-400 mb-6">Start a conversation with a student or freelancer</p>
-              <button 
+              <p className="mt-4 text-sm font-semibold text-gray-900">No chats yet</p>
+              <p className="mt-1 text-xs text-gray-500">Start a new conversation with one of your connections.</p>
+              <button
                 onClick={() => setIsNewChatModalOpen(true)}
-                className="text-sm font-bold text-teal-700 hover:text-teal-800"
+                className="mt-5 rounded-2xl bg-teal-700 px-4 py-3 text-sm font-bold text-white hover:bg-teal-800"
               >
                 Start New Chat
               </button>
             </div>
+          ) : (
+            filteredActiveChats.map((chat) => {
+              const unread = unreadCounts[chat.otherUid] || 0;
+              const typing = presenceState[chat.otherUid]?.typingTo === profile.uid;
+              const active = selectedContact?.uid === chat.otherUid;
+              return (
+                <button
+                  key={chat.otherUid}
+                  type="button"
+                  onClick={() => openConversation(chat.user, chat)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setChatActionsUser(chat.user);
+                  }}
+                  onTouchStart={() => beginHold(() => setChatActionsUser(chat.user))}
+                  onTouchEnd={cancelHold}
+                  onTouchMove={cancelHold}
+                  onTouchCancel={cancelHold}
+                  className={`flex w-full select-none items-center gap-3 border-b border-gray-50 px-4 py-3 text-left transition-all ${
+                    active ? 'bg-teal-50/70' : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="relative">
+                    <CachedImage
+                      src={chat.user.photoURL}
+                      alt={chat.user.displayName}
+                      wrapperClassName="h-14 w-14 rounded-2xl border border-gray-200 bg-gray-100"
+                      imgClassName="h-full w-full rounded-2xl object-cover"
+                    />
+                    {onlineUserIds.has(chat.user.uid) && (
+                      <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="truncate text-sm font-bold text-gray-900">{chat.user.displayName}</p>
+                      <span className="shrink-0 text-[10px] font-medium text-gray-400">
+                        {formatChatListTimestamp(chat.updatedAt)}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                      <p className={`truncate text-xs font-medium ${typing ? 'text-emerald-600' : 'text-gray-500'}`}>
+                        {typing ? 'Typing...' : chat.lastMessage || chat.user.role}
+                      </p>
+                      {unread > 0 && (
+                        <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          {unread > 9 ? '9+' : unread}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })
           )}
         </div>
-      </div>
+      </aside>
 
-      {/* Chat Area */}
-      <div
-        className={`flex-1 flex flex-col bg-[#efeae2] transition-all duration-300 min-h-0 h-full overflow-hidden ${!showChatOnMobile ? 'hidden md:flex' : 'flex'}`}
-      >
+      <section className={`${showChatOnMobile ? 'flex' : 'hidden md:flex'} relative min-h-0 flex-1 flex-col bg-[#efeae2]`}>
         {selectedContact ? (
           <>
-            {/* Chat Header */}
-            <div className="sticky top-0 flex-none px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-[#f0f2f5] z-20 shadow-sm">
+            <header className="flex flex-none items-center justify-between border-b border-gray-200 bg-[#f0f2f5] px-4 py-3 shadow-sm">
               <div className="flex min-w-0 items-center gap-3">
-                <button 
-                  onClick={handleBackToChatList}
-                  className="p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-600"
+                <button
+                  onClick={() => closeConversation(true)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-600 transition-all hover:bg-gray-100"
+                  aria-label="Back to messages"
                 >
                   <ArrowLeft size={20} />
                 </button>
@@ -1079,493 +1033,441 @@ export default function Chat({ profile }: ChatProps) {
                   <CachedImage
                     src={selectedContact.photoURL}
                     alt={selectedContact.displayName}
-                    loading="lazy"
-                    decoding="async"
-                    referrerPolicy="no-referrer"
-                    wrapperClassName="w-10 h-10 rounded-xl shadow-sm"
-                    imgClassName="w-full h-full rounded-xl object-cover"
+                    wrapperClassName="h-11 w-11 rounded-2xl border border-gray-200 bg-white"
+                    imgClassName="h-full w-full rounded-2xl object-cover"
                   />
-                  {isSelectedContactOnline && (
-                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
+                  {selectedContactOnline && (
+                    <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500" />
                   )}
                 </div>
-                <div className="min-w-0 cursor-pointer" onClick={() => navigate(`/profile/${selectedContact.uid}`)}>
-                  <h3 className="truncate text-sm font-bold text-gray-900 leading-tight">{selectedContact.displayName}</h3>
-                  <p className={`truncate text-[10px] font-bold uppercase tracking-wider ${isSelectedContactTyping || isSelectedContactOnline ? 'text-emerald-600' : 'text-gray-400'}`}>
-                    {isSelectedContactTyping ? 'Typing...' : isSelectedContactOnline ? 'Online now' : 'Offline'}
+                <button type="button" onClick={() => navigate(`/profile/${selectedContact.uid}`)} className="min-w-0 text-left">
+                  <p className="truncate text-sm font-black text-gray-900">{selectedContact.displayName}</p>
+                  <p className={`truncate text-[10px] font-bold uppercase tracking-wider ${selectedContactTyping || selectedContactOnline ? 'text-emerald-600' : 'text-gray-400'}`}>
+                    {selectedContactTyping ? 'Typing...' : selectedContactOnline ? 'Online now' : 'Offline'}
                   </p>
-                </div>
+                </button>
               </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => openUserActions(selectedContact)} className="p-2.5 text-gray-500 hover:bg-gray-100 rounded-full transition-all"><MoreVertical size={20} /></button>
-              </div>
-            </div>
+              <button
+                onClick={() => setChatActionsUser(selectedContact)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-500 transition-all hover:bg-gray-100"
+                aria-label="Chat actions"
+              >
+                <MoreVertical size={20} />
+              </button>
+            </header>
 
-            {/* Messages List - WhatsApp Style Background */}
-            <div 
-              className="flex-1 overflow-y-auto px-3 py-4 md:px-6 md:py-5 space-y-2 relative custom-scrollbar select-none"
-              onClick={() => {
-                if (showKeyboardDock) {
-                  hideCustomKeyboard();
-                }
-              }}
-              style={{
-                backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`,
-                backgroundBlendMode: 'overlay',
-                backgroundColor: '#efeae2',
-                paddingBottom: showKeyboardDock ? `calc(${keyboardPanelHeight} + 110px)` : '18px',
-                WebkitTouchCallout: 'none',
-              }}
-            >
-              {messagesLoading ? (
-                <MessageSkeleton />
-              ) : messagesError ? (
-                <div className="h-full flex items-center justify-center p-6">
-                  <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-sm text-center max-w-xs">
-                    <p className="text-red-600 font-bold mb-2">Error</p>
-                    <p className="text-sm text-gray-600 mb-4">{messagesError}</p>
-                    <button 
-                      onClick={() => window.location.reload()}
-                      className="text-teal-600 font-bold text-sm hover:underline"
-                    >
-                      Retry
-                    </button>
+            <div className="relative min-h-0 flex-1">
+              <div
+                className="absolute inset-0 overflow-y-auto px-3 py-4 md:px-6 md:py-5"
+                onClick={() => {
+                  if (showKeyboard) hideKeyboard();
+                }}
+                style={{
+                  backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(15, 23, 42, 0.05) 1px, transparent 0)',
+                  backgroundSize: '24px 24px',
+                  paddingBottom: `${conversationBottomPadding}px`,
+                  WebkitTouchCallout: 'none',
+                }}
+              >
+                {messagesLoading ? (
+                  <div className="space-y-4 p-6">
+                    {[0, 1, 2, 3].map((item) => (
+                      <div key={item} className={`flex animate-pulse ${item % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`h-12 w-2/3 rounded-2xl bg-white/60 ${item % 2 === 0 ? 'rounded-tr-none' : 'rounded-tl-none'}`} />
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ) : messages.length > 0 ? (
-                messages.map((msg, idx) => {
-                  const isMe = msg.senderUid === profile.uid;
-                  const msgDate = ensureDate(msg.createdAt);
-                  const prevMsgDate = idx > 0 ? ensureDate(messages[idx-1].createdAt) : null;
-                  const showDateHeader = !prevMsgDate || !isToday(msgDate) && format(msgDate, 'yyyy-MM-dd') !== format(prevMsgDate, 'yyyy-MM-dd');
-                  const messageAttachments = getSafeAttachments(msg);
-                  
-                  return (
-                    <React.Fragment key={msg.id || idx}>
-                      {showDateHeader && <MessageDateHeader date={msgDate} />}
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className={`flex ${isMe ? 'justify-end' : 'justify-start'} mb-1`}
-                      >
-                        <div className={`relative max-w-[86%] md:max-w-[68%] px-3 py-2 rounded-2xl shadow-sm text-sm select-none ${
-                          isMe 
-                            ? 'bg-[#dcf8c6] text-gray-900 rounded-tr-none' 
-                            : 'bg-white text-gray-900 rounded-tl-none'
-                        }`}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            setMessageActionsMessage(msg);
-                          }}
-                          onTouchStart={() => beginMessageHold(msg)}
-                          onTouchEnd={cancelHold}
-                          onTouchMove={cancelHold}
-                          onTouchCancel={cancelHold}
+                ) : messagesError ? (
+                  <div className="flex h-full items-center justify-center p-6">
+                    <div className="max-w-xs rounded-3xl bg-white/90 p-6 text-center shadow-sm">
+                      <p className="text-sm font-bold text-red-600">Failed to load messages</p>
+                      <p className="mt-2 text-sm text-gray-600">{messagesError}</p>
+                    </div>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex h-full items-center justify-center p-6">
+                    <div className="max-w-xs rounded-3xl bg-white/85 p-5 text-center shadow-sm">
+                      <p className="text-xs font-medium text-gray-500">
+                        Messages are end-to-end encrypted. No one outside of this chat, not even Connect, can read them.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  messages.map((message, index) => {
+                    const isMine = message.senderUid === profile.uid;
+                    const date = ensureDate(message.createdAt);
+                    const previousDate = index > 0 ? ensureDate(messages[index - 1].createdAt) : null;
+                    const showDateHeader =
+                      !previousDate || format(previousDate, 'yyyy-MM-dd') !== format(date, 'yyyy-MM-dd');
+                    const attachments = getSafeAttachments(message);
+                    const receiptState = getOutgoingReceiptState(message, selectedContactOnline);
+
+                    return (
+                      <React.Fragment key={message.id}>
+                        {showDateHeader && (
+                          <div className="my-4 flex justify-center">
+                            <span className="rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 shadow-sm">
+                              {isToday(date) ? 'Today' : isYesterday(date) ? 'Yesterday' : format(date, 'MMMM d, yyyy')}
+                            </span>
+                          </div>
+                        )}
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.96 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className={`mb-1 flex ${isMine ? 'justify-end' : 'justify-start'}`}
                         >
-                          {/* Bubble Tail */}
-                          <div className={`absolute top-0 w-2 h-2 ${
-                            isMe 
-                              ? '-right-1 bg-[#dcf8c6] [clip-path:polygon(0_0,0_100%,100%_0)]' 
-                              : '-left-1 bg-white [clip-path:polygon(100%_0,100%_100%,0_0)]'
-                          }`}></div>
-                          
-                          {messageAttachments.length > 0 && (
-                            <div className="mb-2 space-y-2">
-                              {messageAttachments.map((att, i) => {
-                                const isImage = att.type.startsWith('image/');
-                                return (
-                                  <div key={i} className="rounded-lg overflow-hidden border border-black/5 bg-black/5">
-                                    {isImage ? (
-                                      <a href={att.url} target="_blank" rel="noopener noreferrer" className="block">
-                                        <CachedImage
-                                          src={att.url}
-                                          alt={att.name}
-                                          loading="lazy"
-                                          decoding="async"
-                                          referrerPolicy="no-referrer"
-                                          wrapperClassName="max-w-full max-h-64"
-                                          imgClassName="max-w-full max-h-64 object-contain"
-                                        />
-                                      </a>
-                                    ) : (
-                                      <a 
-                                        href={att.url} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-3 p-3 hover:bg-black/10 transition-colors"
-                                      >
-                                        <div className="p-2 bg-white rounded-lg shadow-sm">
-                                          <FileIcon size={20} className="text-teal-600" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-xs font-bold truncate">{att.name}</p>
-                                          <p className="text-[10px] text-gray-500">{(att.size / 1024).toFixed(1)} KB</p>
-                                        </div>
-                                        <Download size={16} className="text-gray-400" />
-                                      </a>
-                                    )}
-                                  </div>
-                                );
-                              })}
+                          <div
+                            className={`relative max-w-[86%] select-none rounded-3xl px-3 py-2 text-sm shadow-sm md:max-w-[70%] ${
+                              isMine ? 'rounded-tr-md bg-[#dcf8c6] text-gray-900' : 'rounded-tl-md bg-white text-gray-900'
+                            }`}
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              setMessageActionsMessage(message);
+                            }}
+                            onTouchStart={() => beginHold(() => setMessageActionsMessage(message))}
+                            onTouchEnd={cancelHold}
+                            onTouchMove={cancelHold}
+                            onTouchCancel={cancelHold}
+                          >
+                            <span
+                              className={`absolute top-0 h-2 w-2 ${
+                                isMine
+                                  ? '-right-1 bg-[#dcf8c6] [clip-path:polygon(0_0,0_100%,100%_0)]'
+                                  : '-left-1 bg-white [clip-path:polygon(100%_0,100%_100%,0_0)]'
+                              }`}
+                            />
+                            {attachments.length > 0 && (
+                              <div className="mb-2 space-y-2">
+                                {attachments.map((attachment, attachmentIndex) => {
+                                  const isImage = attachment.type.startsWith('image/');
+                                  return (
+                                    <div key={`${message.id}-${attachmentIndex}`} className="overflow-hidden rounded-2xl border border-black/5 bg-black/5">
+                                      {isImage ? (
+                                        <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="block">
+                                          <CachedImage
+                                            src={attachment.url}
+                                            alt={attachment.name}
+                                            wrapperClassName="max-h-72 w-full"
+                                            imgClassName="max-h-72 w-full object-contain"
+                                          />
+                                        </a>
+                                      ) : (
+                                        <a
+                                          href={attachment.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex items-center gap-3 p-3 transition-colors hover:bg-black/10"
+                                        >
+                                          <div className="rounded-xl bg-white p-2 shadow-sm">
+                                            <FileIcon size={18} className="text-teal-600" />
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <p className="truncate text-xs font-bold">{attachment.name}</p>
+                                            <p className="text-[10px] text-gray-500">{(attachment.size / 1024).toFixed(1)} KB</p>
+                                          </div>
+                                          <Download size={14} className="text-gray-400" />
+                                        </a>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {message.content && (
+                              <p className={`whitespace-pre-wrap pr-12 leading-relaxed ${message.isDeleted ? 'italic text-gray-500' : ''}`}>
+                                {message.content}
+                              </p>
+                            )}
+                            <div className="absolute bottom-1 right-2 flex items-center gap-1">
+                              <span className="text-[9px] font-medium text-gray-500">{format(date, 'HH:mm')}</span>
+                              {isMine && <ReceiptIcon state={receiptState} />}
+                            </div>
+                          </div>
+                        </motion.div>
+                      </React.Fragment>
+                    );
+                  })
+                )}
+
+                {selectedContactTyping && (
+                  <div className="mb-1 flex justify-start">
+                    <div className="relative rounded-2xl rounded-tl-md bg-white px-3 py-2 shadow-sm">
+                      <span className="-left-1 absolute top-0 h-2 w-2 bg-white [clip-path:polygon(100%_0,100%_100%,0_0)]" />
+                      <div className="flex items-center gap-1.5 text-gray-500">
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.2s]" />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.1s]" />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+              <div
+                ref={composerRef}
+                className="absolute inset-x-0 z-20 border-t border-gray-200 bg-[#f0f2f5] px-3 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]"
+                style={{ bottom: showKeyboard ? keyboardHeight : 0 }}
+              >
+                {selectedFiles.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-2 rounded-2xl bg-white/80 p-2">
+                    {selectedFiles.map((file, index) => (
+                      <div key={`${file.name}-${index}`} className="relative">
+                        <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 text-center shadow-sm">
+                          {file.type.startsWith('image/') ? (
+                            <CachedImage
+                              src={URL.createObjectURL(file)}
+                              alt={file.name}
+                              wrapperClassName="h-full w-full rounded-xl"
+                              imgClassName="h-full w-full rounded-xl object-cover"
+                            />
+                          ) : (
+                            <div>
+                              <FileIcon size={22} className="mx-auto text-teal-600" />
+                              <p className="mt-1 line-clamp-2 text-[8px] font-bold text-gray-700">{file.name}</p>
                             </div>
                           )}
-
-                          {msg.content && <p className={`leading-relaxed pr-12 ${msg.isDeleted ? 'italic text-gray-500' : ''}`}>{msg.content}</p>}
-                          <div className="absolute bottom-1 right-2 flex items-center gap-1">
-                            <span className="text-[9px] text-gray-500 font-medium">
-                              {format(msgDate, 'HH:mm')}
-                            </span>
-                            {isMe && (() => {
-                              const receiptState = getOutgoingReceiptState(msg);
-                              if (receiptState === 'pending') {
-                                return <Loader2 size={11} className="animate-spin text-gray-400" />;
-                              }
-                              if (receiptState === 'failed') {
-                                return <X size={11} className="text-red-500" />;
-                              }
-                              if (receiptState === 'sent') {
-                                return <Check size={12} className="text-gray-500 stroke-[3]" />;
-                              }
-                              const tickColor = receiptState === 'read' ? 'text-blue-500' : 'text-gray-500';
-                              return (
-                                <span className={`inline-flex items-center gap-0.5 ${tickColor}`}>
-                                  <Check size={12} className="stroke-[3]" />
-                                  <Check size={12} className="-ml-1.5 stroke-[3]" />
-                                </span>
-                              );
-                            })()}
-                          </div>
                         </div>
-                      </motion.div>
-                    </React.Fragment>
-                  );
-                })
-              ) : (
-                <div className="h-full flex items-center justify-center">
-                  <div className="bg-white/80 backdrop-blur-sm p-4 rounded-2xl shadow-sm text-center max-w-xs">
-                    <p className="text-xs text-gray-500 font-medium">Messages are end-to-end encrypted. No one outside of this chat, not even Connect, can read them.</p>
-                  </div>
-                </div>
-              )}
-              {isSelectedContactTyping && (
-                <div className="flex justify-start mb-1">
-                  <div className="relative max-w-[70%] px-3 py-2 rounded-xl rounded-tl-none shadow-sm text-sm bg-white text-gray-900">
-                    <div className="-left-1 absolute top-0 w-2 h-2 bg-white [clip-path:polygon(100%_0,100%_100%,0_0)]"></div>
-                    <div className="flex items-center gap-1.5 text-gray-500">
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.2s]" />
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.1s]" />
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Message Input - WhatsApp Style */}
-            <div
-              ref={composerRef}
-              className="fixed inset-x-0 bottom-0 z-[76] mx-auto flex w-full max-w-3xl flex-col border-t border-gray-200 bg-[#f0f2f5] px-3 py-2 transition-[padding,margin,bottom] duration-200 pb-[max(12px,env(safe-area-inset-bottom))]"
-              style={{
-                bottom: showKeyboardDock ? keyboardPanelHeight : '0px',
-                paddingBottom: shouldLiftForKeyboard ? `${Math.max(12, keyboardInset + 12)}px` : '12px',
-                marginBottom: '0px',
-              }}
-            >
-              {/* File Previews */}
-              {selectedFiles.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-3 p-2 bg-white/50 rounded-xl">
-                  {selectedFiles.map((file, i) => (
-                    <div key={i} className="relative group">
-                      <div className="w-20 h-20 rounded-lg bg-white border border-gray-200 flex flex-col items-center justify-center p-2 text-center overflow-hidden shadow-sm">
-                        {file.type.startsWith('image/') ? (
-                          <CachedImage
-                            src={URL.createObjectURL(file)}
-                            alt="preview"
-                            loading="lazy"
-                            decoding="async"
-                            wrapperClassName="w-full h-full rounded"
-                            imgClassName="w-full h-full rounded object-cover"
-                          />
-                        ) : (
-                          <>
-                            <FileIcon size={24} className="text-teal-600 mb-1" />
-                            <p className="text-[8px] font-bold truncate w-full">{file.name}</p>
-                          </>
-                        )}
-                      </div>
-                      <button 
-                        onClick={() => removeFile(i)}
-                        className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md transition-opacity z-10"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <form onSubmit={handleSendMessage} className="flex items-end gap-2">
-                <div className="flex items-center gap-1">
-                  <div className="relative" ref={attachmentMenuRef}>
-                    <button 
-                      type="button" 
-                      onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-                      className={`p-2 rounded-full transition-all ${showAttachmentMenu ? 'text-teal-600 bg-teal-50' : 'text-gray-500 hover:bg-gray-200'}`}
-                    >
-                      <PlusSquare size={24} />
-                    </button>
-                    
-                    <AnimatePresence>
-                      {showAttachmentMenu && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                          className="absolute bottom-full left-0 mb-4 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 min-w-[180px] z-50"
+                        <button
+                          type="button"
+                          onClick={() => removeFile(index)}
+                          className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow-md"
                         >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              fileInputRef.current?.setAttribute('accept', 'image/*');
-                              fileInputRef.current?.setAttribute('capture', 'environment');
-                              fileInputRef.current?.click();
-                              setShowAttachmentMenu(false);
-                            }}
-                            className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-xl transition-all text-gray-700"
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <form onSubmit={handleSendMessage} className="flex items-end gap-2">
+                  <div className="flex items-center gap-1">
+                    <div className="relative" ref={attachmentMenuRef}>
+                      <button
+                        type="button"
+                        onClick={() => setShowAttachmentMenu((prev) => !prev)}
+                        className={`inline-flex h-11 w-11 items-center justify-center rounded-full transition-all ${
+                          showAttachmentMenu ? 'bg-teal-50 text-teal-600' : 'text-gray-500 hover:bg-gray-200'
+                        }`}
+                      >
+                        <PlusSquare size={22} />
+                      </button>
+
+                      <AnimatePresence>
+                        {showAttachmentMenu && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10, scale: 0.96 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 10, scale: 0.96 }}
+                            className="absolute bottom-full left-0 mb-3 min-w-[200px] rounded-3xl border border-gray-100 bg-white p-2 shadow-xl"
                           >
-                            <div className="p-2 bg-pink-50 text-pink-600 rounded-lg">
-                              <Video size={20} />
-                            </div>
-                            <span className="text-sm font-bold">Camera</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              fileInputRef.current?.removeAttribute('capture');
-                              fileInputRef.current?.setAttribute('accept', 'image/*');
-                              fileInputRef.current?.click();
-                              setShowAttachmentMenu(false);
-                            }}
-                            className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-xl transition-all text-gray-700"
-                          >
-                            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                              <ImageIcon size={20} />
-                            </div>
-                            <span className="text-sm font-bold">Photos & Videos</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              fileInputRef.current?.removeAttribute('capture');
-                              fileInputRef.current?.setAttribute('accept', '.pdf,.doc,.docx,.txt,.zip');
-                              fileInputRef.current?.click();
-                              setShowAttachmentMenu(false);
-                            }}
-                            className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-xl transition-all text-gray-700"
-                          >
-                            <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
-                              <FileIcon size={20} />
-                            </div>
-                            <span className="text-sm font-bold">Documents</span>
-                          </button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                            <AttachmentMenuButton
+                              icon={<Video size={18} />}
+                              iconClassName="bg-pink-50 text-pink-600"
+                              label="Camera"
+                              onClick={() => {
+                                fileInputRef.current?.setAttribute('accept', 'image/*');
+                                fileInputRef.current?.setAttribute('capture', 'environment');
+                                fileInputRef.current?.click();
+                                setShowAttachmentMenu(false);
+                              }}
+                            />
+                            <AttachmentMenuButton
+                              icon={<ImageIcon size={18} />}
+                              iconClassName="bg-blue-50 text-blue-600"
+                              label="Photos & Videos"
+                              onClick={() => {
+                                fileInputRef.current?.removeAttribute('capture');
+                                fileInputRef.current?.setAttribute('accept', 'image/*');
+                                fileInputRef.current?.click();
+                                setShowAttachmentMenu(false);
+                              }}
+                            />
+                            <AttachmentMenuButton
+                              icon={<FileIcon size={18} />}
+                              iconClassName="bg-purple-50 text-purple-600"
+                              label="Documents"
+                              onClick={() => {
+                                fileInputRef.current?.removeAttribute('capture');
+                                fileInputRef.current?.setAttribute('accept', '.pdf,.doc,.docx,.txt,.zip');
+                                fileInputRef.current?.click();
+                                setShowAttachmentMenu(false);
+                              }}
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    <input
+                      type="file"
+                      multiple
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
                   </div>
 
-                  <input
-                    type="file"
-                    multiple
-                    ref={fileInputRef}
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-                </div>
-                
-                <div className="flex-1 relative rounded-[1.75rem] bg-white shadow-sm">
-                  <textarea
-                    ref={inputRef}
-                    rows={1}
-                    value={newMessage}
-                    readOnly
-                    inputMode="none"
-                    onClick={() => {
-                      syncSelection();
-                      openCustomKeyboard('keys', inputRef.current?.selectionStart ?? newMessage.length);
-                    }}
-                    onSelect={() => syncSelection()}
-                    onFocus={() => {
-                      setIsComposerFocused(true);
-                      openCustomKeyboard('keys', inputRef.current?.selectionStart ?? newMessage.length);
-                      window.setTimeout(() => {
-                        inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                      }, 160);
-                    }}
-                    onBlur={() => {
-                      window.setTimeout(() => setIsComposerFocused(false), 120);
-                    }}
-                    placeholder={editingMessageId ? 'Edit your message' : 'Type a message'}
-                    enterKeyHint="send"
-                    autoCapitalize="off"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    className="w-full select-text rounded-[1.75rem] border-transparent bg-transparent px-4 py-3 pr-12 text-[15px] transition-all focus:ring-0 resize-none overflow-y-auto max-h-32"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      openCustomKeyboard(showKeyboardDock && keyboardPane === 'emoji' ? 'keys' : 'emoji', selectionRef.current.end);
-                    }}
-                    className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 transition-all ${(showKeyboardDock && keyboardPane === 'emoji') ? 'bg-teal-50 text-teal-600' : 'text-gray-400 hover:text-gray-600'}`}
-                  >
-                    <Smile size={20} />
-                  </button>
-                </div>
+                  <div className="relative flex-1 rounded-[1.75rem] bg-white shadow-sm">
+                    <textarea
+                      ref={inputRef}
+                      rows={1}
+                      readOnly
+                      inputMode="none"
+                      value={newMessage}
+                      onClick={() => {
+                        syncSelection();
+                        openKeyboard('keys', inputRef.current?.selectionStart ?? newMessage.length);
+                      }}
+                      onFocus={() => openKeyboard('keys', inputRef.current?.selectionStart ?? newMessage.length)}
+                      onSelect={() => syncSelection()}
+                      placeholder={editingMessageId ? 'Edit your message' : 'Type a message'}
+                      className="max-h-40 w-full resize-none overflow-y-auto rounded-[1.75rem] border-transparent bg-transparent px-4 py-3 pr-12 text-[15px] text-gray-900 focus:outline-none focus:ring-0"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => openKeyboard(showKeyboard && keyboardPane === 'emoji' ? 'keys' : 'emoji', selectionRef.current.end)}
+                      className={`absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full transition-all ${
+                        showKeyboard && keyboardPane === 'emoji' ? 'bg-teal-50 text-teal-600' : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      <Smile size={18} />
+                    </button>
+                  </div>
 
-                {(newMessage.trim().length > 0 || selectedFiles.length > 0) && (
-                  <button
-                    type="submit"
-                    disabled={uploading}
-                    className="p-3 rounded-full transition-all shadow-md flex items-center justify-center min-w-[48px] bg-teal-600 text-white hover:bg-teal-700 disabled:bg-gray-400"
-                  >
-                    {uploading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-                  </button>
+                  {(newMessage.trim() || selectedFiles.length > 0) && (
+                    <button
+                      type="submit"
+                      disabled={uploading}
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-teal-600 text-white shadow-md transition-all hover:bg-teal-700 disabled:bg-gray-400"
+                    >
+                      {uploading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                    </button>
+                  )}
+                </form>
+
+                {editingMessageId && (
+                  <div className="mt-2 flex items-center justify-between rounded-2xl bg-white px-4 py-2 text-xs text-gray-600 shadow-sm">
+                    <span>Editing message</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingMessageId(null);
+                        setNewMessage('');
+                        setKeyboardShift(true);
+                      }}
+                      className="font-bold text-red-600"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 )}
-              </form>
-              {editingMessageId && (
-                <div className="mt-2 flex items-center justify-between rounded-2xl bg-white px-4 py-2 text-xs text-gray-600 shadow-sm">
-                  <span>Editing message</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingMessageId(null);
-                      setNewMessage('');
-                    }}
-                    className="font-bold text-red-600"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </div>
-            {showKeyboardDock && (
+              </div>
+
+              {showKeyboard && (
                 <div
-                  className="fixed inset-x-0 bottom-0 z-[75] mx-auto w-full max-w-3xl overflow-hidden rounded-t-[1.5rem] border border-b-0 border-slate-200 bg-gradient-to-b from-slate-50 to-white shadow-[0_-12px_28px_rgba(15,23,42,0.12)]"
-                  style={{ height: keyboardPanelHeight }}
+                  ref={keyboardRef}
+                  className="absolute inset-x-0 bottom-0 z-10 overflow-hidden rounded-t-[1.6rem] border border-b-0 border-slate-200 bg-gradient-to-b from-slate-50 to-white shadow-[0_-12px_28px_rgba(15,23,42,0.12)]"
                 >
                   <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
+                        onMouseDown={(event) => event.preventDefault()}
                         onClick={() => setKeyboardPane('keys')}
-                        className={`rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${keyboardPane === 'keys' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                        className={`rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${
+                          keyboardPane === 'keys' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'
+                        }`}
                       >
                         Keyboard
                       </button>
                       <button
                         type="button"
+                        onMouseDown={(event) => event.preventDefault()}
                         onClick={() => setKeyboardPane('emoji')}
-                        className={`rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${keyboardPane === 'emoji' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600'}`}
+                        className={`rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${
+                          keyboardPane === 'emoji' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600'
+                        }`}
                       >
                         Emoji
                       </button>
                     </div>
                     <div className="h-1.5 w-16 rounded-full bg-slate-200" />
                   </div>
+
                   <div className="border-b border-slate-100 px-2.5 py-1.5">
                     <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
-                    {quickKeyboardActions.map((snippet) => (
-                      <button
-                        key={snippet}
-                        type="button"
-                        onClick={() => insertQuickMessage(snippet)}
-                        className="shrink-0 rounded-full bg-gray-100 px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 hover:bg-teal-50 hover:text-teal-700"
-                      >
-                        {snippet}
-                      </button>
-                    ))}
+                      {QUICK_PHRASES.map((phrase) => (
+                        <button
+                          key={phrase}
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => insertQuickPhrase(phrase)}
+                          className="shrink-0 rounded-full bg-gray-100 px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 transition-all hover:bg-teal-50 hover:text-teal-700"
+                        >
+                          {phrase}
+                        </button>
+                      ))}
                     </div>
                   </div>
+
                   {keyboardPane === 'keys' ? (
                     <div className="space-y-1.5 bg-gradient-to-b from-slate-100 to-slate-200/80 px-2 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
-                      {(keyboardLayout === 'letters' ? letterRows : symbolRows).map((row, rowIndex) => (
-                      <div
-                        key={`${keyboardLayout}-${rowIndex}`}
-                        className={`grid gap-1.5 ${rowIndex === 1 ? 'grid-cols-9 px-3 sm:px-6' : rowIndex === 2 ? 'grid-cols-[auto_repeat(7,minmax(0,1fr))_auto]' : 'grid-cols-10'}`}
-                      >
-                        {rowIndex === 2 && (
-                          <button
-                            type="button"
-                            onClick={() => setKeyboardShift((prev) => !prev)}
-                            className={`rounded-[1rem] px-2.5 py-2.5 text-[10px] font-black uppercase tracking-wider shadow-sm transition-all ${keyboardShift ? 'bg-teal-600 text-white' : 'bg-white text-slate-700'}`}
-                          >
-                            Shift
-                          </button>
-                        )}
-                        {row.map((key) => (
-                          <button
-                            key={key}
-                            type="button"
-                            onClick={() => insertKeyboardValue(key)}
-                            className="min-h-[44px] rounded-[0.95rem] bg-white px-2 py-2 text-[15px] font-bold text-slate-800 shadow-sm transition-all hover:bg-teal-50 hover:text-teal-700 active:scale-[0.98]"
-                          >
-                            {keyboardLayout === 'letters' && keyboardShift ? key.toUpperCase() : key}
-                          </button>
-                        ))}
-                        {rowIndex === 2 && (
-                          <button
-                            type="button"
-                            onClick={deleteBeforeCursor}
-                            className="rounded-[1rem] bg-slate-900 px-2.5 py-2.5 text-[10px] font-black uppercase tracking-wider text-white shadow-sm transition-all hover:bg-black"
-                          >
-                            Del
-                          </button>
-                        )}
-                      </div>
+                      {(keyboardLayout === 'letters' ? LETTER_ROWS : SYMBOL_ROWS).map((row, rowIndex) => (
+                        <div
+                          key={`${keyboardLayout}-${rowIndex}`}
+                          className={`grid gap-1.5 ${
+                            rowIndex === 1
+                              ? 'grid-cols-9 px-3 sm:px-6'
+                              : rowIndex === 2
+                              ? 'grid-cols-[auto_repeat(7,minmax(0,1fr))_auto]'
+                              : 'grid-cols-10'
+                          }`}
+                        >
+                          {rowIndex === 2 && (
+                            <KeyboardKey
+                              className={`text-[10px] uppercase tracking-wider ${
+                                keyboardShift ? 'bg-teal-600 text-white hover:bg-teal-700 hover:text-white' : 'text-slate-700'
+                              }`}
+                              onClick={() => setKeyboardShift((prev) => !prev)}
+                            >
+                              Shift
+                            </KeyboardKey>
+                          )}
+
+                          {row.map((key) => (
+                            <KeyboardKey key={key} onClick={() => insertKeyboardValue(key)}>
+                              {keyboardLayout === 'letters' && keyboardShift ? key.toUpperCase() : key}
+                            </KeyboardKey>
+                          ))}
+
+                          {rowIndex === 2 && (
+                            <KeyboardKey className="bg-slate-900 text-[10px] uppercase tracking-wider text-white hover:bg-black hover:text-white" onClick={deleteBeforeCursor}>
+                              Del
+                            </KeyboardKey>
+                          )}
+                        </div>
                       ))}
+
                       <div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setKeyboardLayout((prev) => prev === 'letters' ? 'symbols' : 'letters')}
-                        className="rounded-[1rem] bg-white px-2.5 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
-                      >
-                        {keyboardLayout === 'letters' ? '123' : 'ABC'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateMessageAtSelection('\n', { keepShift: true })}
-                        className="rounded-[1rem] bg-white px-2.5 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
-                      >
-                        Enter
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateMessageAtSelection(' ', { keepShift: true })}
-                        className="rounded-[1rem] bg-white px-2.5 py-2.5 text-sm font-black text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
-                      >
-                        Space
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveCursor('left')}
-                        className="rounded-[1rem] bg-white px-2.5 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
-                      >
-                        Left
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveCursor('right')}
-                        className="rounded-[1rem] bg-white px-2.5 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
-                      >
-                        Right
-                      </button>
+                        <KeyboardKey className="text-[10px] uppercase tracking-wider" onClick={() => setKeyboardLayout((prev) => (prev === 'letters' ? 'symbols' : 'letters'))}>
+                          {keyboardLayout === 'letters' ? '123' : 'ABC'}
+                        </KeyboardKey>
+                        <KeyboardKey className="text-[10px] uppercase tracking-wider" onClick={() => insertAtSelection('\n', { keepShift: true })}>
+                          Enter
+                        </KeyboardKey>
+                        <KeyboardKey onClick={() => insertAtSelection(' ', { keepShift: true })}>Space</KeyboardKey>
+                        <KeyboardKey className="text-[10px] uppercase tracking-wider" onClick={() => moveCursor('left')}>
+                          Left
+                        </KeyboardKey>
+                        <KeyboardKey className="text-[10px] uppercase tracking-wider" onClick={() => moveCursor('right')}>
+                          Right
+                        </KeyboardKey>
                       </div>
                     </div>
                   ) : (
                     <div className="max-h-[28vh] space-y-2 overflow-y-auto bg-gradient-to-b from-amber-50 to-white px-3 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
-                      {emojiGroups.map((group) => (
+                      {EMOJI_GROUPS.map((group) => (
                         <div key={group.label} className="space-y-1.5">
                           <p className="px-1 text-[11px] font-black uppercase tracking-wider text-slate-400">{group.label}</p>
                           <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-8">
@@ -1573,7 +1475,8 @@ export default function Chat({ profile }: ChatProps) {
                               <button
                                 key={`${group.label}-${emoji}`}
                                 type="button"
-                                onClick={() => updateMessageAtSelection(emoji, { keepShift: true })}
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => insertAtSelection(emoji, { keepShift: true })}
                                 className="rounded-[1rem] bg-white px-2.5 py-2.5 text-xl shadow-sm transition-all hover:-translate-y-0.5 hover:bg-teal-50"
                               >
                                 {emoji}
@@ -1586,98 +1489,91 @@ export default function Chat({ profile }: ChatProps) {
                   )}
                 </div>
               )}
+            </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center relative overflow-hidden">
-            {/* Background Pattern for Empty State */}
-            <div 
-              className="absolute inset-0 opacity-[0.03]"
-              style={{
-                backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`,
-              }}
-            ></div>
-            
-            <div className="relative z-10">
-              <div className="bg-white p-10 rounded-full shadow-2xl mb-8 mx-auto w-fit">
-                <MessageSquare size={80} className="text-teal-600" />
-              </div>
-              <h3 className="text-3xl font-bold text-gray-900 mb-4">Connect Web</h3>
-              <p className="text-gray-500 max-w-sm mx-auto leading-relaxed">
-                Connect with freelancers and clients in real-time. Send messages, share files, and build your professional network.
-              </p>
-              <div className="mt-12 flex items-center justify-center gap-2 text-gray-400">
-                <Lock size={14} />
-                <span className="text-xs font-medium">End-to-end encrypted</span>
-              </div>
+          <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white/80 shadow-2xl">
+              <MessageSquare size={52} className="text-teal-600" />
+            </div>
+            <h2 className="mt-6 text-3xl font-black text-gray-900">Connect Chat</h2>
+            <p className="mt-3 max-w-md text-sm leading-7 text-gray-500">
+              Open any conversation to message in real time, send files, pay a user, clear a chat, and manage message actions from one clean workspace.
+            </p>
+            <div className="mt-8 inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-xs font-semibold text-gray-500 shadow-sm">
+              <Lock size={14} />
+              End-to-end encrypted
             </div>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* New Chat Modal */}
       <AnimatePresence>
         {isNewChatModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
             <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
+              initial={{ opacity: 0, scale: 0.94 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+              exit={{ opacity: 0, scale: 0.94 }}
+              className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-[2rem] bg-white shadow-2xl"
             >
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-teal-700 text-white">
-                <h3 className="text-xl font-bold">New Chat</h3>
-                <button onClick={() => setIsNewChatModalOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-all">
-                  <ArrowLeft size={24} className="rotate-180" />
+              <div className="flex items-center justify-between bg-teal-700 px-5 py-4 text-white">
+                <div>
+                  <h3 className="text-xl font-black">New Chat</h3>
+                  <p className="text-xs text-teal-100">Start a conversation with a connection.</p>
+                </div>
+                <button
+                  onClick={() => setIsNewChatModalOpen(false)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full transition-all hover:bg-white/10"
+                >
+                  <ArrowLeft size={22} className="rotate-180" />
                 </button>
               </div>
-              
-              <div className="p-4 border-b border-gray-100">
+
+              <div className="border-b border-gray-100 p-4">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Search users..."
                     value={newChatSearchQuery}
-                    onChange={(e) => setNewChatSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-gray-100 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
+                    onChange={(event) => setNewChatSearchQuery(event.target.value)}
+                    placeholder="Search users..."
+                    className="w-full rounded-2xl border border-transparent bg-gray-100 py-3 pl-10 pr-4 text-sm transition-all focus:border-teal-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-                {filteredNewChatUsers.length > 0 ? (
-                  filteredNewChatUsers.map(user => (
+              <div className="min-h-0 flex-1 overflow-y-auto p-2">
+                {filteredNewChatUsers.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-gray-500">No users found.</div>
+                ) : (
+                  filteredNewChatUsers.map((user) => (
                     <button
                       key={user.uid}
                       onClick={() => {
                         setIsNewChatModalOpen(false);
-                        openChat(user, {
+                        openConversation(user, {
                           otherUid: user.uid,
                           lastMessage: '',
                           updatedAt: new Date().toISOString(),
                         });
                       }}
-                      className="w-full p-3 flex items-center gap-4 hover:bg-gray-50 rounded-2xl transition-all"
+                      className="flex w-full items-center gap-4 rounded-2xl px-3 py-3 text-left transition-all hover:bg-gray-50"
                     >
                       <CachedImage
                         src={user.photoURL}
                         alt={user.displayName}
-                        loading="lazy"
-                        decoding="async"
-                        referrerPolicy="no-referrer"
-                        wrapperClassName="w-12 h-12 rounded-xl shadow-sm"
-                        imgClassName="w-full h-full rounded-xl object-cover"
+                        wrapperClassName="h-12 w-12 rounded-2xl border border-gray-200 bg-gray-100"
+                        imgClassName="h-full w-full rounded-2xl object-cover"
                       />
-                      <div className="text-left">
-                        <p className="text-sm font-bold text-gray-900">{user.displayName}</p>
-                        <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-gray-900">{user.displayName}</p>
+                        <p className="truncate text-xs text-gray-500">
+                          {user.publicId || user.uid} • {user.role}
+                        </p>
                       </div>
                     </button>
                   ))
-                ) : (
-                  <div className="p-8 text-center text-gray-500">
-                    <p>No users found</p>
-                  </div>
                 )}
               </div>
             </motion.div>
@@ -1687,141 +1583,215 @@ export default function Chat({ profile }: ChatProps) {
 
       <AnimatePresence>
         {chatActionsUser && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[70] bg-black/40"
-              onClick={() => setChatActionsUser(null)}
-            />
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-              className="fixed bottom-0 left-0 right-0 z-[71] rounded-t-3xl border-t border-gray-200 bg-white p-5"
-            >
-              <div className="mx-auto max-w-md space-y-4">
-                <div className="text-center">
-                  <p className="text-base font-bold text-gray-900">{chatActionsUser.displayName}</p>
-                  <p className="text-xs text-gray-500">Choose what you want to do with this contact.</p>
-                </div>
-                <div className="space-y-2">
-                  <button
-                    onClick={() => {
-                      openChat(chatActionsUser, {
-                        otherUid: chatActionsUser.uid,
-                        lastMessage: '',
-                        updatedAt: new Date().toISOString(),
-                      });
-                      setChatActionsUser(null);
-                    }}
-                    className="w-full rounded-2xl bg-gray-100 px-4 py-3 text-left text-sm font-semibold text-gray-800 hover:bg-gray-200"
-                  >
-                    Open chat
-                  </button>
-                  <button
-                    onClick={() => goToPayUser(chatActionsUser)}
-                    className="w-full rounded-2xl bg-emerald-50 px-4 py-3 text-left text-sm font-semibold text-emerald-700 hover:bg-emerald-100 inline-flex items-center gap-2"
-                  >
-                    <CircleDollarSign size={16} />
-                    Pay user
-                  </button>
-                  {selectedContact?.uid === chatActionsUser.uid && (
-                    <button
-                      onClick={async () => {
-                        setChatActionsUser(null);
-                        await handleClearCurrentChat();
-                      }}
-                      className="w-full rounded-2xl bg-red-50 px-4 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-100"
-                    >
-                      Clear chats
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      navigate(`/profile/${chatActionsUser.uid}`);
-                      setChatActionsUser(null);
-                    }}
-                    className="w-full rounded-2xl bg-gray-100 px-4 py-3 text-left text-sm font-semibold text-gray-800 hover:bg-gray-200"
-                  >
-                    View profile
-                  </button>
-                </div>
+          <BottomSheet onClose={() => setChatActionsUser(null)} zIndex="z-[71]">
+            <div className="mx-auto max-w-md space-y-4">
+              <div className="text-center">
+                <p className="text-base font-black text-gray-900">{chatActionsUser.displayName}</p>
+                <p className="text-xs text-gray-500">Choose what you want to do with this contact.</p>
               </div>
-            </motion.div>
-          </>
+              <div className="space-y-2">
+                <SheetButton
+                  onClick={() => {
+                    openConversation(chatActionsUser, {
+                      otherUid: chatActionsUser.uid,
+                      lastMessage: '',
+                      updatedAt: new Date().toISOString(),
+                    });
+                    setChatActionsUser(null);
+                  }}
+                >
+                  Open chat
+                </SheetButton>
+                <SheetButton onClick={() => goToPayUser(chatActionsUser)} tone="success" icon={<CircleDollarSign size={16} />}>
+                  Pay user
+                </SheetButton>
+                {selectedContact?.uid === chatActionsUser.uid && (
+                  <SheetButton onClick={handleClearCurrentChat} tone="danger">
+                    Clear chats
+                  </SheetButton>
+                )}
+                <SheetButton
+                  onClick={() => {
+                    navigate(`/profile/${chatActionsUser.uid}`);
+                    setChatActionsUser(null);
+                  }}
+                >
+                  View profile
+                </SheetButton>
+              </div>
+            </div>
+          </BottomSheet>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {messageActionsMessage && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[72] bg-black/40"
-              onClick={() => setMessageActionsMessage(null)}
-            />
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-              className="fixed bottom-0 left-0 right-0 z-[73] rounded-t-3xl border-t border-gray-200 bg-white p-5"
-            >
-              <div className="mx-auto max-w-md space-y-4">
-                <div className="text-center">
-                  <p className="text-base font-bold text-gray-900">Message options</p>
-                  <p className="text-xs text-gray-500">
-                    {messageActionsMessage.isDeleted ? 'This message has already been deleted.' : 'Choose what you want to do with this message.'}
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  {messageActionsMessage.senderUid === profile.uid && !messageActionsMessage.isDeleted ? (
-                    <>
-                      <button
-                        onClick={() => handleEditMessage(messageActionsMessage)}
-                        className="w-full rounded-2xl bg-gray-100 px-4 py-3 text-left text-sm font-semibold text-gray-800 hover:bg-gray-200"
-                      >
-                        Edit message
-                      </button>
-                      <button
-                        onClick={() => handleDeleteMessage(messageActionsMessage)}
-                        className="w-full rounded-2xl bg-red-50 px-4 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-100"
-                      >
-                        Delete message
-                      </button>
-                    </>
-                  ) : (
-                    <div className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-600">
-                      Only messages you sent can be edited or deleted.
-                    </div>
-                  )}
-                </div>
+          <BottomSheet onClose={() => setMessageActionsMessage(null)} zIndex="z-[73]">
+            <div className="mx-auto max-w-md space-y-4">
+              <div className="text-center">
+                <p className="text-base font-black text-gray-900">Message options</p>
+                <p className="text-xs text-gray-500">
+                  {messageActionsMessage.isDeleted ? 'This message has already been deleted.' : 'Choose what you want to do with this message.'}
+                </p>
               </div>
-            </motion.div>
-          </>
+              <div className="space-y-2">
+                {messageActionsMessage.senderUid === profile.uid && !messageActionsMessage.isDeleted ? (
+                  <>
+                    <SheetButton onClick={() => handleEditMessage(messageActionsMessage)}>Edit message</SheetButton>
+                    <SheetButton onClick={() => handleDeleteMessage(messageActionsMessage)} tone="danger">
+                      Delete message
+                    </SheetButton>
+                  </>
+                ) : (
+                  <div className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-600">
+                    Only messages you sent can be edited or deleted.
+                  </div>
+                )}
+              </div>
+            </div>
+          </BottomSheet>
         )}
       </AnimatePresence>
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 6px;
+          height: 6px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
           background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
           background: #cbd5e1;
-          border-radius: 10px;
+          border-radius: 999px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: #94a3b8;
         }
       `}</style>
     </div>
+  );
+}
+
+function AttachmentMenuButton({
+  icon,
+  iconClassName,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  iconClassName: string;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-2xl p-3 text-left text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50"
+    >
+      <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${iconClassName}`}>{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+function KeyboardKey({
+  children,
+  className = '',
+  onClick,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
+      className={`min-h-[44px] rounded-[0.95rem] bg-white px-2 py-2 text-[15px] font-bold text-slate-800 shadow-sm transition-all hover:bg-teal-50 hover:text-teal-700 active:scale-[0.98] ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ReceiptIcon({ state }: { state: 'pending' | 'failed' | 'sent' | 'delivered' | 'read' }) {
+  if (state === 'pending') {
+    return <Loader2 size={11} className="animate-spin text-gray-400" />;
+  }
+  if (state === 'failed') {
+    return <X size={11} className="text-red-500" />;
+  }
+  if (state === 'sent') {
+    return <Check size={12} className="stroke-[3] text-gray-500" />;
+  }
+  const tickColor = state === 'read' ? 'text-blue-500' : 'text-gray-500';
+  return (
+    <span className={`inline-flex items-center gap-0.5 ${tickColor}`}>
+      <Check size={12} className="stroke-[3]" />
+      <Check size={12} className="-ml-1.5 stroke-[3]" />
+    </span>
+  );
+}
+
+function BottomSheet({
+  children,
+  onClose,
+  zIndex,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  zIndex: string;
+}) {
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[70] bg-black/40"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+        className={`fixed bottom-0 left-0 right-0 ${zIndex} rounded-t-[2rem] border-t border-gray-200 bg-white p-5`}
+      >
+        {children}
+      </motion.div>
+    </>
+  );
+}
+
+function SheetButton({
+  children,
+  onClick,
+  tone = 'default',
+  icon,
+}: {
+  children: React.ReactNode;
+  onClick: () => void | Promise<void>;
+  tone?: 'default' | 'danger' | 'success';
+  icon?: React.ReactNode;
+}) {
+  const className =
+    tone === 'danger'
+      ? 'bg-red-50 text-red-600 hover:bg-red-100'
+      : tone === 'success'
+      ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+      : 'bg-gray-100 text-gray-800 hover:bg-gray-200';
+
+  return (
+    <button
+      onClick={() => void onClick()}
+      className={`inline-flex w-full items-center gap-2 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition-all ${className}`}
+    >
+      {icon}
+      {children}
+    </button>
   );
 }
