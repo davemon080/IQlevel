@@ -9,45 +9,42 @@ interface NotificationsProps {
   profile: UserProfile;
 }
 
-const READ_KEY_PREFIX = 'connect_read_notifications_';
-
 export default function Notifications({ profile }: NotificationsProps) {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const key = `${READ_KEY_PREFIX}${profile.uid}`;
-    const readIds = new Set<string>(JSON.parse(localStorage.getItem(key) || '[]'));
-
     const unsubscribe = supabaseService.subscribeToNotifications(profile.uid, (items) => {
-      const next = items.map((item) => ({ ...item, read: true }));
-      setNotifications(next);
-      localStorage.setItem(key, JSON.stringify(next.map((item) => item.id)));
+      setNotifications(items);
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, [profile.uid]);
 
+  useEffect(() => {
+    supabaseService
+      .markNotificationsReadThrough(profile.uid)
+      .then(async () => {
+        const items = await supabaseService.getNotifications(profile.uid);
+        setNotifications(items);
+      })
+      .catch(() => undefined);
+  }, [profile.uid]);
+
   const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
 
-  const persistRead = (nextNotifications: AppNotification[]) => {
-    const key = `${READ_KEY_PREFIX}${profile.uid}`;
-    const readIds = nextNotifications.filter((n) => n.read).map((n) => n.id);
-    localStorage.setItem(key, JSON.stringify(readIds));
+  const markAllAsRead = async () => {
+    await supabaseService.markNotificationsReadThrough(profile.uid);
+    const next = await supabaseService.getNotifications(profile.uid);
+    setNotifications(next);
   };
 
-  const markAllAsRead = () => {
-    const next = notifications.map((n) => ({ ...n, read: true }));
+  const handleOpen = async (notification: AppNotification) => {
+    await supabaseService.markNotificationsReadThrough(profile.uid, notification.createdAt);
+    const next = await supabaseService.getNotifications(profile.uid);
     setNotifications(next);
-    persistRead(next);
-  };
-
-  const handleOpen = (notification: AppNotification) => {
-    const next = notifications.map((n) => (n.id === notification.id ? { ...n, read: true } : n));
-    setNotifications(next);
-    persistRead(next);
     if (notification.link) navigate(notification.link);
   };
 

@@ -900,13 +900,14 @@ export default function Chat({ profile }: ChatProps) {
 
   return (
     <div 
-      className={`h-[100dvh] md:h-screen min-h-0 bg-white flex relative overflow-hidden ${isMobile && showChatOnMobile ? 'z-[60]' : ''}`}
+      className={`h-[100dvh] md:h-screen min-h-0 bg-white flex relative overflow-hidden select-none ${isMobile && showChatOnMobile ? 'z-[60]' : ''}`}
       style={isMobile && showChatOnMobile
         ? {
             minHeight: `${mobileViewportHeight}px`,
             height: `${mobileViewportHeight}px`,
+            WebkitTouchCallout: 'none',
           }
-        : undefined}
+        : { WebkitTouchCallout: 'none' }}
     >
       {/* Contacts Sidebar */}
       <div className={`w-full md:w-[24rem] md:max-w-[24rem] border-r border-gray-200 flex flex-col bg-white transition-all duration-300 min-h-0 h-full ${showChatOnMobile ? 'hidden md:flex' : 'flex'}`}>
@@ -935,7 +936,7 @@ export default function Chat({ profile }: ChatProps) {
           </div>
         </div>
         
-        <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-white select-none">
           {filteredActiveChats.length > 0 ? (
             filteredActiveChats.map((chat) => (
               <button
@@ -949,7 +950,7 @@ export default function Chat({ profile }: ChatProps) {
                 onTouchEnd={cancelHold}
                 onTouchMove={cancelHold}
                 onTouchCancel={cancelHold}
-                className={`w-full px-4 py-3 flex items-center gap-3 transition-all border-b border-gray-50 ${
+                className={`w-full px-4 py-3 flex items-center gap-3 transition-all border-b border-gray-50 select-none ${
                   selectedContact?.uid === chat.otherUid ? 'bg-teal-50/50' : 'hover:bg-gray-50'
                 }`}
               >
@@ -1048,12 +1049,13 @@ export default function Chat({ profile }: ChatProps) {
 
             {/* Messages List - WhatsApp Style Background */}
             <div 
-              className="flex-1 overflow-y-auto px-3 py-4 md:px-6 md:py-5 space-y-2 relative custom-scrollbar"
+              className="flex-1 overflow-y-auto px-3 py-4 md:px-6 md:py-5 space-y-2 relative custom-scrollbar select-none"
               style={{
                 backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`,
                 backgroundBlendMode: 'overlay',
                 backgroundColor: '#efeae2',
                 paddingBottom: '18px',
+                WebkitTouchCallout: 'none',
               }}
             >
               {messagesLoading ? (
@@ -1087,7 +1089,7 @@ export default function Chat({ profile }: ChatProps) {
                         animate={{ opacity: 1, scale: 1 }}
                         className={`flex ${isMe ? 'justify-end' : 'justify-start'} mb-1`}
                       >
-                        <div className={`relative max-w-[86%] md:max-w-[68%] px-3 py-2 rounded-2xl shadow-sm text-sm ${
+                        <div className={`relative max-w-[86%] md:max-w-[68%] px-3 py-2 rounded-2xl shadow-sm text-sm select-none ${
                           isMe 
                             ? 'bg-[#dcf8c6] text-gray-900 rounded-tr-none' 
                             : 'bg-white text-gray-900 rounded-tl-none'
@@ -1349,7 +1351,7 @@ export default function Chat({ profile }: ChatProps) {
                     autoCapitalize="off"
                     autoCorrect="off"
                     spellCheck={false}
-                    className="w-full rounded-[1.75rem] border-transparent bg-transparent px-4 py-3 pr-12 text-[15px] transition-all focus:ring-0 resize-none overflow-y-auto max-h-40"
+                    className="w-full select-text rounded-[1.75rem] border-transparent bg-transparent px-4 py-3 pr-12 text-[15px] transition-all focus:ring-0 resize-none overflow-y-auto max-h-32"
                   />
                   <button
                     type="button"
@@ -1377,8 +1379,8 @@ export default function Chat({ profile }: ChatProps) {
                 )}
               </form>
               {showKeyboardDock && (
-                <div className="mt-2 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-gradient-to-b from-slate-50 to-white shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-                  <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2.5">
+                <div className="mt-2 max-h-[44vh] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-gradient-to-b from-slate-50 to-white shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                  <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -1403,14 +1405,14 @@ export default function Chat({ profile }: ChatProps) {
                       Hide
                     </button>
                   </div>
-                  <div className="border-b border-slate-100 px-3 py-2">
+                  <div className="border-b border-slate-100 px-2.5 py-1.5">
                     <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
                     {quickKeyboardActions.map((snippet) => (
                       <button
                         key={snippet}
                         type="button"
                         onClick={() => insertQuickMessage(snippet)}
-                        className="shrink-0 rounded-full bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                        className="shrink-0 rounded-full bg-gray-100 px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 hover:bg-teal-50 hover:text-teal-700"
                       >
                         {snippet}
                       </button>
@@ -1418,17 +1420,17 @@ export default function Chat({ profile }: ChatProps) {
                     </div>
                   </div>
                   {keyboardPane === 'keys' ? (
-                    <div className="space-y-2 bg-gradient-to-b from-slate-100 to-slate-200/80 px-2.5 py-3">
+                    <div className="space-y-1.5 bg-gradient-to-b from-slate-100 to-slate-200/80 px-2 py-2.5">
                       {(keyboardLayout === 'letters' ? letterRows : symbolRows).map((row, rowIndex) => (
                       <div
                         key={`${keyboardLayout}-${rowIndex}`}
-                        className={`grid gap-2 ${rowIndex === 1 ? 'grid-cols-9 px-3 sm:px-7' : rowIndex === 2 ? 'grid-cols-[auto_repeat(7,minmax(0,1fr))_auto]' : 'grid-cols-10'}`}
+                        className={`grid gap-1.5 ${rowIndex === 1 ? 'grid-cols-9 px-3 sm:px-6' : rowIndex === 2 ? 'grid-cols-[auto_repeat(7,minmax(0,1fr))_auto]' : 'grid-cols-10'}`}
                       >
                         {rowIndex === 2 && (
                           <button
                             type="button"
                             onClick={() => setKeyboardShift((prev) => !prev)}
-                            className={`rounded-[1.1rem] px-3 py-3 text-[11px] font-black uppercase tracking-wider shadow-sm transition-all ${keyboardShift ? 'bg-teal-600 text-white' : 'bg-white text-slate-700'}`}
+                            className={`rounded-[1rem] px-2.5 py-2.5 text-[10px] font-black uppercase tracking-wider shadow-sm transition-all ${keyboardShift ? 'bg-teal-600 text-white' : 'bg-white text-slate-700'}`}
                           >
                             Shift
                           </button>
@@ -1438,7 +1440,7 @@ export default function Chat({ profile }: ChatProps) {
                             key={key}
                             type="button"
                             onClick={() => insertKeyboardValue(key)}
-                            className="rounded-[1.1rem] bg-white px-2 py-3 text-sm font-bold text-slate-800 shadow-sm transition-all hover:bg-teal-50 hover:text-teal-700 active:scale-[0.98]"
+                            className="rounded-[1rem] bg-white px-2 py-2.5 text-sm font-bold text-slate-800 shadow-sm transition-all hover:bg-teal-50 hover:text-teal-700 active:scale-[0.98]"
                           >
                             {keyboardLayout === 'letters' && keyboardShift ? key.toUpperCase() : key}
                           </button>
@@ -1447,79 +1449,79 @@ export default function Chat({ profile }: ChatProps) {
                           <button
                             type="button"
                             onClick={deleteBeforeCursor}
-                            className="rounded-[1.1rem] bg-slate-900 px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white shadow-sm transition-all hover:bg-black"
+                            className="rounded-[1rem] bg-slate-900 px-2.5 py-2.5 text-[10px] font-black uppercase tracking-wider text-white shadow-sm transition-all hover:bg-black"
                           >
                             Del
                           </button>
                         )}
                       </div>
                       ))}
-                      <div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-2">
+                      <div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-1.5">
                       <button
                         type="button"
                         onClick={() => setKeyboardLayout((prev) => prev === 'letters' ? 'symbols' : 'letters')}
-                        className="rounded-[1.1rem] bg-white px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
+                        className="rounded-[1rem] bg-white px-2.5 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
                       >
                         {keyboardLayout === 'letters' ? '123' : 'ABC'}
                       </button>
                       <button
                         type="button"
                         onClick={() => updateMessageAtSelection('\n', { keepShift: true })}
-                        className="rounded-[1.1rem] bg-white px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
+                        className="rounded-[1rem] bg-white px-2.5 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
                       >
                         Enter
                       </button>
                       <button
                         type="button"
                         onClick={() => updateMessageAtSelection(' ', { keepShift: true })}
-                        className="rounded-[1.1rem] bg-white px-3 py-3 text-sm font-black text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
+                        className="rounded-[1rem] bg-white px-2.5 py-2.5 text-sm font-black text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
                       >
                         Space
                       </button>
                       <button
                         type="button"
                         onClick={() => moveCursor('left')}
-                        className="rounded-[1.1rem] bg-white px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
+                        className="rounded-[1rem] bg-white px-2.5 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
                       >
                         Left
                       </button>
                       <button
                         type="button"
                         onClick={() => moveCursor('right')}
-                        className="rounded-[1.1rem] bg-white px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
+                        className="rounded-[1rem] bg-white px-2.5 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
                       >
                         Right
                       </button>
                       </div>
-                      <div className="grid grid-cols-[auto_1fr] gap-2">
+                      <div className="grid grid-cols-[auto_1fr] gap-1.5">
                       <button
                         type="button"
                         onClick={clearComposerText}
-                        className="rounded-[1.1rem] bg-red-50 px-4 py-3 text-[11px] font-black uppercase tracking-wider text-red-600 hover:bg-red-100"
+                        className="rounded-[1rem] bg-red-50 px-3 py-2.5 text-[10px] font-black uppercase tracking-wider text-red-600 hover:bg-red-100"
                       >
                         Clear
                       </button>
                       <button
                         type="button"
                         onClick={() => insertQuickMessage('👍')}
-                        className="rounded-[1.1rem] bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
+                        className="rounded-[1rem] bg-white px-3 py-2.5 text-sm font-black text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
                       >
                         Quick reaction
                       </button>
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-3 bg-gradient-to-b from-amber-50 to-white px-3 py-3">
+                    <div className="max-h-[28vh] space-y-2 overflow-y-auto bg-gradient-to-b from-amber-50 to-white px-3 py-2.5">
                       {emojiGroups.map((group) => (
-                        <div key={group.label} className="space-y-2">
+                        <div key={group.label} className="space-y-1.5">
                           <p className="px-1 text-[11px] font-black uppercase tracking-wider text-slate-400">{group.label}</p>
-                          <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+                          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-8">
                             {group.items.map((emoji) => (
                               <button
                                 key={`${group.label}-${emoji}`}
                                 type="button"
                                 onClick={() => updateMessageAtSelection(emoji, { keepShift: true })}
-                                className="rounded-[1.1rem] bg-white px-3 py-3 text-2xl shadow-sm transition-all hover:-translate-y-0.5 hover:bg-teal-50"
+                                className="rounded-[1rem] bg-white px-2.5 py-2.5 text-xl shadow-sm transition-all hover:-translate-y-0.5 hover:bg-teal-50"
                               >
                                 {emoji}
                               </button>

@@ -256,6 +256,7 @@ const onlineUserSubscribers = new Set<(uids: Set<string>) => void>();
 const presenceStateSubscribers = new Set<(state: Record<string, { userUid: string; onlineAt?: string; visibilityState?: string; typingTo?: string | null; viewingChatUid?: string | null; updatedAt?: string }>) => void>();
 const livePresenceState = new Map<string, { userUid: string; onlineAt?: string; visibilityState?: string; typingTo?: string | null; viewingChatUid?: string | null; updatedAt?: string }>();
 let currentPresencePayload: { userUid: string; onlineAt?: string; visibilityState?: string; typingTo?: string | null; viewingChatUid?: string | null; updatedAt?: string } | null = null;
+let notificationReadAtCache: { uid: string; value: string | null } | null = null;
 
 function clearLegacyAppCaches() {
   if (typeof window === 'undefined') return;
@@ -3089,6 +3090,62 @@ export const supabaseService = {
     return !!row;
   },
 
+  async getNotificationLastReadAt(uid: string): Promise<string | null> {
+    if (notificationReadAtCache?.uid === uid) {
+      return notificationReadAtCache.value;
+    }
+
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      console.error('Supabase error (getNotificationLastReadAt):', error);
+      return null;
+    }
+
+    const authUid = data.user?.id;
+    const metadataValue =
+      authUid === uid && typeof data.user?.user_metadata?.notifications_last_read_at === 'string'
+        ? data.user.user_metadata.notifications_last_read_at
+        : null;
+
+    notificationReadAtCache = { uid, value: metadataValue };
+    return metadataValue;
+  },
+
+  async markNotificationsReadThrough(uid: string, readAt: string = new Date().toISOString()): Promise<void> {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      console.error('Supabase error (markNotificationsReadThrough:getUser):', error);
+      throw error;
+    }
+    if (!data.user || data.user.id !== uid) {
+      throw new Error('Unable to update notification read state for this account.');
+    }
+
+    const existingMetadata = data.user.user_metadata || {};
+    const existingReadAt =
+      typeof existingMetadata.notifications_last_read_at === 'string'
+        ? existingMetadata.notifications_last_read_at
+        : null;
+    const nextReadAt =
+      existingReadAt && new Date(existingReadAt).getTime() > new Date(readAt).getTime()
+        ? existingReadAt
+        : readAt;
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      data: {
+        ...existingMetadata,
+        notifications_last_read_at: nextReadAt,
+      },
+    });
+    if (updateError) {
+      console.error('Supabase error (markNotificationsReadThrough:updateUser):', updateError);
+      throw updateError;
+    }
+
+    notificationReadAtCache = { uid, value: nextReadAt };
+    removeCache(`notifications:${uid}`);
+  },
+
   async getFreelancerActiveGigs(freelancerUid: string): Promise<ActiveGig[]> {
     const cacheKey = `gigs:active:freelancer:${freelancerUid}`;
     const cached = readCache<ActiveGig[]>(cacheKey, CACHE_TTL.jobs);
@@ -3283,6 +3340,8 @@ export const supabaseService = {
     if (cached) return cached;
 
     const settings = this.getNotificationSettings(uid);
+    const readThrough = await this.getNotificationLastReadAt(uid);
+    const readThroughTime = readThrough ? new Date(readThrough).getTime() : 0;
 
     const [incomingRequests, proposals, myJobs, walletTransactions, feedLikes, feedComments] = await Promise.all([
       runQuery<DbFriendRequest[]>(
@@ -3410,7 +3469,10 @@ export const supabaseService = {
       ...feedCommentNotifications,
     ].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    ).map((item) => ({
+      ...item,
+      read: readThroughTime > 0 && new Date(item.createdAt).getTime() <= readThroughTime,
+    }));
     writeCache(cacheKey, mapped);
     return mapped;
   },

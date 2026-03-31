@@ -41,10 +41,8 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
   const isMessagesPage = location.pathname === '/messages';
 
   React.useEffect(() => {
-    const readKey = `connect_read_notifications_${profile.uid}`;
     const unsubscribe = supabaseService.subscribeToNotifications(profile.uid, (items) => {
-      const readIds = new Set<string>(JSON.parse(localStorage.getItem(readKey) || '[]'));
-      const unread = items.filter((item) => !readIds.has(item.id)).length;
+      const unread = items.filter((item) => !item.read).length;
       setUnreadNotifications(unread);
     });
     return () => unsubscribe();
@@ -52,11 +50,10 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
 
   React.useEffect(() => {
     if (location.pathname !== '/notifications') return;
-    const readKey = `connect_read_notifications_${profile.uid}`;
-    supabaseService.getNotifications(profile.uid).then((items) => {
-      localStorage.setItem(readKey, JSON.stringify(items.map((item) => item.id)));
-      setUnreadNotifications(0);
-    });
+    supabaseService
+      .markNotificationsReadThrough(profile.uid)
+      .then(() => setUnreadNotifications(0))
+      .catch(() => undefined);
   }, [location.pathname, profile.uid]);
 
   React.useEffect(() => {
