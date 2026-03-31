@@ -151,6 +151,17 @@ export default function ManageGigs({ profile }: ManageGigsProps) {
     await supabaseService.updateProposalStatus(applicationId, nextStatus);
   };
 
+  const handleRevokeAssignment = async (applicationId: string) => {
+    const confirmed = await confirm({
+      title: 'Revoke this assignment?',
+      description: 'The freelancer will be removed from this gig and the job will return to the public jobs page.',
+      confirmLabel: 'Revoke Gig',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    await supabaseService.updateProposalStatus(applicationId, 'pending');
+  };
+
   const openEditModal = (job: Job) => {
     setEditingJob(job);
     setJobDraft({
@@ -365,6 +376,13 @@ export default function ManageGigs({ profile }: ManageGigsProps) {
                             >
                               <CircleDollarSign size={14} />
                               Pay Freelancer
+                            </button>
+                            <button
+                              onClick={() => handleRevokeAssignment(application.id)}
+                              className="px-3 py-2 text-xs font-semibold rounded-xl bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center gap-1.5"
+                            >
+                              <XCircle size={14} />
+                              Revoke Gig
                             </button>
                           </>
                         )}

@@ -20,7 +20,6 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
   const currencyFromQuery = searchParams.get('currency');
   const shouldAutoOpenPin = searchParams.get('autoPin') === '1';
   const transferSource = searchParams.get('source');
-  const sourceJobId = searchParams.get('jobId') || '';
   const { currency, setCurrency } = useCurrency();
 
   const [wallet, setWallet] = useState<Wallet | null>(null);
@@ -153,9 +152,6 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
         amountNumber,
         pin
       );
-      if (transferSource === 'gig-payment' && sourceJobId) {
-        await supabaseService.deleteJob(sourceJobId);
-      }
       setSuccess('Transfer completed successfully.');
       setToast('Transfer successful');
       setShowPinPad(false);

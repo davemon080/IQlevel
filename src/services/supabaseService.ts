@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest, ActiveGig } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 
@@ -592,6 +592,28 @@ function setConversationClearedAt(uid: string, otherUid: string, clearedAt: stri
   } catch {
     // Ignore storage failures.
   }
+}
+
+async function fetchAcceptedJobIds(): Promise<Set<string>> {
+  const rows = await runQuery<Array<Pick<DbProposal, 'job_id'>>>(
+    supabase.from('proposals').select('job_id').eq('status', 'accepted'),
+    'fetchAcceptedJobIds'
+  );
+  return new Set(rows.map((row) => row.job_id).filter(Boolean));
+}
+
+async function fetchAvailableJobs(): Promise<Job[]> {
+  const [rows, acceptedJobIds] = await Promise.all([
+    runQuery<DbJob[]>(
+      supabase.from('jobs').select('*').eq('status', 'open').order('created_at', { ascending: false }),
+      'fetchAvailableJobs:jobs'
+    ),
+    fetchAcceptedJobIds(),
+  ]);
+
+  return rows
+    .map(mapJobFromDb)
+    .filter((job) => !acceptedJobIds.has(job.id));
 }
 
 
@@ -1615,6 +1637,9 @@ export const supabaseService = {
       }),
       'createJob'
     );
+    removeCache('jobs:all');
+    removeCacheByPrefix('jobs:client:');
+    removeCacheByPrefix('gigs:active:');
   },
 
   async updateJob(jobId: string, updates: Partial<Pick<Job, 'title' | 'description' | 'budget' | 'category' | 'isStudentFriendly' | 'isRemote'>>): Promise<void> {
@@ -1639,11 +1664,7 @@ export const supabaseService = {
     const cached = readCache<Job[]>('jobs:all', CACHE_TTL.jobs);
     if (cached) return cached;
 
-    const rows = await runQuery<DbJob[]>(
-      supabase.from('jobs').select('*').order('created_at', { ascending: false }),
-      'listJobs'
-    );
-    const mapped = rows.map(mapJobFromDb);
+    const mapped = await fetchAvailableJobs();
     writeCache('jobs:all', mapped);
     return mapped;
   },
@@ -1662,14 +1683,40 @@ export const supabaseService = {
   },
 
   subscribeToJobs(callback: (jobs: Job[]) => void) {
-    const fetcher = async () => {
-      const rows = await runQuery<DbJob[]>(
-        supabase.from('jobs').select('*').order('created_at', { ascending: false }),
-        'subscribeToJobs'
-      );
-      return rows.map(mapJobFromDb);
+    let active = true;
+    let fetchVersion = 0;
+
+    const refresh = () => {
+      const currentVersion = ++fetchVersion;
+      fetchAvailableJobs()
+        .then((jobs) => {
+          writeCache('jobs:all', jobs);
+          if (active && currentVersion === fetchVersion) callback(jobs);
+        })
+        .catch((error) => {
+          console.error('Supabase fetch error (subscribeToJobs):', error);
+        });
     };
-    return subscribeToTable('jobs', fetcher, callback, undefined, undefined, 'jobs:all');
+
+    const cached = readCacheAnyAge<Job[]>('jobs:all');
+    if (cached) callback(cached);
+    refresh();
+
+    const jobsChannel = supabase
+      .channel(`realtime:jobs:available:${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, refresh)
+      .subscribe();
+
+    const proposalsChannel = supabase
+      .channel(`realtime:jobs:assignments:${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals' }, refresh)
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(jobsChannel);
+      supabase.removeChannel(proposalsChannel);
+    };
   },
 
   async createMarketItem(item: Omit<MarketItem, 'id' | 'createdAt' | 'seller'>): Promise<void> {
@@ -2929,6 +2976,10 @@ export const supabaseService = {
       supabase.from('jobs').update({ status }).eq('id', jobId),
       'updateJobStatus'
     );
+    removeCache(`job:${jobId}`);
+    removeCache('jobs:all');
+    removeCacheByPrefix('jobs:client:');
+    removeCacheByPrefix('gigs:active:');
   },
 
   async deleteJob(jobId: string): Promise<void> {
@@ -2936,6 +2987,11 @@ export const supabaseService = {
       supabase.from('jobs').delete().eq('id', jobId),
       'deleteJob'
     );
+    removeCache(`job:${jobId}`);
+    removeCache('jobs:all');
+    removeCacheByPrefix('jobs:client:');
+    removeCacheByPrefix('proposals:job:');
+    removeCacheByPrefix('gigs:active:');
   },
 
   // Proposals
@@ -2966,13 +3022,58 @@ export const supabaseService = {
       }),
       'createProposal'
     );
+    removeCache('jobs:all');
+    removeCacheByPrefix('proposals:job:');
+    removeCacheByPrefix('gigs:active:');
   },
 
   async updateProposalStatus(proposalId: string, status: 'pending' | 'accepted' | 'rejected') {
+    const proposal = await runQuery<DbProposal | null>(
+      supabase.from('proposals').select('*').eq('id', proposalId).maybeSingle(),
+      'updateProposalStatus:lookup'
+    );
+    if (!proposal) {
+      throw new Error('Proposal not found.');
+    }
+
     await runQuery(
       supabase.from('proposals').update({ status }).eq('id', proposalId),
       'updateProposalStatus'
     );
+
+    if (status === 'accepted') {
+      await runQuery(
+        supabase
+          .from('proposals')
+          .update({ status: 'rejected' })
+          .eq('job_id', proposal.job_id)
+          .neq('id', proposalId)
+          .in('status', ['pending', 'accepted']),
+        'updateProposalStatus:rejectOthers'
+      );
+      await runQuery(
+        supabase.from('jobs').update({ status: 'closed' }).eq('id', proposal.job_id),
+        'updateProposalStatus:closeJob'
+      );
+    } else {
+      const acceptedRemaining = await runQuery<Array<Pick<DbProposal, 'id'>>>(
+        supabase.from('proposals').select('id').eq('job_id', proposal.job_id).eq('status', 'accepted').limit(1),
+        'updateProposalStatus:acceptedRemaining'
+      );
+
+      if (acceptedRemaining.length === 0) {
+        await runQuery(
+          supabase.from('jobs').update({ status: 'open' }).eq('id', proposal.job_id),
+          'updateProposalStatus:reopenJob'
+        );
+      }
+    }
+
+    removeCache(`job:${proposal.job_id}`);
+    removeCache('jobs:all');
+    removeCacheByPrefix('jobs:client:');
+    removeCache(`proposals:job:${proposal.job_id}`);
+    removeCacheByPrefix('gigs:active:');
   },
 
   async hasAppliedToJob(jobId: string, freelancerUid: string): Promise<boolean> {
@@ -2986,6 +3087,194 @@ export const supabaseService = {
       'hasAppliedToJob'
     );
     return !!row;
+  },
+
+  async getFreelancerActiveGigs(freelancerUid: string): Promise<ActiveGig[]> {
+    const cacheKey = `gigs:active:freelancer:${freelancerUid}`;
+    const cached = readCache<ActiveGig[]>(cacheKey, CACHE_TTL.jobs);
+    if (cached) return cached;
+
+    const proposalRows = await runQuery<DbProposal[]>(
+      supabase
+        .from('proposals')
+        .select('*')
+        .eq('freelancer_uid', freelancerUid)
+        .eq('status', 'accepted')
+        .order('created_at', { ascending: false }),
+      'getFreelancerActiveGigs:proposals'
+    );
+
+    if (proposalRows.length === 0) {
+      writeCache(cacheKey, []);
+      return [];
+    }
+
+    const jobIds = Array.from(new Set(proposalRows.map((proposal) => proposal.job_id)));
+    const jobRows = await runQuery<DbJob[]>(
+      supabase.from('jobs').select('*').in('id', jobIds),
+      'getFreelancerActiveGigs:jobs'
+    );
+    const jobsById = new Map(jobRows.map((row) => [row.id, mapJobFromDb(row)]));
+    const clientUids = Array.from(new Set(jobRows.map((row) => row.client_uid)));
+    const clients = clientUids.length > 0 ? await this.getUsersByUids(clientUids) : [];
+    const clientByUid: Record<string, UserProfile> = {};
+    clients.forEach((client) => {
+      clientByUid[client.uid] = client;
+    });
+
+    const activeGigs: ActiveGig[] = proposalRows
+      .map((proposalRow) => {
+        const job = jobsById.get(proposalRow.job_id);
+        if (!job) return null;
+        return {
+          job,
+          proposal: mapProposalFromDb(proposalRow),
+          client: clientByUid[job.clientUid],
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    writeCache(cacheKey, activeGigs);
+    return activeGigs;
+  },
+
+  subscribeToFreelancerActiveGigs(freelancerUid: string, callback: (gigs: ActiveGig[]) => void, onError?: (error: any) => void) {
+    const cacheKey = `gigs:active:freelancer:${freelancerUid}`;
+    const cached = readCacheAnyAge<ActiveGig[]>(cacheKey);
+    if (cached) callback(cached);
+
+    let active = true;
+    let fetchVersion = 0;
+
+    const refresh = () => {
+      const currentVersion = ++fetchVersion;
+      this.getFreelancerActiveGigs(freelancerUid)
+        .then((gigs) => {
+          writeCache(cacheKey, gigs);
+          if (active && currentVersion === fetchVersion) callback(gigs);
+        })
+        .catch((error) => {
+          console.error('Supabase fetch error (subscribeToFreelancerActiveGigs):', error);
+          onError?.(error);
+        });
+    };
+
+    refresh();
+
+    const proposalsChannel = supabase
+      .channel(`realtime:gigs:active:freelancer:${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals', filter: `freelancer_uid=eq.${freelancerUid}` }, refresh)
+      .subscribe();
+
+    const jobsChannel = supabase
+      .channel(`realtime:gigs:jobs:freelancer:${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, refresh)
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(proposalsChannel);
+      supabase.removeChannel(jobsChannel);
+    };
+  },
+
+  async getClientActiveGigs(clientUid: string): Promise<ActiveGig[]> {
+    const cacheKey = `gigs:active:client:${clientUid}`;
+    const cached = readCache<ActiveGig[]>(cacheKey, CACHE_TTL.jobs);
+    if (cached) return cached;
+
+    const jobRows = await runQuery<DbJob[]>(
+      supabase
+        .from('jobs')
+        .select('*')
+        .eq('client_uid', clientUid)
+        .order('created_at', { ascending: false }),
+      'getClientActiveGigs:jobs'
+    );
+
+    if (jobRows.length === 0) {
+      writeCache(cacheKey, []);
+      return [];
+    }
+
+    const jobIds = jobRows.map((job) => job.id);
+    const acceptedProposalRows = await runQuery<DbProposal[]>(
+      supabase
+        .from('proposals')
+        .select('*')
+        .eq('status', 'accepted')
+        .in('job_id', jobIds)
+        .order('created_at', { ascending: false }),
+      'getClientActiveGigs:proposals'
+    );
+
+    if (acceptedProposalRows.length === 0) {
+      writeCache(cacheKey, []);
+      return [];
+    }
+
+    const jobsById = new Map(jobRows.map((row) => [row.id, mapJobFromDb(row)]));
+    const freelancerUids = Array.from(new Set(acceptedProposalRows.map((proposal) => proposal.freelancer_uid)));
+    const freelancers = freelancerUids.length > 0 ? await this.getUsersByUids(freelancerUids) : [];
+    const freelancerByUid: Record<string, UserProfile> = {};
+    freelancers.forEach((freelancer) => {
+      freelancerByUid[freelancer.uid] = freelancer;
+    });
+
+    const activeGigs: ActiveGig[] = acceptedProposalRows
+      .map((proposalRow) => {
+        const job = jobsById.get(proposalRow.job_id);
+        if (!job) return null;
+        return {
+          job,
+          proposal: mapProposalFromDb(proposalRow),
+          freelancer: freelancerByUid[proposalRow.freelancer_uid],
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    writeCache(cacheKey, activeGigs);
+    return activeGigs;
+  },
+
+  subscribeToClientActiveGigs(clientUid: string, callback: (gigs: ActiveGig[]) => void, onError?: (error: any) => void) {
+    const cacheKey = `gigs:active:client:${clientUid}`;
+    const cached = readCacheAnyAge<ActiveGig[]>(cacheKey);
+    if (cached) callback(cached);
+
+    let active = true;
+    let fetchVersion = 0;
+
+    const refresh = () => {
+      const currentVersion = ++fetchVersion;
+      this.getClientActiveGigs(clientUid)
+        .then((gigs) => {
+          writeCache(cacheKey, gigs);
+          if (active && currentVersion === fetchVersion) callback(gigs);
+        })
+        .catch((error) => {
+          console.error('Supabase fetch error (subscribeToClientActiveGigs):', error);
+          onError?.(error);
+        });
+    };
+
+    refresh();
+
+    const jobsChannel = supabase
+      .channel(`realtime:gigs:client:${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs', filter: `client_uid=eq.${clientUid}` }, refresh)
+      .subscribe();
+
+    const proposalsChannel = supabase
+      .channel(`realtime:gigs:client-proposals:${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals' }, refresh)
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(jobsChannel);
+      supabase.removeChannel(proposalsChannel);
+    };
   },
 
   async getNotifications(uid: string): Promise<AppNotification[]> {

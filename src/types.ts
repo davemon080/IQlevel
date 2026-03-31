@@ -146,6 +146,13 @@ export interface Proposal {
   createdAt: string;
 }
 
+export interface ActiveGig {
+  job: Job;
+  proposal: Proposal;
+  client?: UserProfile;
+  freelancer?: UserProfile;
+}
+
 export interface FriendRequest {
   id: string;
   fromUid: string;

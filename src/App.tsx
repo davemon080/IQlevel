@@ -31,6 +31,7 @@ import MarketItemDetails from './components/MarketItemDetails';
 import EditMarketItem from './components/EditMarketItem';
 import EditPost from './components/EditPost';
 import PartnershipPage from './components/PartnershipPage';
+import ActiveGigs from './components/ActiveGigs';
 
 export default function App() {
   const ONBOARDING_KEY = 'connect_onboarding_uid';
@@ -272,6 +273,7 @@ export default function App() {
             <Route path="/wallets/transfer/details" element={<ProcessTransferDetails profile={profile} />} />
             <Route path="/comments/:postId" element={<Comments profile={profile} />} />
             <Route path="/posts/:postId/edit" element={<EditPost profile={profile} />} />
+            <Route path="/active-gigs" element={<ActiveGigs profile={profile} />} />
             <Route path="/settings" element={<Settings profile={profile} onLogout={handleLogout} onProfileUpdate={setProfile} />} />
             <Route path="/partner-with-connect" element={<PartnershipPage profile={profile} />} />
             <Route path="*" element={<Navigate to="/" />} />

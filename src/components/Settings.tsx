@@ -23,7 +23,8 @@ import {
   CheckCircle2,
   LifeBuoy,
   Mail,
-  MessageSquareWarning
+  MessageSquareWarning,
+  BriefcaseBusiness
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CachedImage from './CachedImage';
@@ -379,6 +380,13 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
                   label="Wallets"
                   sublabel="Balances, top-ups, withdrawals"
                   color="text-emerald-600"
+                />
+                <SettingLink
+                  to="/active-gigs"
+                  icon={BriefcaseBusiness}
+                  label="My Active Gigs"
+                  sublabel="Assigned gigs, approvals, and ongoing work"
+                  color="text-teal-600"
                 />
                 <SettingItem
                   icon={Store}
