@@ -266,6 +266,8 @@ export default function Chat({ profile }: ChatProps) {
     focusComposer(0);
   }, [focusComposer]);
 
+  const keyboardPanelHeight = showKeyboardDock ? 'min(40vh, 320px)' : '0px';
+
   useEffect(() => {
     if (!window.visualViewport) return;
 
@@ -1102,11 +1104,16 @@ export default function Chat({ profile }: ChatProps) {
             {/* Messages List - WhatsApp Style Background */}
             <div 
               className="flex-1 overflow-y-auto px-3 py-4 md:px-6 md:py-5 space-y-2 relative custom-scrollbar select-none"
+              onClick={() => {
+                if (showKeyboardDock) {
+                  hideCustomKeyboard();
+                }
+              }}
               style={{
                 backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`,
                 backgroundBlendMode: 'overlay',
                 backgroundColor: '#efeae2',
-                paddingBottom: '18px',
+                paddingBottom: showKeyboardDock ? `calc(${keyboardPanelHeight} + 110px)` : '18px',
                 WebkitTouchCallout: 'none',
               }}
             >
@@ -1258,8 +1265,9 @@ export default function Chat({ profile }: ChatProps) {
             {/* Message Input - WhatsApp Style */}
             <div
               ref={composerRef}
-              className="sticky bottom-0 flex-none border-t border-gray-200 bg-[#f0f2f5] px-3 py-2 transition-[padding,margin] duration-200 pb-[max(12px,env(safe-area-inset-bottom))]"
+              className="fixed inset-x-0 bottom-0 z-[76] mx-auto flex w-full max-w-3xl flex-col border-t border-gray-200 bg-[#f0f2f5] px-3 py-2 transition-[padding,margin,bottom] duration-200 pb-[max(12px,env(safe-area-inset-bottom))]"
               style={{
+                bottom: showKeyboardDock ? keyboardPanelHeight : '0px',
                 paddingBottom: shouldLiftForKeyboard ? `${Math.max(12, keyboardInset + 12)}px` : '12px',
                 marginBottom: '0px',
               }}
@@ -1389,7 +1397,7 @@ export default function Chat({ profile }: ChatProps) {
                     onSelect={() => syncSelection()}
                     onFocus={() => {
                       setIsComposerFocused(true);
-                      setShowKeyboardDock(true);
+                      openCustomKeyboard('keys', inputRef.current?.selectionStart ?? newMessage.length);
                       window.setTimeout(() => {
                         inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -1408,11 +1416,7 @@ export default function Chat({ profile }: ChatProps) {
                   <button
                     type="button"
                     onClick={() => {
-                      if (showKeyboardDock && keyboardPane === 'emoji') {
-                        hideCustomKeyboard();
-                        return;
-                      }
-                      openCustomKeyboard('emoji', selectionRef.current.end);
+                      openCustomKeyboard(showKeyboardDock && keyboardPane === 'emoji' ? 'keys' : 'emoji', selectionRef.current.end);
                     }}
                     className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 transition-all ${(showKeyboardDock && keyboardPane === 'emoji') ? 'bg-teal-50 text-teal-600' : 'text-gray-400 hover:text-gray-600'}`}
                   >
@@ -1430,8 +1434,27 @@ export default function Chat({ profile }: ChatProps) {
                   </button>
                 )}
               </form>
-              {showKeyboardDock && (
-                <div className="fixed inset-x-0 bottom-0 z-[75] mx-auto w-full max-w-3xl overflow-hidden rounded-t-[1.5rem] border border-b-0 border-slate-200 bg-gradient-to-b from-slate-50 to-white shadow-[0_-12px_28px_rgba(15,23,42,0.12)]">
+              {editingMessageId && (
+                <div className="mt-2 flex items-center justify-between rounded-2xl bg-white px-4 py-2 text-xs text-gray-600 shadow-sm">
+                  <span>Editing message</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingMessageId(null);
+                      setNewMessage('');
+                    }}
+                    className="font-bold text-red-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+            {showKeyboardDock && (
+                <div
+                  className="fixed inset-x-0 bottom-0 z-[75] mx-auto w-full max-w-3xl overflow-hidden rounded-t-[1.5rem] border border-b-0 border-slate-200 bg-gradient-to-b from-slate-50 to-white shadow-[0_-12px_28px_rgba(15,23,42,0.12)]"
+                  style={{ height: keyboardPanelHeight }}
+                >
                   <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
                     <div className="flex items-center gap-2">
                       <button
@@ -1539,15 +1562,6 @@ export default function Chat({ profile }: ChatProps) {
                         Right
                       </button>
                       </div>
-                      <div className="grid grid-cols-1 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => insertQuickMessage('👍')}
-                        className="rounded-[1rem] bg-white px-3 py-2.5 text-sm font-black text-slate-700 shadow-sm hover:bg-teal-50 hover:text-teal-700"
-                      >
-                        Quick reaction
-                      </button>
-                      </div>
                     </div>
                   ) : (
                     <div className="max-h-[28vh] space-y-2 overflow-y-auto bg-gradient-to-b from-amber-50 to-white px-3 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
@@ -1572,22 +1586,6 @@ export default function Chat({ profile }: ChatProps) {
                   )}
                 </div>
               )}
-              {editingMessageId && (
-                <div className="mt-2 flex items-center justify-between rounded-2xl bg-white px-4 py-2 text-xs text-gray-600 shadow-sm">
-                  <span>Editing message</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingMessageId(null);
-                      setNewMessage('');
-                    }}
-                    className="font-bold text-red-600"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </div>
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center relative overflow-hidden">
