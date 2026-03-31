@@ -554,6 +554,13 @@ export default function Chat({ profile }: ChatProps) {
     navigate(`/wallets/transfer/details?${params.toString()}`);
   };
 
+  const handleBackToChatList = React.useCallback(() => {
+    setShowChatOnMobile(false);
+    setSelectedContact(null);
+    setSearchParams({});
+    navigate('/messages', { replace: true });
+  }, [navigate, setSearchParams]);
+
   const filteredActiveChats = activeChats.filter((chat) => {
     if (!chat?.user?.uid || !chat.user.displayName) return false;
     return (
@@ -802,12 +809,8 @@ export default function Chat({ profile }: ChatProps) {
             <div className="flex-none px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-white/95 backdrop-blur-md z-20 shadow-sm">
               <div className="flex items-center gap-3">
                 <button 
-                  onClick={() => {
-                    setShowChatOnMobile(false);
-                    setSelectedContact(null);
-                    setSearchParams({});
-                  }}
-                  className="md:hidden p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-600"
+                  onClick={handleBackToChatList}
+                  className="p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-600"
                 >
                   <ArrowLeft size={20} />
                 </button>

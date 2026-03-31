@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { UserProfile, Post, Job, PostLike, PostComment } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { Image, Send, Briefcase, Star, MapPin, DollarSign, Plus, X, Heart, MessageCircle, Share2, Copy, Link as LinkIcon, Pencil, Trash2 } from 'lucide-react';
+import { Image, Send, Briefcase, Star, MapPin, DollarSign, Plus, X, Heart, MessageCircle, Share2, Copy, Link as LinkIcon, Pencil, Trash2, MoreVertical, Flag } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCurrency } from '../context/CurrencyContext';
@@ -31,6 +31,8 @@ export default function Feed({ profile }: FeedProps) {
   const [postImagePreview, setPostImagePreview] = useState<string | null>(null);
   const [sharePost, setSharePost] = useState<Post | null>(null);
   const [copied, setCopied] = useState(false);
+  const [openPostMenuId, setOpenPostMenuId] = useState<string | null>(null);
+  const [postActionToast, setPostActionToast] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [topStudents, setTopStudents] = useState<UserProfile[]>(() => initialFeedSnapshot?.topStudents || []);
@@ -245,6 +247,11 @@ export default function Feed({ profile }: FeedProps) {
     setTimeout(() => setCopied(false), 1400);
   };
 
+  const showToast = (message: string) => {
+    setPostActionToast(message);
+    window.setTimeout(() => setPostActionToast(null), 1800);
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
       <div className="lg:col-span-12 -mt-2">
@@ -388,33 +395,80 @@ export default function Feed({ profile }: FeedProps) {
                       Job Highlight
                     </span>
                   )}
-                  {post.authorUid === profile.uid && !post.id.startsWith('temp-') && (
-                    <div className="flex items-center gap-2">
+                  {!post.id.startsWith('temp-') && (
+                    <div className="relative">
+                      {openPostMenuId === post.id && (
+                        <button
+                          type="button"
+                          className="fixed inset-0 z-10 cursor-default"
+                          onClick={() => setOpenPostMenuId(null)}
+                          aria-label="Close post actions"
+                        />
+                      )}
                       <button
                         type="button"
-                        onClick={() => navigate(`/posts/${post.id}/edit`)}
-                        className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold text-gray-600 hover:bg-gray-200"
+                        onClick={() => setOpenPostMenuId((current) => current === post.id ? null : post.id)}
+                        className="relative z-20 rounded-full p-2 text-gray-500 hover:bg-gray-100"
+                        aria-label="Post actions"
                       >
-                        <Pencil size={12} />
-                        Edit
+                        <MoreVertical size={16} />
                       </button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const confirmed = await confirm({
-                            title: 'Delete this post?',
-                            description: 'This will permanently remove the post, its likes, and its comments.',
-                            confirmLabel: 'Delete',
-                            tone: 'danger',
-                          });
-                          if (!confirmed) return;
-                          await supabaseService.deletePost(post.id);
-                        }}
-                        className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-600 hover:bg-red-100"
-                      >
-                        <Trash2 size={12} />
-                        Delete
-                      </button>
+                      {openPostMenuId === post.id && (
+                        <div className="absolute right-0 top-10 z-20 min-w-[170px] rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
+                          {post.authorUid === profile.uid ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenPostMenuId(null);
+                                  navigate(`/posts/${post.id}/edit`);
+                                }}
+                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                              >
+                                <Pencil size={14} />
+                                Edit post
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setOpenPostMenuId(null);
+                                  const confirmed = await confirm({
+                                    title: 'Delete this post?',
+                                    description: 'This will permanently remove the post, its likes, and its comments.',
+                                    confirmLabel: 'Delete',
+                                    tone: 'danger',
+                                  });
+                                  if (!confirmed) return;
+                                  await supabaseService.deletePost(post.id);
+                                }}
+                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 size={14} />
+                                Delete post
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setOpenPostMenuId(null);
+                                const confirmed = await confirm({
+                                  title: 'Report this user?',
+                                  description: 'We will treat this post as reported and you can also contact support for urgent issues.',
+                                  confirmLabel: 'Report',
+                                  tone: 'danger',
+                                });
+                                if (!confirmed) return;
+                                showToast('Report submitted. Our team will review it.');
+                              }}
+                              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
+                            >
+                              <Flag size={14} />
+                              Report user
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -647,6 +701,18 @@ export default function Feed({ profile }: FeedProps) {
               </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {postActionToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            className="fixed top-4 left-1/2 z-[60] -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white shadow-lg"
+          >
+            {postActionToast}
+          </motion.div>
         )}
       </AnimatePresence>
       {confirmDialog}
