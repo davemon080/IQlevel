@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { supabaseService } from './services/supabaseService';
@@ -46,7 +46,6 @@ export default function App() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authSubmitting, setAuthSubmitting] = useState(false);
-  const [showPartnerPage, setShowPartnerPage] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -207,166 +206,223 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    if (showPartnerPage) {
-      return <PartnershipPage onBack={() => setShowPartnerPage(false)} />;
-    }
-
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-2 text-teal-700 mb-2">
-              <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-teal-600 text-white">
-                <Link2 size={18} />
-              </span>
-              <h1 className="text-3xl font-bold">Connect</h1>
-            </div>
-            <p className="text-gray-600">The professional network for students and freelancers.</p>
+  return (
+    <Router>
+      {!user ? (
+        <Routes>
+          <Route
+            path="/partner-with-connect"
+            element={<PartnershipPage onBack={() => window.history.length > 1 ? window.history.back() : undefined} />}
+          />
+          <Route
+            path="*"
+            element={
+              <AuthScreen
+                authMode={authMode}
+                setAuthMode={setAuthMode}
+                email={email}
+                setEmail={setEmail}
+                password={password}
+                setPassword={setPassword}
+                displayName={displayName}
+                setDisplayName={setDisplayName}
+                error={error}
+                showPassword={showPassword}
+                setShowPassword={setShowPassword}
+                authSubmitting={authSubmitting}
+                onEmailAuth={handleEmailAuth}
+                onGoogleLogin={handleGoogleLogin}
+              />
+            }
+          />
+        </Routes>
+      ) : !profile ? (
+        showOnboarding ? (
+          <Onboarding
+            user={user}
+            onComplete={(nextProfile) => {
+              localStorage.removeItem(ONBOARDING_KEY);
+              setShowOnboarding(false);
+              setProfile(nextProfile);
+            }}
+          />
+        ) : (
+          <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
           </div>
+        )
+      ) : (
+        <Layout user={user} profile={profile} onLogout={handleLogout}>
+          <Routes>
+            <Route path="/" element={<Feed profile={profile} />} />
+            <Route path="/jobs" element={<JobBoard profile={profile} />} />
+            <Route path="/jobs/:jobId" element={<JobDetails profile={profile} />} />
+            <Route path="/jobs/:jobId/apply" element={<JobApply profile={profile} />} />
+            <Route path="/market" element={<Market profile={profile} />} />
+            <Route path="/market/sell" element={<SellItem profile={profile} />} />
+            <Route path="/market/:itemId" element={<MarketItemDetails profile={profile} />} />
+            <Route path="/market/:itemId/edit" element={<EditMarketItem profile={profile} />} />
+            <Route path="/network" element={<Network profile={profile} />} />
+            <Route path="/requests" element={<FriendRequests profile={profile} />} />
+            <Route path="/manage-gigs" element={<ManageGigs profile={profile} />} />
+            <Route path="/notifications" element={<Notifications profile={profile} />} />
+            <Route path="/profile/:uid" element={<Profile profile={profile} />} />
+            <Route path="/messages" element={<Chat profile={profile} />} />
+            <Route path="/wallets" element={<Wallets profile={profile} />} />
+            <Route path="/wallets/transfer" element={<ProcessTransfer profile={profile} />} />
+            <Route path="/wallets/transfer/details" element={<ProcessTransferDetails profile={profile} />} />
+            <Route path="/comments/:postId" element={<Comments profile={profile} />} />
+            <Route path="/posts/:postId/edit" element={<EditPost profile={profile} />} />
+            <Route path="/settings" element={<Settings profile={profile} onLogout={handleLogout} onProfileUpdate={setProfile} />} />
+            <Route path="/partner-with-connect" element={<PartnershipPage profile={profile} />} />
+            <Route path="/company/dashboard" element={<CompanyDashboard profile={profile} />} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </Layout>
+      )}
+    </Router>
+  );
+}
 
-          <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
-            {authMode === 'register' && (
-              <div className="relative">
-                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="text"
-                  placeholder="Full Name"
-                  required
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
-                />
-              </div>
-            )}
+interface AuthScreenProps {
+  authMode: 'login' | 'register';
+  setAuthMode: React.Dispatch<React.SetStateAction<'login' | 'register'>>;
+  email: string;
+  setEmail: React.Dispatch<React.SetStateAction<string>>;
+  password: string;
+  setPassword: React.Dispatch<React.SetStateAction<string>>;
+  displayName: string;
+  setDisplayName: React.Dispatch<React.SetStateAction<string>>;
+  error: string;
+  showPassword: boolean;
+  setShowPassword: React.Dispatch<React.SetStateAction<boolean>>;
+  authSubmitting: boolean;
+  onEmailAuth: (e: React.FormEvent) => Promise<void>;
+  onGoogleLogin: () => Promise<void>;
+}
+
+function AuthScreen({
+  authMode,
+  setAuthMode,
+  email,
+  setEmail,
+  password,
+  setPassword,
+  displayName,
+  setDisplayName,
+  error,
+  showPassword,
+  setShowPassword,
+  authSubmitting,
+  onEmailAuth,
+  onGoogleLogin,
+}: AuthScreenProps) {
+  const navigate = useNavigate();
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-2 text-teal-700 mb-2">
+            <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-teal-600 text-white">
+              <Link2 size={18} />
+            </span>
+            <h1 className="text-3xl font-bold">Connect</h1>
+          </div>
+          <p className="text-gray-600">The professional network for students and freelancers.</p>
+        </div>
+
+        <form onSubmit={onEmailAuth} className="space-y-4 mb-6">
+          {authMode === 'register' && (
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
               <input
-                type="email"
-                placeholder="Email Address"
+                type="text"
+                placeholder="Full Name"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
               />
             </div>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-
-            {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
-
+          )}
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="email"
+              placeholder="Email Address"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
+            />
+          </div>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
+            />
             <button
-              type="submit"
-              disabled={authSubmitting}
-              className="w-full bg-teal-700 text-white font-bold py-3 px-4 rounded-xl hover:bg-teal-800 transition-all flex items-center justify-center gap-2"
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
-              {authMode === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />}
-              {authSubmitting ? (authMode === 'login' ? 'Signing In...' : 'Creating Account...') : (authMode === 'login' ? 'Sign In' : 'Create Account')}
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
-          </form>
-
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
-            <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-gray-500">Or continue with</span></div>
           </div>
 
+          {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
+
           <button
-            onClick={handleGoogleLogin}
+            type="submit"
             disabled={authSubmitting}
-            className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors shadow-sm mb-6"
+            className="w-full bg-teal-700 text-white font-bold py-3 px-4 rounded-xl hover:bg-teal-800 transition-all flex items-center justify-center gap-2"
           >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-            Google
+            {authMode === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />}
+            {authSubmitting ? (authMode === 'login' ? 'Signing In...' : 'Creating Account...') : (authMode === 'login' ? 'Sign In' : 'Create Account')}
           </button>
+        </form>
 
-          <p className="text-center text-sm text-gray-600">
-            {authMode === 'login' ? "Don't have an account?" : "Already have an account?"}{' '}
-            <button
-              onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-              className="text-teal-700 font-bold hover:underline"
-            >
-              {authMode === 'login' ? 'Register' : 'Sign In'}
-            </button>
-          </p>
-          <button
-            type="button"
-            onClick={() => setShowPartnerPage(true)}
-            className="mt-5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-white hover:border-teal-200"
-          >
-            Partner With Us
-          </button>
+        <div className="relative mb-6">
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
+          <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-gray-500">Or continue with</span></div>
         </div>
+
+        <button
+          onClick={onGoogleLogin}
+          disabled={authSubmitting}
+          className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors shadow-sm mb-6"
+        >
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+          Google
+        </button>
+
+        <p className="text-center text-sm text-gray-600">
+          {authMode === 'login' ? "Don't have an account?" : "Already have an account?"}{' '}
+          <button
+            onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+            className="text-teal-700 font-bold hover:underline"
+          >
+            {authMode === 'login' ? 'Register' : 'Sign In'}
+          </button>
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate('/partner-with-connect')}
+          className="mt-5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-white hover:border-teal-200"
+        >
+          Partner With Us
+        </button>
+        <p className="mt-3 text-center text-xs text-gray-500">
+          Companies can also open the dedicated <Link to="/partner-with-connect" className="font-bold text-teal-700 hover:underline">partnership page</Link>.
+        </p>
       </div>
-    );
-  }
-
-  if (!profile) {
-    if (showOnboarding) {
-      return (
-        <Onboarding
-          user={user}
-          onComplete={(nextProfile) => {
-            localStorage.removeItem(ONBOARDING_KEY);
-            setShowOnboarding(false);
-            setProfile(nextProfile);
-          }}
-        />
-      );
-    }
-
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
-      </div>
-    );
-  }
-
-  return (
-    <Router>
-      <Layout user={user} profile={profile} onLogout={handleLogout}>
-        <Routes>
-          <Route path="/" element={<Feed profile={profile} />} />
-          <Route path="/jobs" element={<JobBoard profile={profile} />} />
-          <Route path="/jobs/:jobId" element={<JobDetails profile={profile} />} />
-          <Route path="/jobs/:jobId/apply" element={<JobApply profile={profile} />} />
-          <Route path="/market" element={<Market profile={profile} />} />
-          <Route path="/market/sell" element={<SellItem profile={profile} />} />
-          <Route path="/market/:itemId" element={<MarketItemDetails profile={profile} />} />
-          <Route path="/market/:itemId/edit" element={<EditMarketItem profile={profile} />} />
-          <Route path="/network" element={<Network profile={profile} />} />
-          <Route path="/requests" element={<FriendRequests profile={profile} />} />
-          <Route path="/manage-gigs" element={<ManageGigs profile={profile} />} />
-          <Route path="/notifications" element={<Notifications profile={profile} />} />
-          <Route path="/profile/:uid" element={<Profile profile={profile} />} />
-          <Route path="/messages" element={<Chat profile={profile} />} />
-          <Route path="/wallets" element={<Wallets profile={profile} />} />
-          <Route path="/wallets/transfer" element={<ProcessTransfer profile={profile} />} />
-          <Route path="/wallets/transfer/details" element={<ProcessTransferDetails profile={profile} />} />
-          <Route path="/comments/:postId" element={<Comments profile={profile} />} />
-          <Route path="/posts/:postId/edit" element={<EditPost profile={profile} />} />
-          <Route path="/settings" element={<Settings profile={profile} onLogout={handleLogout} onProfileUpdate={setProfile} />} />
-          <Route path="/partner-with-connect" element={<PartnershipPage profile={profile} />} />
-          <Route path="/company/dashboard" element={<CompanyDashboard profile={profile} />} />
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
-      </Layout>
-    </Router>
+    </div>
   );
 }
