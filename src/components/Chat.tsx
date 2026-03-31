@@ -53,6 +53,8 @@ export default function Chat({ profile }: ChatProps) {
   const [isComposerFocused, setIsComposerFocused] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [chatActionsUser, setChatActionsUser] = useState<UserProfile | null>(null);
+  const [messageActionsMessage, setMessageActionsMessage] = useState<LocalMessage | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const typingTimeoutRef = useRef<number | null>(null);
   const holdTimeoutRef = useRef<number | null>(null);
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
@@ -429,6 +431,17 @@ export default function Chat({ profile }: ChatProps) {
     const files = [...selectedFiles];
     
     if ((!messageText && files.length === 0) || !selectedContact) return;
+    if (editingMessageId) {
+      try {
+        await supabaseService.updateMessage(editingMessageId, profile.uid, messageText);
+        setEditingMessageId(null);
+        setNewMessage('');
+      } catch (err) {
+        console.error('Error editing message:', err);
+        setError('Failed to update message');
+      }
+      return;
+    }
     
     // If we're already uploading files, we can still send text-only messages,
     // but we shouldn't allow sending more files until the current ones finish.
@@ -560,11 +573,60 @@ export default function Chat({ profile }: ChatProps) {
     navigate(`/wallets/transfer/details?${params.toString()}`);
   };
 
+  const beginMessageHold = (message: LocalMessage) => {
+    cancelHold();
+    holdTimeoutRef.current = window.setTimeout(() => {
+      setMessageActionsMessage(message);
+      holdTimeoutRef.current = null;
+    }, 520);
+  };
+
+  const handleEditMessage = (message: LocalMessage) => {
+    if (message.senderUid !== profile.uid || message.isDeleted) return;
+    setEditingMessageId(message.id);
+    setNewMessage(message.content);
+    setMessageActionsMessage(null);
+    window.setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+  };
+
+  const handleDeleteMessage = async (message: LocalMessage) => {
+    if (message.senderUid !== profile.uid || message.isDeleted) return;
+    try {
+      await supabaseService.deleteMessage(message.id, profile.uid);
+      if (editingMessageId === message.id) {
+        setEditingMessageId(null);
+        setNewMessage('');
+      }
+      setMessageActionsMessage(null);
+    } catch (err) {
+      console.error('Error deleting message:', err);
+      setError('Failed to delete message');
+    }
+  };
+
+  const handleClearCurrentChat = async () => {
+    if (!selectedContact) return;
+    try {
+      await supabaseService.clearConversation(profile.uid, selectedContact.uid);
+      closeChatView(true);
+    } catch (err) {
+      console.error('Error clearing chat:', err);
+      setError('Failed to clear chat');
+    }
+  };
+
   const closeChatView = React.useCallback((replaceHistory: boolean = false) => {
     setChatActionsUser(null);
+    setMessageActionsMessage(null);
     setShowAttachmentMenu(false);
     setShowChatOnMobile(false);
     setSelectedContact(null);
+    setEditingMessageId(null);
+    setSelectedFiles([]);
+    setNewMessage('');
     setSearchParams({}, { replace: true });
     navigate('/messages', { replace: replaceHistory });
   }, [navigate, setSearchParams]);
@@ -906,7 +968,16 @@ export default function Chat({ profile }: ChatProps) {
                           isMe 
                             ? 'bg-[#dcf8c6] text-gray-900 rounded-tr-none' 
                             : 'bg-white text-gray-900 rounded-tl-none'
-                        }`}>
+                        }`}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setMessageActionsMessage(msg);
+                          }}
+                          onTouchStart={() => beginMessageHold(msg)}
+                          onTouchEnd={cancelHold}
+                          onTouchMove={cancelHold}
+                          onTouchCancel={cancelHold}
+                        >
                           {/* Bubble Tail */}
                           <div className={`absolute top-0 w-2 h-2 ${
                             isMe 
@@ -955,7 +1026,7 @@ export default function Chat({ profile }: ChatProps) {
                             </div>
                           )}
 
-                          {msg.content && <p className="leading-relaxed pr-12">{msg.content}</p>}
+                          {msg.content && <p className={`leading-relaxed pr-12 ${msg.isDeleted ? 'italic text-gray-500' : ''}`}>{msg.content}</p>}
                           <div className="absolute bottom-1 right-2 flex items-center gap-1">
                             <span className="text-[9px] text-gray-500 font-medium">
                               {format(msgDate, 'HH:mm')}
@@ -1143,7 +1214,7 @@ export default function Chat({ profile }: ChatProps) {
                     onBlur={() => {
                       window.setTimeout(() => setIsComposerFocused(false), 120);
                     }}
-                    placeholder="Type a message"
+                    placeholder={editingMessageId ? 'Edit your message' : 'Type a message'}
                     className="w-full rounded-[1.75rem] border-transparent bg-transparent px-4 py-3 pr-12 text-[15px] transition-all focus:ring-0 resize-none overflow-y-auto max-h-40"
                   />
                   <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600">
@@ -1161,6 +1232,21 @@ export default function Chat({ profile }: ChatProps) {
                   </button>
                 )}
               </form>
+              {editingMessageId && (
+                <div className="mt-2 flex items-center justify-between rounded-2xl bg-white px-4 py-2 text-xs text-gray-600 shadow-sm">
+                  <span>Editing message</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingMessageId(null);
+                      setNewMessage('');
+                    }}
+                    className="font-bold text-red-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -1304,6 +1390,17 @@ export default function Chat({ profile }: ChatProps) {
                     <CircleDollarSign size={16} />
                     Pay user
                   </button>
+                  {selectedContact?.uid === chatActionsUser.uid && (
+                    <button
+                      onClick={async () => {
+                        setChatActionsUser(null);
+                        await handleClearCurrentChat();
+                      }}
+                      className="w-full rounded-2xl bg-red-50 px-4 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-100"
+                    >
+                      Clear chats
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       navigate(`/profile/${chatActionsUser.uid}`);
@@ -1313,6 +1410,58 @@ export default function Chat({ profile }: ChatProps) {
                   >
                     View profile
                   </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {messageActionsMessage && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[72] bg-black/40"
+              onClick={() => setMessageActionsMessage(null)}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+              className="fixed bottom-0 left-0 right-0 z-[73] rounded-t-3xl border-t border-gray-200 bg-white p-5"
+            >
+              <div className="mx-auto max-w-md space-y-4">
+                <div className="text-center">
+                  <p className="text-base font-bold text-gray-900">Message options</p>
+                  <p className="text-xs text-gray-500">
+                    {messageActionsMessage.isDeleted ? 'This message has already been deleted.' : 'Choose what you want to do with this message.'}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {messageActionsMessage.senderUid === profile.uid && !messageActionsMessage.isDeleted ? (
+                    <>
+                      <button
+                        onClick={() => handleEditMessage(messageActionsMessage)}
+                        className="w-full rounded-2xl bg-gray-100 px-4 py-3 text-left text-sm font-semibold text-gray-800 hover:bg-gray-200"
+                      >
+                        Edit message
+                      </button>
+                      <button
+                        onClick={() => handleDeleteMessage(messageActionsMessage)}
+                        className="w-full rounded-2xl bg-red-50 px-4 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-100"
+                      >
+                        Delete message
+                      </button>
+                    </>
+                  ) : (
+                    <div className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-600">
+                      Only messages you sent can be edited or deleted.
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>

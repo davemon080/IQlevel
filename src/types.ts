@@ -133,6 +133,7 @@ export interface Message {
   createdAt: string;
   readAt?: string;
   attachments?: Attachment[];
+  isDeleted?: boolean;
 }
 
 export interface Proposal {

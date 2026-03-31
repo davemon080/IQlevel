@@ -208,9 +208,11 @@ type DbPostCommentNotificationRow = {
 const NOTIFICATION_SETTINGS_KEY_PREFIX = 'connect_notification_settings_';
 const CHAT_READ_KEY_PREFIX = 'connect_chat_read_map_';
 const CHAT_READ_EVENT = 'connect:chat-read-updated';
+const CHAT_CLEAR_KEY_PREFIX = 'connect_chat_cleared_map_';
 const APP_CACHE_PREFIX = 'connect_app_cache_v2:';
 const LEGACY_APP_CACHE_PREFIXES = ['connect_app_cache_v1:'];
 const PRESENCE_CHANNEL_NAME = 'connect:presence';
+const MESSAGE_DELETED_SENTINEL = '__connect_deleted_message__';
 
 const CACHE_TTL = {
   users: 1000 * 60 * 60 * 6,
@@ -459,14 +461,16 @@ function mapMessageFromDb(row: DbMessage): Message {
   const attachments = Array.isArray(row.attachments)
     ? row.attachments.map(normalizeAttachment).filter((item): item is Attachment => item !== null)
     : undefined;
+  const isDeleted = row.content === MESSAGE_DELETED_SENTINEL;
   return {
     id: row.id,
     senderUid: row.sender_uid,
     receiverUid: row.receiver_uid,
-    content: row.content || '',
+    content: isDeleted ? 'This message was deleted' : row.content || '',
     createdAt: row.created_at,
     readAt: row.read_at || undefined,
-    attachments,
+    attachments: isDeleted ? undefined : attachments,
+    isDeleted,
   };
 }
 
@@ -562,6 +566,31 @@ function loadJsonFromStorage<T>(key: string, fallback: T): T {
     return JSON.parse(raw) as T;
   } catch {
     return fallback;
+  }
+}
+
+function getConversationKey(uid: string, otherUid: string) {
+  return [uid, otherUid].sort().join(':');
+}
+
+function loadClearedConversationMap(uid: string): Record<string, string> {
+  return loadJsonFromStorage<Record<string, string>>(`${CHAT_CLEAR_KEY_PREFIX}${uid}`, {});
+}
+
+function getConversationClearedAt(uid: string, otherUid: string): string | null {
+  const map = loadClearedConversationMap(uid);
+  return map[getConversationKey(uid, otherUid)] || null;
+}
+
+function setConversationClearedAt(uid: string, otherUid: string, clearedAt: string) {
+  if (typeof window === 'undefined') return;
+  const key = `${CHAT_CLEAR_KEY_PREFIX}${uid}`;
+  const next = loadClearedConversationMap(uid);
+  next[getConversationKey(uid, otherUid)] = clearedAt;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    // Ignore storage failures.
   }
 }
 
@@ -2097,6 +2126,135 @@ export const supabaseService = {
     return mapMessageFromDb(inserted);
   },
 
+  async updateMessage(messageId: string, senderUid: string, content: string): Promise<Message> {
+    const normalized = content.trim();
+    if (!normalized) {
+      throw new Error('Message cannot be empty.');
+    }
+
+    const existing = await runQuery<DbMessage | null>(
+      supabase.from('messages').select('*').eq('id', messageId).eq('sender_uid', senderUid).maybeSingle(),
+      'updateMessage:existing'
+    );
+    if (!existing) {
+      throw new Error('Message not found.');
+    }
+
+    const row = await runQuery<DbMessage>(
+      supabase
+        .from('messages')
+        .update({ content: normalized })
+        .eq('id', messageId)
+        .eq('sender_uid', senderUid)
+        .select('*')
+        .single(),
+      'updateMessage'
+    );
+
+    await this.syncConversationPreview(existing.sender_uid, existing.receiver_uid);
+    removeCache(`messages:${existing.sender_uid}:${existing.receiver_uid}`);
+    removeCache(`messages:${existing.receiver_uid}:${existing.sender_uid}`);
+    return mapMessageFromDb(row);
+  },
+
+  async deleteMessage(messageId: string, senderUid: string): Promise<Message> {
+    const existing = await runQuery<DbMessage | null>(
+      supabase.from('messages').select('*').eq('id', messageId).eq('sender_uid', senderUid).maybeSingle(),
+      'deleteMessage:existing'
+    );
+    if (!existing) {
+      throw new Error('Message not found.');
+    }
+
+    const row = await runQuery<DbMessage>(
+      supabase
+        .from('messages')
+        .update({
+          content: MESSAGE_DELETED_SENTINEL,
+          attachments: [],
+        })
+        .eq('id', messageId)
+        .eq('sender_uid', senderUid)
+        .select('*')
+        .single(),
+      'deleteMessage'
+    );
+
+    await this.syncConversationPreview(existing.sender_uid, existing.receiver_uid);
+    removeCache(`messages:${existing.sender_uid}:${existing.receiver_uid}`);
+    removeCache(`messages:${existing.receiver_uid}:${existing.sender_uid}`);
+    return mapMessageFromDb(row);
+  },
+
+  async clearConversation(uid: string, otherUid: string): Promise<void> {
+    const clearedAt = new Date().toISOString();
+    setConversationClearedAt(uid, otherUid, clearedAt);
+    await runQuery(
+      supabase.from('active_chats').delete().eq('user_uid', uid).eq('other_uid', otherUid),
+      'clearConversation'
+    );
+    removeCache(`messages:${uid}:${otherUid}`);
+    removeCache(`messages:${otherUid}:${uid}`);
+    removeCache(`chats:active:${uid}`);
+    removeCache(`chats:recent:${uid}`);
+  },
+
+  async syncConversationPreview(uid: string, otherUid: string): Promise<void> {
+    const latest = await runQuery<DbMessage[]>(
+      supabase
+        .from('messages')
+        .select('*')
+        .or(`and(sender_uid.eq.${uid},receiver_uid.eq.${otherUid}),and(sender_uid.eq.${otherUid},receiver_uid.eq.${uid})`)
+        .order('created_at', { ascending: false })
+        .limit(1),
+      'syncConversationPreview'
+    );
+
+    const latestMessage = latest[0];
+    if (!latestMessage) {
+      await runQuery(
+        supabase.from('active_chats').delete().or(`and(user_uid.eq.${uid},other_uid.eq.${otherUid}),and(user_uid.eq.${otherUid},other_uid.eq.${uid})`),
+        'syncConversationPreview:deleteEmpty'
+      );
+      removeCache(`chats:active:${uid}`);
+      removeCache(`chats:active:${otherUid}`);
+      removeCache(`chats:recent:${uid}`);
+      removeCache(`chats:recent:${otherUid}`);
+      return;
+    }
+
+    const lastMessageText =
+      latestMessage.content === MESSAGE_DELETED_SENTINEL
+        ? 'This message was deleted'
+        : latestMessage.content || (Array.isArray(latestMessage.attachments) && latestMessage.attachments.length > 0 ? 'Attachment' : '');
+
+    await runQuery(
+      supabase.from('active_chats').upsert(
+        [
+          {
+            user_uid: uid,
+            other_uid: otherUid,
+            last_message: lastMessageText,
+            updated_at: latestMessage.created_at,
+          },
+          {
+            user_uid: otherUid,
+            other_uid: uid,
+            last_message: lastMessageText,
+            updated_at: latestMessage.created_at,
+          },
+        ],
+        { onConflict: 'user_uid,other_uid' }
+      ),
+      'syncConversationPreview:upsert'
+    );
+
+    removeCache(`chats:active:${uid}`);
+    removeCache(`chats:active:${otherUid}`);
+    removeCache(`chats:recent:${uid}`);
+    removeCache(`chats:recent:${otherUid}`);
+  },
+
   subscribeToMessages(
     uid: string,
     otherUid: string,
@@ -2114,7 +2272,11 @@ export const supabaseService = {
             .limit(100),
           'subscribeToMessages'
         );
-        return rows.map(mapMessageFromDb);
+        const clearedAt = getConversationClearedAt(uid, otherUid);
+        const mapped = rows.map(mapMessageFromDb);
+        return clearedAt
+          ? mapped.filter((message) => new Date(message.createdAt).getTime() > new Date(clearedAt).getTime())
+          : mapped;
       } catch (error) {
         if (onError) onError(error);
         throw error;
@@ -2259,7 +2421,11 @@ export const supabaseService = {
           user,
         };
       })
-      .filter((c): c is ActiveChatSummary => c !== null);
+      .filter((c): c is ActiveChatSummary => {
+        if (!c) return false;
+        const clearedAt = getConversationClearedAt(uid, c.otherUid);
+        return !clearedAt || new Date(c.updatedAt).getTime() > new Date(clearedAt).getTime();
+      });
 
     const recent = readCacheAnyAge<ActiveChatSummary[]>(`chats:recent:${uid}`) || [];
     const merged = mergeChatSummaries(mapped, recent);
@@ -2317,7 +2483,11 @@ export const supabaseService = {
           updatedAt: convo.updatedAt,
         };
       })
-      .filter((c): c is ActiveChatSummary => c !== null);
+      .filter((c): c is ActiveChatSummary => {
+        if (!c) return false;
+        const clearedAt = getConversationClearedAt(uid, c.otherUid);
+        return !clearedAt || new Date(c.updatedAt).getTime() > new Date(clearedAt).getTime();
+      });
     writeCache(cacheKey, mapped);
     return mapped;
   },
