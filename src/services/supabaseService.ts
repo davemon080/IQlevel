@@ -1715,13 +1715,15 @@ export const supabaseService = {
     return subscribeToTable('market_items', fetcher, callback, undefined, onError, 'market:all');
   },
 
-  async getMyCompanyPartnerRequest(uid: string): Promise<CompanyPartnerRequest | null> {
+  async getMyCompanyPartnerRequest(uid: string, options?: { forceRefresh?: boolean }): Promise<CompanyPartnerRequest | null> {
       const cacheKey = `partner:request:${uid}`;
-      const cached = readCache<CompanyPartnerRequest | null>(cacheKey, CACHE_TTL.users);
-      if (cached) return cached;
+      if (!options?.forceRefresh) {
+        const cached = readCache<CompanyPartnerRequest | null>(cacheKey, CACHE_TTL.users);
+        if (cached) return cached;
+      }
 
-    const row = await runQuery<DbCompanyPartnerRequest | null>(
-      supabase.from('company_partner_requests').select('*').eq('user_uid', uid).maybeSingle(),
+      const row = await runQuery<DbCompanyPartnerRequest | null>(
+        supabase.from('company_partner_requests').select('*').eq('user_uid', uid).maybeSingle(),
       'getMyCompanyPartnerRequest'
     );
       const mapped = row ? mapCompanyPartnerRequestFromDb(row) : null;
@@ -1745,29 +1747,30 @@ export const supabaseService = {
   },
 
   subscribeToMyCompanyPartnerRequest(uid: string, callback: (request: CompanyPartnerRequest | null) => void, onError?: (error: any) => void) {
-    const fetcher = async () => this.getMyCompanyPartnerRequest(uid);
+    const fetcher = async () => this.getMyCompanyPartnerRequest(uid, { forceRefresh: true });
     return subscribeToTable('company_partner_requests', fetcher, callback, `user_uid=eq.${uid}`, onError, `partner:request:${uid}`);
   },
 
   async submitCompanyPartnerRequest(request: Omit<CompanyPartnerRequest, 'id' | 'createdAt' | 'status'>): Promise<CompanyPartnerRequest> {
-    const row = await runQuery<DbCompanyPartnerRequest>(
-      supabase
-        .from('company_partner_requests')
+      const existing = await this.getMyCompanyPartnerRequest(request.userUid, { forceRefresh: true });
+      const row = await runQuery<DbCompanyPartnerRequest>(
+        supabase
+          .from('company_partner_requests')
         .upsert(
           {
             user_uid: request.userUid,
             company_name: request.companyName,
             company_logo_url: request.companyLogoUrl,
             website_url: request.websiteUrl || null,
-            social_links: request.socialLinks,
-            about: request.about,
-            location: request.location,
-            registration_urls: request.registrationUrls,
-            status: 'pending',
-            created_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_uid' }
-        )
+              social_links: request.socialLinks,
+              about: request.about,
+              location: request.location,
+              registration_urls: request.registrationUrls,
+              status: existing?.status === 'approved' ? 'approved' : 'pending',
+              created_at: existing?.createdAt || new Date().toISOString(),
+            },
+            { onConflict: 'user_uid' }
+          )
         .select('*')
         .single(),
       'submitCompanyPartnerRequest'
