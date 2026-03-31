@@ -42,6 +42,7 @@ export default function Chat({ profile }: ChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | null>(null);
@@ -637,6 +638,15 @@ export default function Chat({ profile }: ChatProps) {
   const selectedContactPresence = selectedContact ? presenceState[selectedContact.uid] : undefined;
   const isSelectedContactTyping = selectedContactPresence?.typingTo === profile.uid;
 
+  useEffect(() => {
+    if (!isComposerFocused) return;
+    const timeout = window.setTimeout(() => {
+      composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 120);
+    return () => window.clearTimeout(timeout);
+  }, [isComposerFocused, keyboardInset, viewportHeight]);
+
   const getOutgoingReceiptState = (message: LocalMessage): 'pending' | 'failed' | 'sent' | 'delivered' | 'read' => {
     if (message.localStatus === 'pending') return 'pending';
     if (message.localStatus === 'failed') return 'failed';
@@ -999,10 +1009,11 @@ export default function Chat({ profile }: ChatProps) {
 
             {/* Message Input - WhatsApp Style */}
             <div
+              ref={composerRef}
               className="sticky bottom-0 flex-none border-t border-gray-200 bg-[#f0f2f5] px-3 py-2 transition-[padding,margin] duration-200 pb-[max(12px,env(safe-area-inset-bottom))]"
               style={{
-                paddingBottom: '12px',
-                marginBottom: shouldLiftForKeyboard ? `${keyboardInset}px` : '0px',
+                paddingBottom: shouldLiftForKeyboard ? `${Math.max(12, keyboardInset + 12)}px` : '12px',
+                marginBottom: '0px',
               }}
             >
               {/* File Previews */}
