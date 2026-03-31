@@ -12,6 +12,12 @@ interface ChatProps {
 }
 
 type LocalMessage = Message & { localStatus?: 'pending' | 'sent' | 'failed' };
+type ChatSummary = {
+  otherUid: string;
+  user: UserProfile;
+  lastMessage: string;
+  updatedAt: string;
+};
 
 export default function Chat({ profile }: ChatProps) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -20,7 +26,7 @@ export default function Chat({ profile }: ChatProps) {
   
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [activeChats, setActiveChats] = useState<any[]>([]);
+  const [activeChats, setActiveChats] = useState<ChatSummary[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [selectedContact, setSelectedContact] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,10 +56,10 @@ export default function Chat({ profile }: ChatProps) {
   const holdTimeoutRef = useRef<number | null>(null);
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
 
-  const mergeChats = React.useCallback((incomingChats: any[], recentChats: any[] = []) => {
-    const merged = new Map<string, any>();
+  const mergeChats = React.useCallback((incomingChats: ChatSummary[], recentChats: ChatSummary[] = []) => {
+    const merged = new Map<string, ChatSummary>();
     [...incomingChats, ...recentChats].forEach((chat) => {
-      if (!chat?.otherUid || !chat?.user) return;
+      if (!chat?.otherUid || !chat?.user?.uid || !chat.user.displayName) return;
       const existing = merged.get(chat.otherUid);
       if (!existing) {
         merged.set(chat.otherUid, chat);
@@ -70,7 +76,7 @@ export default function Chat({ profile }: ChatProps) {
     );
   }, []);
 
-  const upsertLocalChat = React.useCallback((chat: any) => {
+  const upsertLocalChat = React.useCallback((chat: ChatSummary) => {
     setActiveChats((prev) => mergeChats([chat], prev));
   }, [mergeChats]);
 
@@ -246,7 +252,7 @@ export default function Chat({ profile }: ChatProps) {
       if (selectedContact?.uid === targetUid) return;
 
       // Check if user is already in active chats to avoid extra fetch
-      const activeChat = activeChats.find(c => c.otherUid === targetUid);
+      const activeChat = activeChats.find((c) => c.otherUid === targetUid);
       if (activeChat) {
         openChat(activeChat.user, activeChat);
       } else if (isInitialLoad.current || !selectedContact) {
@@ -654,6 +660,18 @@ export default function Chat({ profile }: ChatProps) {
     return 'sent';
   };
 
+  const getSafeAttachments = (message: LocalMessage): Attachment[] =>
+    Array.isArray(message.attachments)
+      ? message.attachments.filter(
+          (attachment): attachment is Attachment =>
+            !!attachment &&
+            typeof attachment.name === 'string' &&
+            typeof attachment.type === 'string' &&
+            typeof attachment.url === 'string' &&
+            typeof attachment.size === 'number'
+        )
+      : [];
+
   useEffect(() => {
     if (!showAttachmentMenu) return;
     const handlePointerDown = (event: MouseEvent) => {
@@ -705,7 +723,7 @@ export default function Chat({ profile }: ChatProps) {
         
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {filteredActiveChats.length > 0 ? (
-            filteredActiveChats.map(chat => (
+            filteredActiveChats.map((chat) => (
               <button
                 key={chat.otherUid}
                 onClick={() => openChat(chat.user, chat)}
@@ -850,6 +868,7 @@ export default function Chat({ profile }: ChatProps) {
                   const msgDate = ensureDate(msg.createdAt);
                   const prevMsgDate = idx > 0 ? ensureDate(messages[idx-1].createdAt) : null;
                   const showDateHeader = !prevMsgDate || !isToday(msgDate) && format(msgDate, 'yyyy-MM-dd') !== format(prevMsgDate, 'yyyy-MM-dd');
+                  const messageAttachments = getSafeAttachments(msg);
                   
                   return (
                     <React.Fragment key={msg.id || idx}>
@@ -871,9 +890,9 @@ export default function Chat({ profile }: ChatProps) {
                               : '-left-1 bg-white [clip-path:polygon(100%_0,100%_100%,0_0)]'
                           }`}></div>
                           
-                          {msg.attachments && msg.attachments.length > 0 && (
+                          {messageAttachments.length > 0 && (
                             <div className="mb-2 space-y-2">
-                              {msg.attachments.map((att, i) => {
+                              {messageAttachments.map((att, i) => {
                                 const isImage = att.type.startsWith('image/');
                                 return (
                                   <div key={i} className="rounded-lg overflow-hidden border border-black/5 bg-black/5">

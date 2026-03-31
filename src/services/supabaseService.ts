@@ -446,7 +446,19 @@ function mapMarketSellerRatingFromDb(row: DbMarketSellerRating): MarketSellerRat
   };
 }
 
+function normalizeAttachment(raw: any): Attachment | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name : 'Attachment';
+  const url = typeof raw.url === 'string' ? raw.url : '';
+  const type = typeof raw.type === 'string' ? raw.type : 'application/octet-stream';
+  const size = typeof raw.size === 'number' && Number.isFinite(raw.size) ? raw.size : 0;
+  return { name, url, type, size };
+}
+
 function mapMessageFromDb(row: DbMessage): Message {
+  const attachments = Array.isArray(row.attachments)
+    ? row.attachments.map(normalizeAttachment).filter((item): item is Attachment => item !== null)
+    : undefined;
   return {
     id: row.id,
     senderUid: row.sender_uid,
@@ -454,7 +466,7 @@ function mapMessageFromDb(row: DbMessage): Message {
     content: row.content || '',
     createdAt: row.created_at,
     readAt: row.read_at || undefined,
-    attachments: row.attachments || undefined,
+    attachments,
   };
 }
 
@@ -2229,19 +2241,20 @@ export const supabaseService = {
       'fetchActiveChats'
     );
 
-    const otherUids = rows.map((r) => r.other_uid as string);
+    const normalizedRows = rows.filter((row) => typeof row?.other_uid === 'string' && row.other_uid.trim().length > 0);
+    const otherUids = normalizedRows.map((r) => r.other_uid as string);
     if (otherUids.length === 0) return [];
 
     const profiles = await this.getUsersByUids(otherUids);
     const profileMap = new Map(profiles.map((p) => [p.uid, p]));
 
-    const mapped = rows
+    const mapped = normalizedRows
       .map((chat) => {
         const user = profileMap.get(chat.other_uid);
         if (!user) return null;
         return {
-          lastMessage: chat.last_message as string,
-          updatedAt: chat.updated_at as string,
+          lastMessage: typeof chat.last_message === 'string' ? chat.last_message : '',
+          updatedAt: typeof chat.updated_at === 'string' ? chat.updated_at : new Date().toISOString(),
           otherUid: chat.other_uid as string,
           user,
         };
@@ -2277,10 +2290,11 @@ export const supabaseService = {
     const convoMap = new Map<string, { lastMessage: string; updatedAt: string }>();
     rows.forEach((msg) => {
       const otherUid = msg.sender_uid === uid ? msg.receiver_uid : msg.sender_uid;
+      if (!otherUid) return;
       if (!convoMap.has(otherUid)) {
         convoMap.set(otherUid, {
-          lastMessage: msg.content || (msg.attachments && msg.attachments.length > 0 ? 'Attachment' : ''),
-          updatedAt: msg.created_at,
+          lastMessage: msg.content || (Array.isArray(msg.attachments) && msg.attachments.length > 0 ? 'Attachment' : ''),
+          updatedAt: msg.created_at || new Date().toISOString(),
         });
       }
     });
