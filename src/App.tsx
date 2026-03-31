@@ -32,6 +32,7 @@ import EditMarketItem from './components/EditMarketItem';
 import EditPost from './components/EditPost';
 import PartnershipPage from './components/PartnershipPage';
 import CompanyDashboard from './components/CompanyDashboard';
+import CompanyDashboardLogin from './components/CompanyDashboardLogin';
 
 export default function App() {
   const ONBOARDING_KEY = 'connect_onboarding_uid';
@@ -214,6 +215,8 @@ export default function App() {
             path="/partner-with-connect"
             element={<PartnershipPage onBack={() => window.history.length > 1 ? window.history.back() : undefined} />}
           />
+          <Route path="/company/dashboard-login" element={<CompanyDashboardLogin />} />
+          <Route path="/company/dashboard" element={<Navigate to="/company/dashboard-login" replace />} />
           <Route
             path="*"
             element={
@@ -275,6 +278,7 @@ export default function App() {
             <Route path="/posts/:postId/edit" element={<EditPost profile={profile} />} />
             <Route path="/settings" element={<Settings profile={profile} onLogout={handleLogout} onProfileUpdate={setProfile} />} />
             <Route path="/partner-with-connect" element={<PartnershipPage profile={profile} />} />
+            <Route path="/company/dashboard-login" element={<CompanyDashboardLogin />} />
             <Route path="/company/dashboard" element={<CompanyDashboard profile={profile} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
@@ -418,6 +422,13 @@ function AuthScreen({
           className="mt-5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-white hover:border-teal-200"
         >
           Partner With Us
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/company/dashboard-login')}
+          className="mt-3 w-full rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-sm font-bold text-teal-700 hover:bg-white hover:border-teal-200"
+        >
+          Company Dashboard Login
         </button>
         <p className="mt-3 text-center text-xs text-gray-500">
           Companies can also open the dedicated <Link to="/partner-with-connect" className="font-bold text-teal-700 hover:underline">partnership page</Link>.

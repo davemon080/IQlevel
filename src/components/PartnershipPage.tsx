@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Globe, Link2, Loader2, Send, Upload, BadgeCheck } from 'lucide-react';
+import { ArrowLeft, Building2, Globe, Link2, Loader2, Lock, Send, Upload, BadgeCheck } from 'lucide-react';
 import { UserProfile, CompanyPartnerRequest } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
@@ -36,6 +36,10 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [registrationFiles, setRegistrationFiles] = useState<File[]>([]);
+  const [companyPassword, setCompanyPassword] = useState('');
+  const [confirmCompanyPassword, setConfirmCompanyPassword] = useState('');
+  const [settingCompanyPassword, setSettingCompanyPassword] = useState(false);
+  const [companyPasswordSet, setCompanyPasswordSet] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
@@ -51,6 +55,7 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
       }
       setLoading(false);
     });
+    supabaseService.hasCompanyDashboardPassword(profile.uid).then(setCompanyPasswordSet).catch(() => undefined);
     return () => unsubscribe();
   }, [profile]);
 
@@ -108,6 +113,33 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
       setMessage(error?.message || 'Failed to send partner request.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSetCompanyPassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!profile) return;
+    if (companyPassword.trim().length < 6) {
+      setMessage('Company dashboard password must be at least 6 characters.');
+      return;
+    }
+    if (companyPassword !== confirmCompanyPassword) {
+      setMessage('Company dashboard password confirmation does not match.');
+      return;
+    }
+
+    setSettingCompanyPassword(true);
+    setMessage(null);
+    try {
+      await supabaseService.setCompanyDashboardPassword(profile.uid, companyPassword);
+      setCompanyPasswordSet(true);
+      setCompanyPassword('');
+      setConfirmCompanyPassword('');
+      setMessage('Company dashboard password saved successfully.');
+    } catch (error: any) {
+      setMessage(error?.message || 'Failed to save company dashboard password.');
+    } finally {
+      setSettingCompanyPassword(false);
     }
   };
 
@@ -318,13 +350,58 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
               </div>
 
               {request?.status === 'approved' && (
-                <button
-                  type="button"
-                  onClick={() => navigate('/company/dashboard')}
-                  className="w-full rounded-2xl bg-gray-900 px-4 py-4 text-sm font-bold text-white hover:bg-gray-800"
-                >
-                  Open Company Dashboard
-                </button>
+                <form onSubmit={handleSetCompanyPassword} className="rounded-[1.5rem] border border-gray-200 p-5">
+                  <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
+                    <Lock size={16} className="text-teal-700" />
+                    {companyPasswordSet ? 'Update Company Dashboard Password' : 'Set Company Dashboard Password'}
+                  </div>
+                  <p className="mt-2 text-sm text-gray-500">
+                    This password is what your approved company will use on the dedicated company dashboard login page with the same account email.
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    <input
+                      type="password"
+                      value={companyPassword}
+                      onChange={(event) => setCompanyPassword(event.target.value)}
+                      placeholder="Enter company dashboard password"
+                      className="w-full rounded-2xl bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:bg-white focus:ring-2 focus:ring-teal-500"
+                    />
+                    <input
+                      type="password"
+                      value={confirmCompanyPassword}
+                      onChange={(event) => setConfirmCompanyPassword(event.target.value)}
+                      placeholder="Confirm company dashboard password"
+                      className="w-full rounded-2xl bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:bg-white focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={settingCompanyPassword}
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gray-900 px-4 py-3 text-sm font-bold text-white hover:bg-teal-700 disabled:opacity-70"
+                  >
+                    {settingCompanyPassword ? <Loader2 size={18} className="animate-spin" /> : <Lock size={16} />}
+                    {companyPasswordSet ? 'Update Company Password' : 'Set Company Password'}
+                  </button>
+                </form>
+              )}
+
+              {request?.status === 'approved' && (
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/company/dashboard')}
+                    className="w-full rounded-2xl bg-gray-900 px-4 py-4 text-sm font-bold text-white hover:bg-gray-800"
+                  >
+                    Open Company Dashboard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/company/dashboard-login')}
+                    className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-4 text-sm font-bold text-gray-700 hover:bg-gray-50"
+                  >
+                    Open Company Dashboard Login
+                  </button>
+                </div>
               )}
 
               <div className="rounded-[1.5rem] border border-gray-200 p-5">

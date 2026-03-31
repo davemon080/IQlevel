@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest, CompanyDashboardAccess } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 
@@ -120,6 +120,13 @@ type DbMarketSellerRating = {
   seller_uid: string;
   user_uid: string;
   rating: number;
+  created_at: string;
+};
+
+type DbCompanyDashboardSecurity = {
+  user_uid: string;
+  password_hash: string;
+  updated_at: string;
   created_at: string;
 };
 
@@ -532,11 +539,11 @@ function buildPublicId(uid: string) {
   return `SL-${uid.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
 }
 
-async function hashPin(pin: string) {
+async function hashSecret(value: string) {
   if (typeof window === 'undefined' || !window.crypto?.subtle) {
-    throw new Error('Secure PIN hashing is not available in this environment.');
+    throw new Error('Secure hashing is not available in this environment.');
   }
-  const data = new TextEncoder().encode(pin);
+  const data = new TextEncoder().encode(value);
   const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -1709,16 +1716,31 @@ export const supabaseService = {
   },
 
   async getMyCompanyPartnerRequest(uid: string): Promise<CompanyPartnerRequest | null> {
-    const cacheKey = `partner:request:${uid}`;
-    const cached = readCache<CompanyPartnerRequest | null>(cacheKey, CACHE_TTL.users);
-    if (cached) return cached;
+      const cacheKey = `partner:request:${uid}`;
+      const cached = readCache<CompanyPartnerRequest | null>(cacheKey, CACHE_TTL.users);
+      if (cached) return cached;
 
     const row = await runQuery<DbCompanyPartnerRequest | null>(
       supabase.from('company_partner_requests').select('*').eq('user_uid', uid).maybeSingle(),
       'getMyCompanyPartnerRequest'
     );
-    const mapped = row ? mapCompanyPartnerRequestFromDb(row) : null;
-    writeCache(cacheKey, mapped);
+      const mapped = row ? mapCompanyPartnerRequestFromDb(row) : null;
+      writeCache(cacheKey, mapped);
+      return mapped;
+    },
+
+  async getUserProfileByEmail(email: string): Promise<UserProfile | null> {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return null;
+    const row = await runQuery<DbUserProfile | null>(
+      supabase.from('users').select('*').ilike('email', normalizedEmail).maybeSingle(),
+      'getUserProfileByEmail'
+    );
+    const mapped = row ? mapUserProfileFromDb(row) : null;
+    if (mapped) {
+      this.profileCache.set(mapped.uid, mapped);
+      writeCache(`user:${mapped.uid}`, mapped);
+    }
     return mapped;
   },
 
@@ -1750,9 +1772,96 @@ export const supabaseService = {
         .single(),
       'submitCompanyPartnerRequest'
     );
-    const mapped = mapCompanyPartnerRequestFromDb(row);
-    writeCache(`partner:request:${request.userUid}`, mapped);
-    return mapped;
+      const mapped = mapCompanyPartnerRequestFromDb(row);
+      writeCache(`partner:request:${request.userUid}`, mapped);
+      return mapped;
+    },
+
+  async hasCompanyDashboardPassword(uid: string): Promise<boolean> {
+    const row = await runQuery<Pick<DbCompanyDashboardSecurity, 'user_uid'> | null>(
+      supabase.from('company_dashboard_security').select('user_uid').eq('user_uid', uid).maybeSingle(),
+      'hasCompanyDashboardPassword'
+    );
+    return !!row;
+  },
+
+  async setCompanyDashboardPassword(uid: string, password: string): Promise<void> {
+    if (password.trim().length < 6) {
+      throw new Error('Company dashboard password must be at least 6 characters.');
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user || user.id !== uid) {
+      throw new Error('You must be signed in as this company account to set the company dashboard password.');
+    }
+
+    const { error: authError } = await supabase.auth.updateUser({ password });
+    if (authError) {
+      throw new Error(authError.message || 'Unable to update account password for company dashboard access.');
+    }
+
+    const nextHash = await hashSecret(password);
+    const now = new Date().toISOString();
+    await runQuery(
+      supabase.from('company_dashboard_security').upsert(
+        {
+          user_uid: uid,
+          password_hash: nextHash,
+          updated_at: now,
+          created_at: now,
+        },
+        { onConflict: 'user_uid' }
+      ),
+      'setCompanyDashboardPassword'
+    );
+  },
+
+  async getCompanyDashboardAccessByEmail(email: string): Promise<CompanyDashboardAccess | null> {
+    const profile = await this.getUserProfileByEmail(email);
+    if (!profile) return null;
+
+    const [partnerRequest, passwordSet] = await Promise.all([
+      this.getMyCompanyPartnerRequest(profile.uid),
+      this.hasCompanyDashboardPassword(profile.uid),
+    ]);
+
+    if (!partnerRequest || partnerRequest.status !== 'approved') {
+      return null;
+    }
+
+    return {
+      userUid: profile.uid,
+      email: profile.email,
+      companyName: partnerRequest.companyName,
+      companyLogoUrl: partnerRequest.companyLogoUrl,
+      passwordSet,
+    };
+  },
+
+  async verifyCompanyDashboardLogin(email: string, password: string): Promise<CompanyDashboardAccess> {
+    const { data, error } = await supabase.rpc('verify_company_dashboard_login', {
+      p_email: email.trim().toLowerCase(),
+      p_password: password,
+    });
+
+    if (error) {
+      throw new Error(error.message || 'Unable to verify company dashboard login.');
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) {
+      throw new Error('Invalid company email or company dashboard password.');
+    }
+
+    return {
+      userUid: row.user_uid,
+      email: row.email,
+      companyName: row.company_name,
+      companyLogoUrl: row.company_logo_url,
+      passwordSet: true,
+    };
   },
 
   async getApprovedCompanyPartnerRequestsByUserUids(userUids: string[]): Promise<Record<string, CompanyPartnerRequest>> {
@@ -2452,13 +2561,13 @@ export const supabaseService = {
       if (!currentPin || !/^\d{4}$/.test(currentPin)) {
         throw new Error('Current PIN is required.');
       }
-      const currentHash = await hashPin(currentPin);
+      const currentHash = await hashSecret(currentPin);
       if (currentHash !== existing.pin_hash) {
         throw new Error('Current PIN is incorrect.');
       }
     }
 
-    const nextHash = await hashPin(nextPin);
+    const nextHash = await hashSecret(nextPin);
     await runQuery(
       supabase.from('wallet_security').upsert(
         {
@@ -2480,7 +2589,7 @@ export const supabaseService = {
       'verifyTransactionPin'
     );
     if (!row) return false;
-    const incomingHash = await hashPin(pin);
+    const incomingHash = await hashSecret(pin);
     return incomingHash === row.pin_hash;
   },
 

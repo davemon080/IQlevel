@@ -10,10 +10,11 @@ import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'motion/react';
 
 interface CompanyDashboardProps {
-  profile: UserProfile;
+  profile?: UserProfile | null;
+  accessUid?: string;
 }
 
-export default function CompanyDashboard({ profile }: CompanyDashboardProps) {
+export default function CompanyDashboard({ profile, accessUid }: CompanyDashboardProps) {
   const navigate = useNavigate();
   const { currency } = useCurrency();
   const [request, setRequest] = useState<CompanyPartnerRequest | null>(null);
@@ -28,30 +29,36 @@ export default function CompanyDashboard({ profile }: CompanyDashboardProps) {
     isStudentFriendly: true,
     isRemote: true,
   });
+  const ownerUid = profile?.uid || accessUid;
 
   useEffect(() => {
+    if (!ownerUid) {
+      navigate('/company/dashboard-login', { replace: true });
+      return;
+    }
     let active = true;
-    supabaseService.getMyCompanyPartnerRequest(profile.uid).then((nextRequest) => {
+    supabaseService.getMyCompanyPartnerRequest(ownerUid).then((nextRequest) => {
       if (!active) return;
       setRequest(nextRequest);
       setLoading(false);
-      if (!nextRequest) navigate('/partner-with-connect', { replace: true });
+      if (!nextRequest) navigate(profile ? '/partner-with-connect' : '/company/dashboard-login', { replace: true });
     });
     return () => {
       active = false;
     };
-  }, [navigate, profile.uid]);
+  }, [navigate, ownerUid, profile]);
 
   useEffect(() => {
-    if (request?.status !== 'approved') return;
-    const unsubscribe = supabaseService.subscribeToClientJobs(profile.uid, setJobs);
+    if (request?.status !== 'approved' || !ownerUid) return;
+    const unsubscribe = supabaseService.subscribeToClientJobs(ownerUid, setJobs);
     return () => unsubscribe();
-  }, [profile.uid, request?.status]);
+  }, [ownerUid, request?.status]);
 
   const handleCreateJob = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!ownerUid) return;
     await supabaseService.createJob({
-      clientUid: profile.uid,
+      clientUid: ownerUid,
       ...newJob,
     });
     setShowCreateModal(false);
@@ -90,8 +97,8 @@ export default function CompanyDashboard({ profile }: CompanyDashboardProps) {
         <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-8 text-center">
           <p className="text-lg font-bold text-amber-800">Partner request is {request.status}</p>
           <p className="mt-2 text-sm text-amber-700">Return to the partnership page to review or update your company details.</p>
-          <button onClick={() => navigate('/partner-with-connect')} className="mt-4 rounded-2xl bg-gray-900 px-4 py-3 text-sm font-bold text-white">
-            Open Partnership Page
+          <button onClick={() => navigate(profile ? '/partner-with-connect' : '/company/dashboard-login')} className="mt-4 rounded-2xl bg-gray-900 px-4 py-3 text-sm font-bold text-white">
+            {profile ? 'Open Partnership Page' : 'Open Company Dashboard Login'}
           </button>
         </div>
       </div>
@@ -111,9 +118,22 @@ export default function CompanyDashboard({ profile }: CompanyDashboardProps) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Link to="/partner-with-connect" className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50">
-            Company Profile
-          </Link>
+          {profile ? (
+            <Link to="/partner-with-connect" className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50">
+              Company Profile
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.removeItem('connect_company_dashboard_session');
+                navigate('/company/dashboard-login');
+              }}
+              className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            >
+              Sign Out
+            </button>
+          )}
           <button onClick={() => setShowCreateModal(true)} className="inline-flex items-center gap-2 rounded-2xl bg-teal-700 px-4 py-3 text-sm font-bold text-white hover:bg-teal-800">
             <Plus size={18} />
             Post Gig
