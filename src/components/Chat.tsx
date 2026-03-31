@@ -556,12 +556,18 @@ export default function Chat({ profile }: ChatProps) {
     navigate(`/wallets/transfer/details?${params.toString()}`);
   };
 
-  const handleBackToChatList = React.useCallback(() => {
+  const closeChatView = React.useCallback((replaceHistory: boolean = false) => {
+    setChatActionsUser(null);
+    setShowAttachmentMenu(false);
     setShowChatOnMobile(false);
     setSelectedContact(null);
-    setSearchParams({});
-    navigate('/messages', { replace: true });
+    setSearchParams({}, { replace: replaceHistory });
+    navigate('/messages', { replace: replaceHistory });
   }, [navigate, setSearchParams]);
+
+  const handleBackToChatList = React.useCallback(() => {
+    closeChatView(true);
+  }, [closeChatView]);
 
   const filteredActiveChats = activeChats.filter((chat) => {
     if (!chat?.user?.uid || !chat.user.displayName) return false;
@@ -696,7 +702,7 @@ export default function Chat({ profile }: ChatProps) {
 
   return (
     <div 
-      className={`min-h-0 bg-white flex relative ${isMobile && showChatOnMobile ? 'z-[60]' : ''}`}
+      className={`h-[100dvh] md:h-screen min-h-0 bg-white flex relative overflow-hidden ${isMobile && showChatOnMobile ? 'z-[60]' : ''}`}
       style={isMobile && showChatOnMobile
         ? {
             minHeight: `${mobileViewportHeight}px`,
@@ -704,8 +710,8 @@ export default function Chat({ profile }: ChatProps) {
         : undefined}
     >
       {/* Contacts Sidebar */}
-      <div className={`w-full md:w-[24rem] md:max-w-[24rem] border-r border-gray-200 flex flex-col bg-white transition-all duration-300 min-h-0 ${showChatOnMobile ? 'hidden md:flex' : 'flex'}`}>
-        <div className="p-4 border-b border-gray-100 bg-gray-50/30">
+      <div className={`w-full md:w-[24rem] md:max-w-[24rem] border-r border-gray-200 flex flex-col bg-white transition-all duration-300 min-h-0 h-full ${showChatOnMobile ? 'hidden md:flex' : 'flex'}`}>
+        <div className="px-4 pt-4 pb-3 border-b border-gray-100 bg-white">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold text-gray-900">Chats</h2>
             <div className="flex gap-2">
@@ -730,7 +736,7 @@ export default function Chat({ profile }: ChatProps) {
           </div>
         </div>
         
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
           {filteredActiveChats.length > 0 ? (
             filteredActiveChats.map((chat) => (
               <button
@@ -802,14 +808,14 @@ export default function Chat({ profile }: ChatProps) {
 
       {/* Chat Area */}
       <div
-        className={`flex-1 flex flex-col bg-[#efeae2] transition-all duration-300 min-h-0 overflow-hidden ${!showChatOnMobile ? 'hidden md:flex' : 'flex'}`}
+        className={`flex-1 flex flex-col bg-[#efeae2] transition-all duration-300 min-h-0 h-full overflow-hidden ${!showChatOnMobile ? 'hidden md:flex' : 'flex'}`}
         style={isMobile && showChatOnMobile && shouldLiftForKeyboard ? { paddingBottom: `${keyboardInset}px` } : undefined}
       >
         {selectedContact ? (
           <>
             {/* Chat Header */}
-            <div className="flex-none px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-white/95 backdrop-blur-md z-20 shadow-sm">
-              <div className="flex items-center gap-3">
+            <div className="sticky top-0 flex-none px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-[#f0f2f5] z-20 shadow-sm">
+              <div className="flex min-w-0 items-center gap-3">
                 <button 
                   onClick={handleBackToChatList}
                   className="p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-600"
@@ -830,9 +836,9 @@ export default function Chat({ profile }: ChatProps) {
                     <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
                   )}
                 </div>
-                <div className="cursor-pointer" onClick={() => navigate(`/profile/${selectedContact.uid}`)}>
-                  <h3 className="text-sm font-bold text-gray-900 leading-tight">{selectedContact.displayName}</h3>
-                  <p className={`text-[10px] font-bold uppercase tracking-wider ${isSelectedContactTyping || isSelectedContactOnline ? 'text-emerald-600' : 'text-gray-400'}`}>
+                <div className="min-w-0 cursor-pointer" onClick={() => navigate(`/profile/${selectedContact.uid}`)}>
+                  <h3 className="truncate text-sm font-bold text-gray-900 leading-tight">{selectedContact.displayName}</h3>
+                  <p className={`truncate text-[10px] font-bold uppercase tracking-wider ${isSelectedContactTyping || isSelectedContactOnline ? 'text-emerald-600' : 'text-gray-400'}`}>
                     {isSelectedContactTyping ? 'Typing...' : isSelectedContactOnline ? 'Online now' : 'Offline'}
                   </p>
                 </div>
@@ -844,12 +850,12 @@ export default function Chat({ profile }: ChatProps) {
 
             {/* Messages List - WhatsApp Style Background */}
             <div 
-              className="flex-1 overflow-y-auto p-4 md:p-6 space-y-2 relative custom-scrollbar"
+              className="flex-1 overflow-y-auto px-3 py-4 md:px-6 md:py-5 space-y-2 relative custom-scrollbar"
               style={{
                 backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`,
                 backgroundBlendMode: 'overlay',
                 backgroundColor: '#efeae2',
-                paddingBottom: '12px',
+                paddingBottom: '18px',
               }}
             >
               {messagesLoading ? (
@@ -883,7 +889,7 @@ export default function Chat({ profile }: ChatProps) {
                         animate={{ opacity: 1, scale: 1 }}
                         className={`flex ${isMe ? 'justify-end' : 'justify-start'} mb-1`}
                       >
-                        <div className={`relative max-w-[85%] md:max-w-[70%] px-3 py-2 rounded-xl shadow-sm text-sm ${
+                        <div className={`relative max-w-[86%] md:max-w-[68%] px-3 py-2 rounded-2xl shadow-sm text-sm ${
                           isMe 
                             ? 'bg-[#dcf8c6] text-gray-900 rounded-tr-none' 
                             : 'bg-white text-gray-900 rounded-tl-none'
@@ -990,7 +996,7 @@ export default function Chat({ profile }: ChatProps) {
 
             {/* Message Input - WhatsApp Style */}
             <div
-              className="sticky bottom-0 flex-none p-3 bg-[#f0f2f5] border-t border-gray-200 transition-[padding,margin] duration-200 pb-[max(12px,env(safe-area-inset-bottom))]"
+              className="sticky bottom-0 flex-none border-t border-gray-200 bg-[#f0f2f5] px-3 py-2 transition-[padding,margin] duration-200 pb-[max(12px,env(safe-area-inset-bottom))]"
               style={{
                 paddingBottom: '12px',
                 marginBottom: shouldLiftForKeyboard ? `${keyboardInset}px` : '0px',
@@ -1029,7 +1035,7 @@ export default function Chat({ profile }: ChatProps) {
                 </div>
               )}
 
-              <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+              <form onSubmit={handleSendMessage} className="flex items-end gap-2">
                 <div className="flex items-center gap-1">
                   <div className="relative" ref={attachmentMenuRef}>
                     <button 
@@ -1107,7 +1113,7 @@ export default function Chat({ profile }: ChatProps) {
                   />
                 </div>
                 
-                <div className="flex-1 relative">
+                <div className="flex-1 relative rounded-[1.75rem] bg-white shadow-sm">
                   <textarea
                     ref={inputRef}
                     rows={1}
@@ -1124,7 +1130,7 @@ export default function Chat({ profile }: ChatProps) {
                       window.setTimeout(() => setIsComposerFocused(false), 120);
                     }}
                     placeholder="Type a message"
-                    className="w-full px-4 py-2.5 bg-white border-transparent focus:ring-0 rounded-xl text-base transition-all shadow-sm resize-none overflow-y-auto max-h-40"
+                    className="w-full rounded-[1.75rem] border-transparent bg-transparent px-4 py-3 pr-12 text-[15px] transition-all focus:ring-0 resize-none overflow-y-auto max-h-40"
                   />
                   <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600">
                     <Smile size={20} />
