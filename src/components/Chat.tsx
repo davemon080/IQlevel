@@ -105,6 +105,22 @@ export default function Chat({ profile }: ChatProps) {
     setActiveChats((prev) => mergeChats([chat], prev));
   }, [mergeChats]);
 
+  const updateChatRowLocally = React.useCallback((otherUid: string, user: UserProfile, preview: string, updatedAt: string) => {
+    setActiveChats((prev) =>
+      mergeChats(
+        [
+          {
+            otherUid,
+            user,
+            lastMessage: preview,
+            updatedAt,
+          },
+        ],
+        prev
+      )
+    );
+  }, [mergeChats]);
+
   const clearUnreadForChat = React.useCallback((otherUid: string) => {
     setUnreadCounts((prev) => {
       if (!prev[otherUid]) return prev;
@@ -439,13 +455,9 @@ export default function Chat({ profile }: ChatProps) {
 
       const otherUid = message.senderUid === profile.uid ? message.receiverUid : message.senderUid;
       const knownUser = findKnownUser(otherUid) || (await supabaseService.getUserProfile(otherUid).catch(() => null));
+      const previewText = getPreviewText(message);
       if (knownUser) {
-        upsertLocalChat({
-          otherUid,
-          user: knownUser,
-          lastMessage: getPreviewText(message),
-          updatedAt: message.createdAt,
-        });
+        updateChatRowLocally(otherUid, knownUser, previewText, message.createdAt);
       }
 
       upsertMessageInState({ ...message, localStatus: 'sent' });
@@ -461,7 +473,7 @@ export default function Chat({ profile }: ChatProps) {
         }
       }
     });
-  }, [clearUnreadForChat, findKnownUser, getPreviewText, profile.uid, selectedContact, showChatOnMobile, updateUnreadForChat, upsertLocalChat]);
+  }, [clearUnreadForChat, findKnownUser, getPreviewText, profile.uid, selectedContact, showChatOnMobile, updateChatRowLocally, updateUnreadForChat]);
 
   useEffect(() => {
     if (selectedContact) {
@@ -1419,7 +1431,7 @@ export default function Chat({ profile }: ChatProps) {
                 )}
               </form>
               {showKeyboardDock && (
-                <div className="mt-2 max-h-[44vh] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-gradient-to-b from-slate-50 to-white shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                <div className="fixed inset-x-0 bottom-0 z-[75] mx-auto w-full max-w-3xl overflow-hidden rounded-t-[1.5rem] border border-b-0 border-slate-200 bg-gradient-to-b from-slate-50 to-white shadow-[0_-12px_28px_rgba(15,23,42,0.12)]">
                   <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
                     <div className="flex items-center gap-2">
                       <button
@@ -1437,13 +1449,7 @@ export default function Chat({ profile }: ChatProps) {
                         Emoji
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={hideCustomKeyboard}
-                      className="rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-slate-600 transition-all hover:bg-slate-200"
-                    >
-                      Hide
-                    </button>
+                    <div className="h-1.5 w-16 rounded-full bg-slate-200" />
                   </div>
                   <div className="border-b border-slate-100 px-2.5 py-1.5">
                     <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
@@ -1460,7 +1466,7 @@ export default function Chat({ profile }: ChatProps) {
                     </div>
                   </div>
                   {keyboardPane === 'keys' ? (
-                    <div className="space-y-1.5 bg-gradient-to-b from-slate-100 to-slate-200/80 px-2 py-2.5">
+                    <div className="space-y-1.5 bg-gradient-to-b from-slate-100 to-slate-200/80 px-2 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
                       {(keyboardLayout === 'letters' ? letterRows : symbolRows).map((row, rowIndex) => (
                       <div
                         key={`${keyboardLayout}-${rowIndex}`}
@@ -1480,7 +1486,7 @@ export default function Chat({ profile }: ChatProps) {
                             key={key}
                             type="button"
                             onClick={() => insertKeyboardValue(key)}
-                            className="rounded-[1rem] bg-white px-2 py-2.5 text-sm font-bold text-slate-800 shadow-sm transition-all hover:bg-teal-50 hover:text-teal-700 active:scale-[0.98]"
+                            className="min-h-[44px] rounded-[0.95rem] bg-white px-2 py-2 text-[15px] font-bold text-slate-800 shadow-sm transition-all hover:bg-teal-50 hover:text-teal-700 active:scale-[0.98]"
                           >
                             {keyboardLayout === 'letters' && keyboardShift ? key.toUpperCase() : key}
                           </button>
@@ -1533,14 +1539,7 @@ export default function Chat({ profile }: ChatProps) {
                         Right
                       </button>
                       </div>
-                      <div className="grid grid-cols-[auto_1fr] gap-1.5">
-                      <button
-                        type="button"
-                        onClick={clearComposerText}
-                        className="rounded-[1rem] bg-red-50 px-3 py-2.5 text-[10px] font-black uppercase tracking-wider text-red-600 hover:bg-red-100"
-                      >
-                        Clear
-                      </button>
+                      <div className="grid grid-cols-1 gap-1.5">
                       <button
                         type="button"
                         onClick={() => insertQuickMessage('👍')}
@@ -1551,7 +1550,7 @@ export default function Chat({ profile }: ChatProps) {
                       </div>
                     </div>
                   ) : (
-                    <div className="max-h-[28vh] space-y-2 overflow-y-auto bg-gradient-to-b from-amber-50 to-white px-3 py-2.5">
+                    <div className="max-h-[28vh] space-y-2 overflow-y-auto bg-gradient-to-b from-amber-50 to-white px-3 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
                       {emojiGroups.map((group) => (
                         <div key={group.label} className="space-y-1.5">
                           <p className="px-1 text-[11px] font-black uppercase tracking-wider text-slate-400">{group.label}</p>
