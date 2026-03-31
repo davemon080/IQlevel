@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, FriendRequest, Connection, Post, CompanyPartnerRequest } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Star, MessageSquare, UserPlus, Users, Check, Sparkles, TrendingUp, Building2, Globe, MapPin } from 'lucide-react';
+import { Search, Star, MessageSquare, UserPlus, Users, Check, Sparkles, TrendingUp, Building2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import CachedImage from './CachedImage';
 

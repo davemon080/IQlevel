@@ -69,7 +69,7 @@ export default function JobBoard({ profile }: JobBoardProps) {
     await supabaseService.createJob({
       clientUid: profile.uid,
       ...newJob,
-      budget: Number(convertToUSD(newJob.budget, currency).toFixed(2)),
+      budget: Number(convertToUSD(newJob.budget, currency).toFixed(6)),
     });
     setShowCreateModal(false);
     setNewJob({

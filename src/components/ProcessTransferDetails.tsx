@@ -16,6 +16,9 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
   const [searchParams] = useSearchParams();
   const recipientIdentifier = searchParams.get('recipient') || '';
   const recipientNameFromQuery = searchParams.get('name') || '';
+  const amountFromQuery = searchParams.get('amount') || '';
+  const currencyFromQuery = searchParams.get('currency');
+  const shouldAutoOpenPin = searchParams.get('autoPin') === '1';
   const { currency, setCurrency } = useCurrency();
 
   const [wallet, setWallet] = useState<Wallet | null>(null);
@@ -30,6 +33,18 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
   const [toast, setToast] = useState<string | null>(null);
   const [keyboardInset, setKeyboardInset] = useState(0);
   const amountInputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (currencyFromQuery === 'USD' || currencyFromQuery === 'NGN' || currencyFromQuery === 'EUR') {
+      setCurrency(currencyFromQuery);
+    }
+  }, [currencyFromQuery, setCurrency]);
+
+  React.useEffect(() => {
+    if (amountFromQuery && !amount) {
+      setAmount(amountFromQuery);
+    }
+  }, [amount, amountFromQuery]);
 
   React.useEffect(() => {
     let active = true;
@@ -91,6 +106,14 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
     const parsed = parseFloat(amount);
     return Number.isFinite(parsed) ? parsed : 0;
   }, [amount]);
+
+  React.useEffect(() => {
+    if (!shouldAutoOpenPin || !recipientProfile || showPinPad || processing || loading) return;
+    if (amountNumber > 0 && amountNumber <= availableBalance) {
+      setPin('');
+      setShowPinPad(true);
+    }
+  }, [amountNumber, availableBalance, loading, processing, recipientProfile, shouldAutoOpenPin, showPinPad]);
 
   const openPinPad = (e: React.FormEvent) => {
     e.preventDefault();

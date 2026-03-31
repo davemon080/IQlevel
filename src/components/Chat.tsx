@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { UserProfile, Message, Attachment } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { Send, Search, MessageSquare, MoreVertical, ArrowLeft, Smile, PlusSquare, Lock, FileIcon, X, Download, Image as ImageIcon, Loader2, Check, Video } from 'lucide-react';
+import { Send, Search, MessageSquare, MoreVertical, ArrowLeft, Smile, PlusSquare, Lock, FileIcon, X, Download, Image as ImageIcon, Loader2, Check, Video, CircleDollarSign } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import CachedImage from './CachedImage';
@@ -25,7 +25,8 @@ export default function Chat({ profile }: ChatProps) {
   const [selectedContact, setSelectedContact] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
+  const [newChatSearchQuery, setNewChatSearchQuery] = useState('');
   const [showChatOnMobile, setShowChatOnMobile] = useState(false);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -44,7 +45,10 @@ export default function Chat({ profile }: ChatProps) {
   const [presenceState, setPresenceState] = useState<Record<string, { userUid: string; onlineAt?: string; visibilityState?: string; typingTo?: string | null; viewingChatUid?: string | null; updatedAt?: string }>>({});
   const [isComposerFocused, setIsComposerFocused] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [chatActionsUser, setChatActionsUser] = useState<UserProfile | null>(null);
   const typingTimeoutRef = useRef<number | null>(null);
+  const holdTimeoutRef = useRef<number | null>(null);
+  const attachmentMenuRef = useRef<HTMLDivElement>(null);
 
   const mergeChats = React.useCallback((incomingChats: any[], recentChats: any[] = []) => {
     const merged = new Map<string, any>();
@@ -516,14 +520,42 @@ export default function Chat({ profile }: ChatProps) {
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  const openUserActions = (user: UserProfile) => {
+    setChatActionsUser(user);
+  };
+
+  const cancelHold = () => {
+    if (holdTimeoutRef.current) {
+      window.clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = null;
+    }
+  };
+
+  const beginHold = (user: UserProfile) => {
+    cancelHold();
+    holdTimeoutRef.current = window.setTimeout(() => {
+      openUserActions(user);
+      holdTimeoutRef.current = null;
+    }, 520);
+  };
+
+  const goToPayUser = (user: UserProfile) => {
+    const params = new URLSearchParams({
+      recipient: encodeURIComponent(user.publicId || user.uid),
+      name: encodeURIComponent(user.displayName),
+    });
+    setChatActionsUser(null);
+    navigate(`/wallets/transfer/details?${params.toString()}`);
+  };
+
   const filteredActiveChats = activeChats.filter(chat => 
-    chat.user.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    chat.lastMessage?.toLowerCase().includes(searchQuery.toLowerCase())
+    chat.user.displayName.toLowerCase().includes(sidebarSearchQuery.toLowerCase()) ||
+    chat.lastMessage?.toLowerCase().includes(sidebarSearchQuery.toLowerCase())
   );
 
   const filteredNewChatUsers = allUsers.filter(user =>
-    user.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.role.toLowerCase().includes(searchQuery.toLowerCase())
+    user.displayName.toLowerCase().includes(newChatSearchQuery.toLowerCase()) ||
+    user.role.toLowerCase().includes(newChatSearchQuery.toLowerCase())
   );
 
   const formatMessageDate = (date: Date) => {
@@ -619,6 +651,19 @@ export default function Chat({ profile }: ChatProps) {
     return 'sent';
   };
 
+  useEffect(() => {
+    if (!showAttachmentMenu) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!attachmentMenuRef.current?.contains(event.target as Node)) {
+        setShowAttachmentMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [showAttachmentMenu]);
+
+  useEffect(() => cancelHold, []);
+
   return (
     <div 
       className={`min-h-0 bg-white flex relative ${isMobile && showChatOnMobile ? 'z-[60]' : ''}`}
@@ -648,8 +693,8 @@ export default function Chat({ profile }: ChatProps) {
             <input
               type="text"
               placeholder="Search or start new chat"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={sidebarSearchQuery}
+              onChange={(e) => setSidebarSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-gray-100 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
             />
           </div>
@@ -661,6 +706,14 @@ export default function Chat({ profile }: ChatProps) {
               <button
                 key={chat.otherUid}
                 onClick={() => openChat(chat.user, chat)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  openUserActions(chat.user);
+                }}
+                onTouchStart={() => beginHold(chat.user)}
+                onTouchEnd={cancelHold}
+                onTouchMove={cancelHold}
+                onTouchCancel={cancelHold}
                 className={`w-full px-4 py-3 flex items-center gap-3 transition-all border-b border-gray-50 ${
                   selectedContact?.uid === chat.otherUid ? 'bg-teal-50/50' : 'hover:bg-gray-50'
                 }`}
@@ -759,7 +812,7 @@ export default function Chat({ profile }: ChatProps) {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <button className="p-2.5 text-gray-500 hover:bg-gray-100 rounded-full transition-all"><MoreVertical size={20} /></button>
+                <button onClick={() => openUserActions(selectedContact)} className="p-2.5 text-gray-500 hover:bg-gray-100 rounded-full transition-all"><MoreVertical size={20} /></button>
               </div>
             </div>
 
@@ -951,7 +1004,7 @@ export default function Chat({ profile }: ChatProps) {
 
               <form onSubmit={handleSendMessage} className="flex items-center gap-2">
                 <div className="flex items-center gap-1">
-                  <div className="relative">
+                  <div className="relative" ref={attachmentMenuRef}>
                     <button 
                       type="button" 
                       onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
@@ -1051,7 +1104,7 @@ export default function Chat({ profile }: ChatProps) {
                   </button>
                 </div>
 
-                {newMessage.trim().length > 0 && (
+                {(newMessage.trim().length > 0 || selectedFiles.length > 0) && (
                   <button
                     type="submit"
                     disabled={uploading}
@@ -1113,8 +1166,8 @@ export default function Chat({ profile }: ChatProps) {
                   <input
                     type="text"
                     placeholder="Search users..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    value={newChatSearchQuery}
+                    onChange={(e) => setNewChatSearchQuery(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 bg-gray-100 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"
                   />
                 </div>
@@ -1158,6 +1211,65 @@ export default function Chat({ profile }: ChatProps) {
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {chatActionsUser && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[70] bg-black/40"
+              onClick={() => setChatActionsUser(null)}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+              className="fixed bottom-0 left-0 right-0 z-[71] rounded-t-3xl border-t border-gray-200 bg-white p-5"
+            >
+              <div className="mx-auto max-w-md space-y-4">
+                <div className="text-center">
+                  <p className="text-base font-bold text-gray-900">{chatActionsUser.displayName}</p>
+                  <p className="text-xs text-gray-500">Choose what you want to do with this contact.</p>
+                </div>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => {
+                      openChat(chatActionsUser, {
+                        otherUid: chatActionsUser.uid,
+                        lastMessage: '',
+                        updatedAt: new Date().toISOString(),
+                      });
+                      setChatActionsUser(null);
+                    }}
+                    className="w-full rounded-2xl bg-gray-100 px-4 py-3 text-left text-sm font-semibold text-gray-800 hover:bg-gray-200"
+                  >
+                    Open chat
+                  </button>
+                  <button
+                    onClick={() => goToPayUser(chatActionsUser)}
+                    className="w-full rounded-2xl bg-emerald-50 px-4 py-3 text-left text-sm font-semibold text-emerald-700 hover:bg-emerald-100 inline-flex items-center gap-2"
+                  >
+                    <CircleDollarSign size={16} />
+                    Pay user
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigate(`/profile/${chatActionsUser.uid}`);
+                      setChatActionsUser(null);
+                    }}
+                    className="w-full rounded-2xl bg-gray-100 px-4 py-3 text-left text-sm font-semibold text-gray-800 hover:bg-gray-200"
+                  >
+                    View profile
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 

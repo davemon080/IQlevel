@@ -1576,6 +1576,24 @@ export const supabaseService = {
     );
   },
 
+  async updateJob(jobId: string, updates: Partial<Pick<Job, 'title' | 'description' | 'budget' | 'category' | 'isStudentFriendly' | 'isRemote'>>): Promise<void> {
+    const payload: Partial<DbJob> = {};
+    if (typeof updates.title === 'string') payload.title = updates.title;
+    if (typeof updates.description === 'string') payload.description = updates.description;
+    if (typeof updates.budget === 'number' && Number.isFinite(updates.budget)) payload.budget = updates.budget;
+    if (typeof updates.category === 'string') payload.category = updates.category;
+    if (typeof updates.isStudentFriendly === 'boolean') payload.is_student_friendly = updates.isStudentFriendly;
+    if (typeof updates.isRemote === 'boolean') payload.is_remote = updates.isRemote;
+
+    await runQuery(
+      supabase.from('jobs').update(payload).eq('id', jobId),
+      'updateJob'
+    );
+    removeCache(`job:${jobId}`);
+    removeCache('jobs:all');
+    removeCacheByPrefix('jobs:client:');
+  },
+
   async listJobs(): Promise<Job[]> {
     const cached = readCache<Job[]>('jobs:all', CACHE_TTL.jobs);
     if (cached) return cached;
@@ -1785,6 +1803,11 @@ export const supabaseService = {
       acc[row.user_uid] = mapCompanyPartnerRequestFromDb(row);
       return acc;
     }, {});
+  },
+
+  async getApprovedCompanyPartnerRequestByUserUid(userUid: string): Promise<CompanyPartnerRequest | null> {
+    const records = await this.getApprovedCompanyPartnerRequestsByUserUids([userUid]);
+    return records[userUid] || null;
   },
 
   async listApprovedCompanyPartnerRequests(limitCount: number = 12): Promise<CompanyPartnerRequest[]> {

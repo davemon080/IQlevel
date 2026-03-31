@@ -1,13 +1,31 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, X, User, Briefcase, FileText } from 'lucide-react';
+import { Briefcase, Building2, FileText, Search, Settings, ShoppingBag, User, Wallet, X } from 'lucide-react';
 import { supabaseService } from '../services/supabaseService';
-import { Job, Post, UserProfile } from '../types';
+import { CompanyPartnerRequest, Job, MarketItem, Post, UserProfile } from '../types';
 
 interface GlobalSearchProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+type SearchResult = {
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: React.ComponentType<{ size?: number }>;
+  action: () => void;
+};
+
+const staticPages: Array<{ id: string; title: string; subtitle: string; path: string; keywords: string[]; icon: SearchResult['icon'] }> = [
+  { id: 'page-feed', title: 'Feed', subtitle: 'Home • social updates and active freelancers', path: '/', keywords: ['feed', 'home', 'posts', 'freelancers'], icon: FileText },
+  { id: 'page-network', title: 'Network', subtitle: 'Discover users, highlights, and partners', path: '/network', keywords: ['network', 'discover', 'partners', 'connections'], icon: User },
+  { id: 'page-jobs', title: 'Jobs', subtitle: 'Browse gigs and client opportunities', path: '/jobs', keywords: ['jobs', 'gigs', 'freelance', 'apply'], icon: Briefcase },
+  { id: 'page-market', title: 'Market', subtitle: 'Buy and sell items', path: '/market', keywords: ['market', 'shop', 'sell', 'items'], icon: ShoppingBag },
+  { id: 'page-wallets', title: 'Wallets', subtitle: 'Balances, transfers, top-up, withdraw', path: '/wallets', keywords: ['wallet', 'transfer', 'payment', 'pay', 'balance'], icon: Wallet },
+  { id: 'page-settings', title: 'Settings', subtitle: 'Account, security, notifications, support', path: '/settings', keywords: ['settings', 'support', 'security', 'notifications', 'market settings'], icon: Settings },
+  { id: 'page-support', title: 'Support', subtitle: 'Get help, report an issue, or ask questions', path: '/settings?section=support', keywords: ['support', 'help', 'contact', 'issue', 'report'], icon: Settings },
+];
 
 export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
   const navigate = useNavigate();
@@ -15,6 +33,8 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [marketItems, setMarketItems] = useState<MarketItem[]>([]);
+  const [partners, setPartners] = useState<CompanyPartnerRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
 
@@ -27,12 +47,16 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
       supabaseService.getAllUsers(),
       supabaseService.listJobs(),
       supabaseService.listPosts(50),
+      supabaseService.listMarketItems(),
+      supabaseService.listApprovedCompanyPartnerRequests(25),
     ])
-      .then(([allUsers, allJobs, allPosts]) => {
+      .then(([allUsers, allJobs, allPosts, allMarketItems, approvedPartners]) => {
         if (!active) return;
         setUsers(allUsers);
         setJobs(allJobs);
         setPosts(allPosts);
+        setMarketItems(allMarketItems);
+        setPartners(approvedPartners);
         setLoadedOnce(true);
       })
       .finally(() => {
@@ -46,7 +70,7 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
 
   const normalizedQuery = query.trim().toLowerCase();
 
-  const results = useMemo(() => {
+  const results = useMemo<SearchResult[]>(() => {
     if (!normalizedQuery) return [];
 
     const userResults = users
@@ -54,6 +78,7 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
         (u) =>
           u.displayName.toLowerCase().includes(normalizedQuery) ||
           u.email.toLowerCase().includes(normalizedQuery) ||
+          (u.publicId || '').toLowerCase().includes(normalizedQuery) ||
           u.skills?.some((skill) => skill.toLowerCase().includes(normalizedQuery))
       )
       .slice(0, 6)
@@ -63,6 +88,22 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
         subtitle: `Profile • ${u.role}`,
         icon: User,
         action: () => navigate(`/profile/${u.uid}`),
+      }));
+
+    const partnerResults = partners
+      .filter(
+        (partner) =>
+          partner.companyName.toLowerCase().includes(normalizedQuery) ||
+          partner.location.toLowerCase().includes(normalizedQuery) ||
+          partner.about.toLowerCase().includes(normalizedQuery)
+      )
+      .slice(0, 5)
+      .map((partner) => ({
+        id: `partner-${partner.id}`,
+        title: partner.companyName,
+        subtitle: `Company • ${partner.location}`,
+        icon: Building2,
+        action: () => navigate(`/profile/${partner.userUid}`),
       }));
 
     const jobResults = jobs
@@ -81,13 +122,29 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
         action: () => navigate(`/jobs/${j.id}`),
       }));
 
+    const marketResults = marketItems
+      .filter(
+        (item) =>
+          item.title.toLowerCase().includes(normalizedQuery) ||
+          item.category.toLowerCase().includes(normalizedQuery) ||
+          (item.description || '').toLowerCase().includes(normalizedQuery)
+      )
+      .slice(0, 6)
+      .map((item) => ({
+        id: `market-${item.id}`,
+        title: item.title,
+        subtitle: `Market • ${item.category}`,
+        icon: ShoppingBag,
+        action: () => navigate(`/market/${item.id}`),
+      }));
+
     const postResults = posts
       .filter(
         (p) =>
           p.content.toLowerCase().includes(normalizedQuery) ||
           p.authorName.toLowerCase().includes(normalizedQuery)
       )
-      .slice(0, 6)
+      .slice(0, 5)
       .map((p) => ({
         id: `post-${p.id}`,
         title: p.authorName,
@@ -96,8 +153,21 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
         action: () => navigate(`/profile/${p.authorUid}`),
       }));
 
-    return [...userResults, ...jobResults, ...postResults];
-  }, [jobs, navigate, normalizedQuery, posts, users]);
+    const pageResults = staticPages
+      .filter((page) =>
+        [page.title, page.subtitle, ...page.keywords].some((value) => value.toLowerCase().includes(normalizedQuery))
+      )
+      .slice(0, 6)
+      .map((page) => ({
+        id: page.id,
+        title: page.title,
+        subtitle: page.subtitle,
+        icon: page.icon,
+        action: () => navigate(page.path),
+      }));
+
+    return [...pageResults, ...partnerResults, ...userResults, ...jobResults, ...marketResults, ...postResults];
+  }, [jobs, marketItems, navigate, normalizedQuery, partners, posts, users]);
 
   const handleResultClick = (action: () => void) => {
     action();
@@ -116,7 +186,7 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search users, gigs, and posts..."
+            placeholder="Search market, gigs, partners, settings, and more..."
             className="flex-1 text-sm md:text-base outline-none"
           />
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100">
@@ -127,7 +197,7 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
         <div className="max-h-[70vh] overflow-y-auto">
           {loading && <p className="p-6 text-sm text-gray-500">Loading searchable content...</p>}
           {!loading && !normalizedQuery && (
-            <p className="p-6 text-sm text-gray-500">Type to search across the app.</p>
+            <p className="p-6 text-sm text-gray-500">Type to search across profiles, companies, gigs, market items, posts, and app pages.</p>
           )}
           {!loading && normalizedQuery && results.length === 0 && (
             <p className="p-6 text-sm text-gray-500">No results found.</p>

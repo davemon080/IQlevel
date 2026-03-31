@@ -161,7 +161,7 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="text"
-                placeholder="Search for students, jobs, or skills..."
+                placeholder="Search market, gigs, partners, settings, or anything..."
                 readOnly
                 onClick={() => setIsSearchOpen(true)}
                 className="w-full pl-10 pr-4 py-2 bg-gray-100 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-base transition-all"

@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { UserProfile, Post } from '../types';
+import { UserProfile, Post, CompanyPartnerRequest } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { ArrowLeft, Camera, MessageSquare, Save, Share2, Plus, Trash2, Copy } from 'lucide-react';
+import { ArrowLeft, Building2, Camera, ExternalLink, Globe, MapPin, MessageSquare, Save, Share2, Plus, Trash2, Copy } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import CachedImage from './CachedImage';
 
@@ -15,6 +15,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
   const navigate = useNavigate();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [companyPartner, setCompanyPartner] = useState<CompanyPartnerRequest | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<UserProfile>>({});
   const [loading, setLoading] = useState(true);
@@ -29,12 +30,17 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
     if (!uid) return;
     let active = true;
     setLoading(true);
-    Promise.all([supabaseService.getUserProfile(uid), supabaseService.getPostsByUser(uid)])
-      .then(([profile, profilePosts]) => {
+    Promise.all([
+      supabaseService.getUserProfile(uid),
+      supabaseService.getPostsByUser(uid),
+      supabaseService.getApprovedCompanyPartnerRequestByUserUid(uid),
+    ])
+      .then(([profile, profilePosts, partner]) => {
         if (!active) return;
         setUserProfile(profile);
         setDraft(profile || {});
         setPosts(profilePosts);
+        setCompanyPartner(partner);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -140,6 +146,142 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
 
   if (loading) return <div className="max-w-5xl mx-auto p-6 text-sm text-gray-500">Loading profile...</div>;
   if (!userProfile) return <div className="max-w-5xl mx-auto p-6 text-sm text-gray-500">Profile not found.</div>;
+
+  if (companyPartner) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100">
+            <ArrowLeft size={20} className="text-gray-600" />
+          </button>
+          <h1 className="text-2xl font-bold text-gray-900">Company Profile</h1>
+        </div>
+
+        <div className="overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm">
+          <div className="bg-gradient-to-r from-teal-700 via-emerald-600 to-lime-500 px-6 py-10 text-white">
+            <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+              <div className="flex items-center gap-4">
+                <CachedImage
+                  src={companyPartner.companyLogoUrl}
+                  alt={companyPartner.companyName}
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  wrapperClassName="h-24 w-24 rounded-3xl border border-white/30 bg-white/15 p-2"
+                  imgClassName="h-full w-full rounded-[1.25rem] object-cover"
+                />
+                <div>
+                  <p className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em]">
+                    <Building2 size={12} />
+                    Approved Partner
+                  </p>
+                  <h2 className="mt-3 text-3xl font-black">{companyPartner.companyName}</h2>
+                  <p className="mt-1 text-sm text-white/85">{companyPartner.location}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => navigate(`/messages?uid=${userProfile.uid}`)}
+                  className="rounded-2xl bg-white px-4 py-3 text-sm font-bold text-teal-700 hover:bg-teal-50"
+                >
+                  Message Company
+                </button>
+                {companyPartner.websiteUrl && (
+                  <a
+                    href={companyPartner.websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-2xl border border-white/30 px-4 py-3 text-sm font-bold text-white hover:bg-white/10 inline-flex items-center gap-2"
+                  >
+                    <ExternalLink size={14} />
+                    Visit Website
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-6 p-6 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="space-y-6">
+              <section className="rounded-3xl bg-gray-50 p-5">
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-gray-400">About this company</p>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-gray-700">
+                  {companyPartner.about || userProfile.companyInfo?.about || 'No company description added yet.'}
+                </p>
+              </section>
+
+              {posts.length > 0 && (
+                <section className="space-y-3">
+                  <p className="text-sm font-bold text-gray-900">Latest Highlights</p>
+                  {posts.map((post) => (
+                    <div key={post.id} className="rounded-3xl border border-gray-100 p-4">
+                      <p className="text-xs text-gray-400 mb-2">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap">{post.content}</p>
+                      {post.imageUrl && (
+                        <CachedImage
+                          src={post.imageUrl}
+                          alt="company post"
+                          loading="lazy"
+                          decoding="async"
+                          wrapperClassName="w-full mt-3 rounded-2xl"
+                          imgClassName="w-full h-full rounded-2xl object-cover"
+                        />
+                      )}
+                    </div>
+                  ))}
+                </section>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-gray-200 p-5">
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-gray-400">Company details</p>
+                <div className="mt-4 space-y-3 text-sm text-gray-700">
+                  <div className="flex items-start gap-3">
+                    <MapPin size={16} className="mt-0.5 text-teal-700" />
+                    <span>{companyPartner.location}</span>
+                  </div>
+                  {companyPartner.websiteUrl && (
+                    <div className="flex items-start gap-3">
+                      <Globe size={16} className="mt-0.5 text-teal-700" />
+                      <a href={companyPartner.websiteUrl} target="_blank" rel="noopener noreferrer" className="break-all text-teal-700 hover:underline">
+                        {companyPartner.websiteUrl}
+                      </a>
+                    </div>
+                  )}
+                  <div className="flex items-start gap-3">
+                    <Copy size={16} className="mt-0.5 text-teal-700" />
+                    <button onClick={handleCopyUserId} type="button" className="text-left text-teal-700 hover:underline">
+                      {copiedId ? 'Copied company ID' : `Company ID: ${userProfile.publicId || userProfile.uid}`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {companyPartner.socialLinks.length > 0 && (
+                <div className="rounded-3xl border border-gray-200 p-5">
+                  <p className="text-xs font-bold uppercase tracking-[0.22em] text-gray-400">Social links</p>
+                  <div className="mt-4 space-y-2">
+                    {companyPartner.socialLinks.map((link) => (
+                      <a
+                        key={link}
+                        href={link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block rounded-2xl bg-gray-50 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-teal-50 hover:text-teal-700"
+                      >
+                        {link}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">

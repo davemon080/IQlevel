@@ -20,7 +20,10 @@ import {
   Copy,
   Store,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  LifeBuoy,
+  Mail,
+  MessageSquareWarning
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CachedImage from './CachedImage';
@@ -34,7 +37,7 @@ interface SettingsProps {
 
 export default function Settings({ profile, onLogout, onProfileUpdate }: SettingsProps) {
   const [searchParams] = useSearchParams();
-  const [activeSection, setActiveSection] = useState<'main' | 'profile' | 'security' | 'notifications' | 'market'>('main');
+  const [activeSection, setActiveSection] = useState<'main' | 'profile' | 'security' | 'notifications' | 'market' | 'support'>('main');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
@@ -92,6 +95,8 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
     const requestedSection = searchParams.get('section');
     if (requestedSection === 'market') {
       setActiveSection('market');
+    } else if (requestedSection === 'support') {
+      setActiveSection('support');
     }
   }, [searchParams]);
 
@@ -381,6 +386,13 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
                   sublabel={marketRegistered ? 'Marketplace registered' : 'Marketplace profile and registration'}
                   onClick={() => setActiveSection('market')}
                   color="text-fuchsia-600"
+                />
+                <SettingItem
+                  icon={LifeBuoy}
+                  label="Support"
+                  sublabel="Help, issues, and account assistance"
+                  onClick={() => setActiveSection('support')}
+                  color="text-rose-600"
                 />
               </div>
 
@@ -758,6 +770,60 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
                     {savingMarket ? 'Saving...' : 'Save Market Settings'}
                   </button>
                 )}
+              </div>
+            </motion.div>
+          )}
+
+          {activeSection === 'support' && (
+            <motion.div
+              key="support"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="p-6 space-y-6"
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <button onClick={() => setActiveSection('main')} className="p-2 hover:bg-gray-100 rounded-xl transition-all">
+                  <ChevronRight size={24} className="rotate-180" />
+                </button>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Support</h2>
+                  <p className="text-sm text-gray-500">Get help with payments, gigs, chat, and marketplace issues.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="rounded-3xl border border-gray-200 bg-gray-50 p-5">
+                  <div className="inline-flex rounded-2xl bg-white p-3 text-rose-600 shadow-sm">
+                    <MessageSquareWarning size={22} />
+                  </div>
+                  <h3 className="mt-4 text-lg font-bold text-gray-900">Report a problem</h3>
+                  <p className="mt-2 text-sm text-gray-600">
+                    Seeing an issue with gigs, chats, wallet transfers, or marketplace listings? Send the team a clear description with screenshots if possible.
+                  </p>
+                  <a
+                    href={`mailto:support@connectapp.com?subject=${encodeURIComponent('Support request from ' + profile.displayName)}`}
+                    className="mt-4 inline-flex rounded-2xl bg-teal-700 px-4 py-3 text-sm font-bold text-white hover:bg-teal-800"
+                  >
+                    Contact Support
+                  </a>
+                </div>
+
+                <div className="rounded-3xl border border-gray-200 bg-white p-5">
+                  <div className="inline-flex rounded-2xl bg-gray-100 p-3 text-teal-700">
+                    <Mail size={22} />
+                  </div>
+                  <h3 className="mt-4 text-lg font-bold text-gray-900">Quick help</h3>
+                  <div className="mt-3 space-y-3 text-sm text-gray-600">
+                    <p>For transfer help, make sure your wallet PIN is set before trying to pay another user.</p>
+                    <p>For marketplace access, complete your market registration from the Market section in settings.</p>
+                    <p>For gig issues, use Manage Gigs to review applicants, edit gig details, or close and reopen listings.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-dashed border-gray-300 bg-gray-50 p-5 text-sm text-gray-600">
+                Support email: <span className="font-bold text-gray-900">support@connectapp.com</span>
               </div>
             </motion.div>
           )}
