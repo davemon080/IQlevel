@@ -42,6 +42,7 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
   const [settingCompanyPassword, setSettingCompanyPassword] = useState(false);
   const [companyPasswordSet, setCompanyPasswordSet] = useState(false);
   const [successEffect, setSuccessEffect] = useState<string | null>(null);
+  const [redirectingToLogin, setRedirectingToLogin] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
@@ -134,17 +135,18 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
     setMessage(null);
     try {
       await supabaseService.setCompanyDashboardPassword(profile.uid, companyPassword);
-      const passwordSaved = await supabaseService.hasCompanyDashboardPassword(profile.uid);
-      if (!passwordSaved) {
-        throw new Error('Company password did not finish saving. Please try again.');
-      }
       setCompanyPasswordSet(true);
       setCompanyPassword('');
       setConfirmCompanyPassword('');
-      setMessage('Company dashboard password saved successfully.');
-      setSuccessEffect('Company password saved successfully.');
-      window.setTimeout(() => setSuccessEffect(null), 2600);
+      setRedirectingToLogin(true);
+      setMessage('Company dashboard password saved successfully. Redirecting to the company login page...');
+      setSuccessEffect('Password saved. Company login is opening...');
+      window.setTimeout(() => {
+        setSuccessEffect(null);
+        navigate('/company/dashboard-login', { replace: true });
+      }, 1800);
     } catch (error: any) {
+      setRedirectingToLogin(false);
       setMessage(error?.message || 'Failed to save company dashboard password.');
     } finally {
       setSettingCompanyPassword(false);
@@ -396,11 +398,15 @@ export default function PartnershipPage({ profile, onBack }: PartnershipPageProp
                   </div>
                   <button
                     type="submit"
-                    disabled={settingCompanyPassword}
+                    disabled={settingCompanyPassword || redirectingToLogin}
                     className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gray-900 px-4 py-3 text-sm font-bold text-white hover:bg-teal-700 disabled:opacity-70"
                   >
-                    {settingCompanyPassword ? <Loader2 size={18} className="animate-spin" /> : <Lock size={16} />}
-                    {companyPasswordSet ? 'Update Company Password' : 'Set Company Password'}
+                    {settingCompanyPassword || redirectingToLogin ? <Loader2 size={18} className="animate-spin" /> : <Lock size={16} />}
+                    {redirectingToLogin
+                      ? 'Opening Company Login...'
+                      : companyPasswordSet
+                      ? 'Update Company Password'
+                      : 'Set Company Password'}
                   </button>
                 </form>
               )}

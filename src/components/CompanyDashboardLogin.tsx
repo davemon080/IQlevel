@@ -25,9 +25,9 @@ export default function CompanyDashboardLogin() {
         throw new Error(error.message || 'Unable to sign in to company dashboard.');
       }
       const access = await supabaseService.getCompanyDashboardAccessByEmail(normalizedEmail);
-      if (!access || !access.passwordSet) {
+      if (!access) {
         await supabase.auth.signOut();
-        throw new Error('This email does not have an approved company dashboard or the company password has not been set yet.');
+        throw new Error('This email does not have an approved company dashboard yet.');
       }
       navigate('/company/dashboard', { replace: true });
     } catch (error: any) {
