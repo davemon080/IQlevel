@@ -4,9 +4,10 @@ import { Search, SlidersHorizontal, Tag, Plus, Star } from 'lucide-react';
 import { UserProfile, MarketItem, MarketSellerRating } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage, { preloadCachedImage } from './CachedImage';
-import { formatAmount } from '../utils/currency';
+import { convertAmount, formatAmountInCurrency } from '../utils/currency';
 import { formatDistanceToNow } from 'date-fns';
 import { MARKET_CATEGORIES } from '../constants/market';
+import { useCurrency } from '../context/CurrencyContext';
 
 interface MarketProps {
   profile: UserProfile;
@@ -14,6 +15,7 @@ interface MarketProps {
 
 export default function Market({ profile }: MarketProps) {
   const navigate = useNavigate();
+  const { currency } = useCurrency();
   const [items, setItems] = useState<MarketItem[]>([]);
   const [ratings, setRatings] = useState<MarketSellerRating[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -55,18 +57,28 @@ export default function Market({ profile }: MarketProps) {
       if (negotiableOnly && !item.isNegotiable) return false;
       if (category !== 'All' && item.category !== category) return false;
       if (!normalizedQuery) return true;
-      return [item.title, item.description || '', item.seller?.displayName || '', item.category, `${item.stockQuantity}`, formatAmount(item.price, item.priceCurrency)]
-        .some((value) => value.toLowerCase().includes(normalizedQuery));
+      return [
+        item.title,
+        item.description || '',
+        item.seller?.displayName || '',
+        item.category,
+        `${item.stockQuantity}`,
+        formatAmountInCurrency(item.price, item.priceCurrency, currency),
+      ].some((value) => value.toLowerCase().includes(normalizedQuery));
     });
 
     nextItems = [...nextItems].sort((a, b) => {
-      if (sortBy === 'price-low') return a.price - b.price;
-      if (sortBy === 'price-high') return b.price - a.price;
+      if (sortBy === 'price-low') {
+        return convertAmount(a.price, a.priceCurrency, currency) - convertAmount(b.price, b.priceCurrency, currency);
+      }
+      if (sortBy === 'price-high') {
+        return convertAmount(b.price, b.priceCurrency, currency) - convertAmount(a.price, a.priceCurrency, currency);
+      }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
     return nextItems;
-  }, [category, items, negotiableOnly, searchQuery, sortBy]);
+  }, [category, currency, items, negotiableOnly, searchQuery, sortBy]);
 
   const categoryCounts = useMemo(() => {
     return items.reduce<Record<string, number>>((acc, item) => {
@@ -131,7 +143,7 @@ export default function Market({ profile }: MarketProps) {
                     <CachedImage src={item.imageUrls[0]} alt={item.title} wrapperClassName="h-10 w-10 rounded-xl" imgClassName="h-full w-full rounded-xl object-cover" />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-gray-900">{item.title}</p>
-                      <p className="truncate text-xs text-gray-500">{item.category} · {formatAmount(item.price, item.priceCurrency)}</p>
+                      <p className="truncate text-xs text-gray-500">{item.category} · {formatAmountInCurrency(item.price, item.priceCurrency, currency)}</p>
                     </div>
                   </button>
                 ))}
@@ -192,15 +204,15 @@ export default function Market({ profile }: MarketProps) {
               className="overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm transition-all hover:-translate-y-1 hover:border-teal-200 hover:shadow-lg"
             >
               <div className="aspect-[4/3] bg-gray-100">
-                  <CachedImage
-                    src={item.imageUrls[0]}
-                    alt={item.title}
-                    loading={index < 4 ? 'eager' : 'lazy'}
-                    decoding="async"
-                    fetchPriority={index < 4 ? 'high' : 'auto'}
-                    referrerPolicy="no-referrer"
-                    wrapperClassName="h-full w-full"
-                    imgClassName="h-full w-full object-cover"
+                <CachedImage
+                  src={item.imageUrls[0]}
+                  alt={item.title}
+                  loading={index < 4 ? 'eager' : 'lazy'}
+                  decoding="async"
+                  fetchPriority={index < 4 ? 'high' : 'auto'}
+                  referrerPolicy="no-referrer"
+                  wrapperClassName="h-full w-full"
+                  imgClassName="h-full w-full object-cover"
                 />
               </div>
 
@@ -217,7 +229,7 @@ export default function Market({ profile }: MarketProps) {
                   )}
                 </div>
 
-                <p className="text-xl font-black text-teal-700">{formatAmount(item.price, item.priceCurrency)}</p>
+                <p className="text-xl font-black text-teal-700">{formatAmountInCurrency(item.price, item.priceCurrency, currency)}</p>
 
                 <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
                   <div className="min-w-0">

@@ -4,9 +4,10 @@ import { ArrowLeft, ChevronLeft, ChevronRight, MessageCircle, Pencil, Star, Tras
 import { UserProfile, MarketItem, MarketSellerRating, MarketSettings } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
-import { formatAmount } from '../utils/currency';
+import { formatAmountInCurrency } from '../utils/currency';
 import { formatDistanceToNow } from 'date-fns';
 import { useConfirmDialog } from './ConfirmDialog';
+import { useCurrency } from '../context/CurrencyContext';
 
 interface MarketItemDetailsProps {
   profile: UserProfile;
@@ -15,6 +16,7 @@ interface MarketItemDetailsProps {
 export default function MarketItemDetails({ profile }: MarketItemDetailsProps) {
   const { itemId } = useParams();
   const navigate = useNavigate();
+  const { currency } = useCurrency();
   const [item, setItem] = useState<MarketItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -149,7 +151,7 @@ export default function MarketItemDetails({ profile }: MarketItemDetailsProps) {
             <div className="space-y-2">
               <p className="text-sm font-bold uppercase tracking-wider text-gray-400">For Sale</p>
               <h2 className="text-3xl font-black text-gray-900">{item.title}</h2>
-              <p className="text-3xl font-black text-teal-700">{formatAmount(item.price, item.priceCurrency)}</p>
+              <p className="text-3xl font-black text-teal-700">{formatAmountInCurrency(item.price, item.priceCurrency, currency)}</p>
             </div>
 
             <div className="flex flex-wrap gap-2 text-xs font-bold uppercase tracking-wider">

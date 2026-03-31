@@ -6,7 +6,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { useCurrency } from '../context/CurrencyContext';
-import { formatMoneyFromUSD } from '../utils/currency';
+import { convertToUSD, formatMoneyFromUSD } from '../utils/currency';
 import CachedImage from './CachedImage';
 
 interface JobBoardProps {
@@ -68,7 +68,8 @@ export default function JobBoard({ profile }: JobBoardProps) {
     e.preventDefault();
     await supabaseService.createJob({
       clientUid: profile.uid,
-      ...newJob
+      ...newJob,
+      budget: Number(convertToUSD(newJob.budget, currency).toFixed(2)),
     });
     setShowCreateModal(false);
     setNewJob({
@@ -299,12 +300,12 @@ export default function JobBoard({ profile }: JobBoardProps) {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-gray-700">Budget ($)</label>
+                  <label className="text-sm font-bold text-gray-700">Budget ({currency})</label>
                   <input
                     type="number"
                     required
                     value={newJob.budget}
-                    onChange={(e) => setNewJob({ ...newJob, budget: parseInt(e.target.value) })}
+                    onChange={(e) => setNewJob({ ...newJob, budget: Number(e.target.value || 0) })}
                     className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-sm transition-all"
                   />
                 </div>

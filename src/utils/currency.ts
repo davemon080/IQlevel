@@ -20,6 +20,12 @@ export function convertToUSD(amount: number, currency: WalletCurrency): number {
   return amount / USD_BASE_RATES[currency];
 }
 
+export function convertAmount(amount: number, fromCurrency: WalletCurrency, toCurrency: WalletCurrency): number {
+  if (fromCurrency === toCurrency) return amount;
+  const usdAmount = fromCurrency === 'USD' ? amount : convertToUSD(amount, fromCurrency);
+  return toCurrency === 'USD' ? usdAmount : convertFromUSD(usdAmount, toCurrency);
+}
+
 export function formatMoneyFromUSD(usdAmount: number, currency: WalletCurrency): string {
   const converted = convertFromUSD(usdAmount, currency);
   const symbol = CURRENCY_SYMBOL[currency];
@@ -29,4 +35,8 @@ export function formatMoneyFromUSD(usdAmount: number, currency: WalletCurrency):
 export function formatAmount(amount: number, currency: WalletCurrency): string {
   const symbol = CURRENCY_SYMBOL[currency];
   return `${symbol}${amount.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
+}
+
+export function formatAmountInCurrency(amount: number, fromCurrency: WalletCurrency, toCurrency: WalletCurrency): string {
+  return formatAmount(convertAmount(amount, fromCurrency, toCurrency), toCurrency);
 }
