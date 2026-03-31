@@ -2482,8 +2482,53 @@ export const supabaseService = {
   },
 
   subscribeToActiveChats(uid: string, callback: (chats: any[]) => void, onError?: (error: any) => void) {
-    const fetcher = async () => this.fetchActiveChats(uid);
-    return subscribeToTable('active_chats', fetcher, callback, `user_uid=eq.${uid}`, onError, `chats:active:${uid}`);
+    const cacheKey = `chats:active:${uid}`;
+    const cached = readCacheAnyAge<any[]>(cacheKey);
+    if (cached) callback(cached);
+
+    let active = true;
+    let fetchVersion = 0;
+
+    const refresh = async () => {
+      const currentVersion = ++fetchVersion;
+      try {
+        const chats = await this.fetchActiveChats(uid);
+        writeCache(cacheKey, chats);
+        if (active && currentVersion === fetchVersion) {
+          callback(chats);
+        }
+      } catch (error) {
+        console.error('Supabase fetch error (subscribeToActiveChats):', error);
+        onError?.(error);
+      }
+    };
+
+    refresh();
+
+    const channels = [
+      supabase.channel(`realtime:active_chats:${uid}:${Math.random().toString(36).slice(2)}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'active_chats', filter: `user_uid=eq.${uid}` },
+        refresh
+      ),
+      supabase.channel(`realtime:messages:sidebar-sender:${uid}:${Math.random().toString(36).slice(2)}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `sender_uid=eq.${uid}` },
+        refresh
+      ),
+      supabase.channel(`realtime:messages:sidebar-receiver:${uid}:${Math.random().toString(36).slice(2)}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `receiver_uid=eq.${uid}` },
+        refresh
+      ),
+    ];
+
+    channels.forEach((channel) => channel.subscribe());
+
+    return () => {
+      active = false;
+      channels.forEach((channel) => supabase.removeChannel(channel));
+    };
   },
 
   async getRecentConversations(uid: string) {

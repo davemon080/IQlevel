@@ -396,11 +396,49 @@ export default function Chat({ profile }: ChatProps) {
   }, [isNewChatModalOpen, profile.uid]);
 
   useEffect(() => {
+    const upsertMessageInState = (incoming: LocalMessage) => {
+      setMessages((prev) => {
+        const isCurrentConversation =
+          selectedContact &&
+          ((incoming.senderUid === profile.uid && incoming.receiverUid === selectedContact.uid) ||
+            (incoming.senderUid === selectedContact.uid && incoming.receiverUid === profile.uid));
+
+        if (!isCurrentConversation) {
+          return prev;
+        }
+
+        const existingIndex = prev.findIndex((msg) => msg.id === incoming.id);
+        if (existingIndex >= 0) {
+          const next = [...prev];
+          next[existingIndex] = {
+            ...next[existingIndex],
+            ...incoming,
+            localStatus: 'sent' as const,
+          };
+          return next.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        }
+
+        const withoutTempDuplicate = prev.filter((msg) => {
+          if (!msg.id.startsWith('temp-')) return true;
+          return !(
+            msg.senderUid === incoming.senderUid &&
+            msg.receiverUid === incoming.receiverUid &&
+            msg.content === incoming.content &&
+            Math.abs(new Date(msg.createdAt).getTime() - new Date(incoming.createdAt).getTime()) < 10000
+          );
+        });
+
+        return [...withoutTempDuplicate, { ...incoming, localStatus: 'sent' as const }].sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      });
+    };
+
     return supabaseService.subscribeToMessageEvents(profile.uid, async ({ type, message }) => {
       if (!message || type === 'DELETE') return;
 
       const otherUid = message.senderUid === profile.uid ? message.receiverUid : message.senderUid;
-      const knownUser = findKnownUser(otherUid);
+      const knownUser = findKnownUser(otherUid) || (await supabaseService.getUserProfile(otherUid).catch(() => null));
       if (knownUser) {
         upsertLocalChat({
           otherUid,
@@ -409,6 +447,8 @@ export default function Chat({ profile }: ChatProps) {
           updatedAt: message.createdAt,
         });
       }
+
+      upsertMessageInState({ ...message, localStatus: 'sent' });
 
       const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 768;
       const isOpenConversation = selectedContact?.uid === otherUid && (!isMobileViewport || showChatOnMobile);
