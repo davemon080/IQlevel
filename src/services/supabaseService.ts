@@ -2174,52 +2174,56 @@ export const supabaseService = {
     const lastMessageText =
       message.content || (message.attachments && message.attachments.length > 0 ? 'Attachment' : '');
 
-    await runQuery(
-      supabase.from('active_chats').upsert(
-        [
-          {
-            user_uid: message.senderUid,
-            other_uid: message.receiverUid,
-            last_message: lastMessageText,
-            updated_at: createdAt,
-          },
-          {
-            user_uid: message.receiverUid,
-            other_uid: message.senderUid,
-            last_message: lastMessageText,
-            updated_at: createdAt,
-          },
-        ],
-        { onConflict: 'user_uid,other_uid' }
-      ),
-      'updateActiveChats'
-    );
+    try {
+      await runQuery(
+        supabase.from('active_chats').upsert(
+          [
+            {
+              user_uid: message.senderUid,
+              other_uid: message.receiverUid,
+              last_message: lastMessageText,
+              updated_at: createdAt,
+            },
+            {
+              user_uid: message.receiverUid,
+              other_uid: message.senderUid,
+              last_message: lastMessageText,
+              updated_at: createdAt,
+            },
+          ],
+          { onConflict: 'user_uid,other_uid' }
+        ),
+        'updateActiveChats'
+      );
 
-    const senderProfile =
-      this.profileCache.get(message.senderUid) || (await this.getUserProfile(message.senderUid));
-    const receiverProfile =
-      this.profileCache.get(message.receiverUid) || (await this.getUserProfile(message.receiverUid));
+      const senderProfile =
+        this.profileCache.get(message.senderUid) || (await this.getUserProfile(message.senderUid));
+      const receiverProfile =
+        this.profileCache.get(message.receiverUid) || (await this.getUserProfile(message.receiverUid));
 
-    if (receiverProfile) {
-      this.upsertActiveChatCache(message.senderUid, {
-        otherUid: receiverProfile.uid,
-        user: receiverProfile,
-        lastMessage: lastMessageText,
-        updatedAt: createdAt,
-        lastMessageSenderUid: message.senderUid,
-        lastMessageReadAt: undefined,
-      });
-    }
+      if (receiverProfile) {
+        this.upsertActiveChatCache(message.senderUid, {
+          otherUid: receiverProfile.uid,
+          user: receiverProfile,
+          lastMessage: lastMessageText,
+          updatedAt: createdAt,
+          lastMessageSenderUid: message.senderUid,
+          lastMessageReadAt: undefined,
+        });
+      }
 
-    if (senderProfile) {
-      this.upsertActiveChatCache(message.receiverUid, {
-        otherUid: senderProfile.uid,
-        user: senderProfile,
-        lastMessage: lastMessageText,
-        updatedAt: createdAt,
-        lastMessageSenderUid: message.senderUid,
-        lastMessageReadAt: undefined,
-      });
+      if (senderProfile) {
+        this.upsertActiveChatCache(message.receiverUid, {
+          otherUid: senderProfile.uid,
+          user: senderProfile,
+          lastMessage: lastMessageText,
+          updatedAt: createdAt,
+          lastMessageSenderUid: message.senderUid,
+          lastMessageReadAt: undefined,
+        });
+      }
+    } catch (error) {
+      console.error('Post-send chat sync failed:', error);
     }
 
     return mapMessageFromDb(inserted);

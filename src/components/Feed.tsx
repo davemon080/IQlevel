@@ -374,6 +374,7 @@ export default function Feed({ profile }: FeedProps) {
                       <CachedImage
                         src={profileByUid[post.authorUid]?.photoURL || post.authorPhoto}
                         alt={post.authorName}
+                        fallbackMode="avatar"
                         loading="lazy"
                         decoding="async"
                         referrerPolicy="no-referrer"
@@ -475,6 +476,7 @@ export default function Feed({ profile }: FeedProps) {
                   <CachedImage
                     src={post.imageUrl}
                     alt="Post content"
+                    fallbackMode="post"
                     loading="lazy"
                     decoding="async"
                     wrapperClassName="mt-3 sm:mt-4 rounded-xl w-full max-h-64 sm:max-h-96"

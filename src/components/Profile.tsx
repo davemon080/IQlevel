@@ -174,6 +174,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 <CachedImage
                   src={companyPartner.companyLogoUrl}
                   alt={companyPartner.companyName}
+                  fallbackMode="logo"
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"
@@ -231,6 +232,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                         <CachedImage
                           src={post.imageUrl}
                           alt="company post"
+                          fallbackMode="post"
                           loading="lazy"
                           decoding="async"
                           wrapperClassName="w-full mt-3 rounded-2xl"
@@ -333,6 +335,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               <CachedImage
                 src={(editing ? draft.photoURL : userProfile.photoURL) || ''}
                 alt={userProfile.displayName}
+                fallbackMode="avatar"
                 loading="lazy"
                 decoding="async"
                 referrerPolicy="no-referrer"
@@ -466,6 +469,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                       <CachedImage
                         src={post.imageUrl}
                         alt="post"
+                        fallbackMode="post"
                         loading="lazy"
                         decoding="async"
                         wrapperClassName="w-full mt-3 rounded-xl"
@@ -559,6 +563,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                     <CachedImage
                       src={item.imageUrl || 'https://via.placeholder.com/600x400?text=Project'}
                       alt={item.title}
+                      fallbackMode="media"
                       loading="lazy"
                       decoding="async"
                       wrapperClassName="w-full h-44 rounded-xl"
@@ -592,6 +597,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                     <CachedImage
                       src={post.imageUrl}
                       alt="post"
+                      fallbackMode="post"
                       loading="lazy"
                       decoding="async"
                       wrapperClassName="w-full mt-3 rounded-xl"

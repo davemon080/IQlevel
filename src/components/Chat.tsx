@@ -167,6 +167,7 @@ export default function Chat({ profile }: ChatProps) {
   const [error, setError] = React.useState<string | null>(null);
   const [messagesLoading, setMessagesLoading] = React.useState(false);
   const [messagesError, setMessagesError] = React.useState<string | null>(null);
+  const [inlineError, setInlineError] = React.useState<string | null>(null);
   const [activeChats, setActiveChats] = React.useState<ChatSummary[]>([]);
   const [messages, setMessages] = React.useState<LocalMessage[]>([]);
   const [allUsers, setAllUsers] = React.useState<UserProfile[]>([]);
@@ -188,6 +189,9 @@ export default function Chat({ profile }: ChatProps) {
   const [composerHeight, setComposerHeight] = React.useState(88);
   const [keyboardInset, setKeyboardInset] = React.useState(0);
   const [inputFocused, setInputFocused] = React.useState(false);
+  const [viewportHeight, setViewportHeight] = React.useState(
+    typeof window !== 'undefined' ? window.visualViewport?.height ?? window.innerHeight : 0
+  );
 
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -203,7 +207,7 @@ export default function Chat({ profile }: ChatProps) {
   const selectedContactPresence = selectedContact ? presenceState[selectedContact.uid] : undefined;
   const selectedContactOnline = selectedContact ? onlineUserIds.has(selectedContact.uid) : false;
   const selectedContactTyping = selectedContactPresence?.typingTo === profile.uid;
-  const conversationBottomPadding = composerHeight + keyboardInset + 32;
+  const conversationBottomPadding = composerHeight + 20;
 
   const filteredActiveChats = React.useMemo(() => {
     const query = sidebarSearchQuery.trim().toLowerCase();
@@ -280,6 +284,7 @@ export default function Chat({ profile }: ChatProps) {
       setShowChatOnMobile(false);
       setMessages([]);
       setMessagesError(null);
+      setInlineError(null);
       setEditingMessageId(null);
       setSelectedFiles([]);
       setShowAttachmentMenu(false);
@@ -300,6 +305,7 @@ export default function Chat({ profile }: ChatProps) {
       updateChatRow(otherUid, user, options?.lastMessage || '', options?.updatedAt || new Date().toISOString());
       clearUnreadForChat(otherUid);
       setMessagesError(null);
+      setInlineError(null);
       setEditingMessageId(null);
       setSelectedFiles([]);
       if (options?.syncUrl !== false) {
@@ -379,10 +385,11 @@ export default function Chat({ profile }: ChatProps) {
           setEditingMessageId(null);
           setNewMessage('');
         }
+        setInlineError(null);
         setMessageActionsMessage(null);
       } catch (nextError) {
         console.error('Error deleting message:', nextError);
-        setError('Failed to delete message.');
+        setInlineError('Failed to delete message.');
       }
     },
     [editingMessageId, profile.uid]
@@ -392,11 +399,12 @@ export default function Chat({ profile }: ChatProps) {
     if (!selectedContact) return;
     try {
       await supabaseService.clearConversation(profile.uid, selectedContact.uid);
+      setInlineError(null);
       setChatActionsUser(null);
       closeConversation(true);
     } catch (nextError) {
       console.error('Error clearing chat:', nextError);
-      setError('Failed to clear chat.');
+      setInlineError('Failed to clear chat.');
     }
   }, [closeConversation, profile.uid, selectedContact]);
 
@@ -414,15 +422,17 @@ export default function Chat({ profile }: ChatProps) {
           await supabaseService.updateMessage(editingMessageId, profile.uid, trimmedMessage);
           setEditingMessageId(null);
           setNewMessage('');
+          setInlineError(null);
           focusInput();
         } catch (nextError) {
           console.error('Error editing message:', nextError);
-          setError('Failed to update message.');
+          setInlineError('Failed to update message.');
         }
         return;
       }
 
       if (files.length > 0 && uploading) return;
+      setInlineError(null);
 
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const createdAt = new Date().toISOString();
@@ -468,9 +478,10 @@ export default function Chat({ profile }: ChatProps) {
 
         setMessages((prev) => upsertRealtimeMessage(prev, sentMessage, profile.uid, selectedContact.uid));
         updateChatRow(selectedContact.uid, selectedContact, getPreviewText(sentMessage), sentMessage.createdAt);
+        setInlineError(null);
       } catch (nextError) {
         console.error('Error sending message:', nextError);
-        setError(files.length > 0 ? 'Failed to send message with attachments.' : 'Failed to send message.');
+        setInlineError(files.length > 0 ? 'Failed to send message with attachments.' : 'Failed to send message.');
         setMessages((prev) =>
           prev.map((message) =>
             message.id === tempId
@@ -534,6 +545,7 @@ export default function Chat({ profile }: ChatProps) {
       const viewportHeight = viewport?.height ?? window.innerHeight;
       const offsetTop = viewport?.offsetTop ?? 0;
       const inset = Math.max(0, window.innerHeight - viewportHeight - offsetTop);
+      setViewportHeight(Math.max(320, viewportHeight + offsetTop));
       setKeyboardInset(inset > 80 ? inset : 0);
     };
 
@@ -748,6 +760,12 @@ export default function Chat({ profile }: ChatProps) {
   }, [inputFocused, keyboardInset, messages, selectedContact?.uid, selectedContactTyping]);
 
   React.useEffect(() => {
+    if (!inlineError) return;
+    const timeout = window.setTimeout(() => setInlineError(null), 4200);
+    return () => window.clearTimeout(timeout);
+  }, [inlineError]);
+
+  React.useEffect(() => {
     if (!showAttachmentMenu) return;
     const handlePointerDown = (event: MouseEvent) => {
       if (!attachmentMenuRef.current?.contains(event.target as Node)) {
@@ -789,7 +807,10 @@ export default function Chat({ profile }: ChatProps) {
   }
 
   return (
-    <div className="relative flex h-[100svh] overflow-hidden bg-white md:h-screen">
+    <div
+      className="relative flex overflow-hidden bg-white md:h-screen"
+      style={{ height: isMobileLayout ? `${viewportHeight}px` : undefined }}
+    >
       <aside
         className={`${
           showChatOnMobile ? 'hidden md:flex' : 'flex'
@@ -862,6 +883,7 @@ export default function Chat({ profile }: ChatProps) {
                     <CachedImage
                       src={chat.user.photoURL}
                       alt={chat.user.displayName}
+                      fallbackMode="avatar"
                       wrapperClassName="h-14 w-14 rounded-2xl border border-gray-200 bg-gray-100"
                       imgClassName="h-full w-full rounded-2xl object-cover"
                     />
@@ -917,6 +939,7 @@ export default function Chat({ profile }: ChatProps) {
                   <CachedImage
                     src={selectedContact.photoURL}
                     alt={selectedContact.displayName}
+                    fallbackMode="avatar"
                     wrapperClassName="h-11 w-11 rounded-2xl border border-gray-200 bg-white"
                     imgClassName="h-full w-full rounded-2xl object-cover"
                   />
@@ -1028,6 +1051,7 @@ export default function Chat({ profile }: ChatProps) {
                                           <CachedImage
                                             src={attachment.url}
                                             alt={attachment.name}
+                                            fallbackMode="media"
                                             wrapperClassName="max-h-72 w-full"
                                             imgClassName="max-h-72 w-full object-contain"
                                           />
@@ -1088,13 +1112,17 @@ export default function Chat({ profile }: ChatProps) {
 
               <div
                 ref={composerRef}
-                className="fixed inset-x-0 z-20 bg-[#f3ede4]/96 px-3 py-2 backdrop-blur-sm transition-[bottom,transform] duration-200 ease-out md:absolute"
+                className="absolute inset-x-0 bottom-0 z-20 bg-[#f3ede4]/96 px-3 py-2 backdrop-blur-sm transition-transform duration-200 ease-out"
                 style={{
-                  bottom: keyboardInset,
                   paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
                   transform: inputFocused || keyboardInset > 0 ? 'translateY(-2px)' : 'translateY(0)',
                 }}
               >
+                {inlineError && (
+                  <div className="mb-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 shadow-sm">
+                    {inlineError}
+                  </div>
+                )}
                 {selectedFiles.length > 0 && (
                   <div className="mb-3 flex flex-wrap gap-2 rounded-2xl bg-white/80 p-2">
                     {selectedFiles.map((file, index) => (
@@ -1104,6 +1132,7 @@ export default function Chat({ profile }: ChatProps) {
                             <CachedImage
                               src={URL.createObjectURL(file)}
                               alt={file.name}
+                              fallbackMode="media"
                               wrapperClassName="h-full w-full rounded-xl"
                               imgClassName="h-full w-full rounded-xl object-cover"
                             />
@@ -1343,6 +1372,7 @@ export default function Chat({ profile }: ChatProps) {
                       <CachedImage
                         src={user.photoURL}
                         alt={user.displayName}
+                        fallbackMode="avatar"
                         wrapperClassName="h-12 w-12 rounded-2xl border border-gray-200 bg-gray-100"
                         imgClassName="h-full w-full rounded-2xl object-cover"
                       />

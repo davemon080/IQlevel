@@ -321,6 +321,7 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
                     <CachedImage
                       src={profile.photoURL}
                       alt={profile.displayName}
+                      fallbackMode="avatar"
                       loading="lazy"
                       decoding="async"
                       referrerPolicy="no-referrer"
@@ -454,6 +455,7 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
                   <CachedImage
                     src={photoURL}
                     alt="Profile"
+                    fallbackMode="avatar"
                     loading="lazy"
                     decoding="async"
                     referrerPolicy="no-referrer"
