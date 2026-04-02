@@ -4,6 +4,7 @@ import { format, isToday, isYesterday } from 'date-fns';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowLeft,
+  Camera,
   Check,
   CircleDollarSign,
   Download,
@@ -12,6 +13,7 @@ import {
   Loader2,
   Lock,
   MessageSquare,
+  Mic,
   MoreVertical,
   PlusSquare,
   Search,
@@ -33,6 +35,8 @@ type ChatSummary = {
   user: UserProfile;
   lastMessage: string;
   updatedAt: string;
+  lastMessageSenderUid?: string;
+  lastMessageReadAt?: string;
 };
 
 type PresenceInfo = {
@@ -195,6 +199,7 @@ export default function Chat({ profile }: ChatProps) {
   const typingTimeoutRef = React.useRef<number | null>(null);
 
   const uploading = activeUploads > 0;
+  const hasComposerValue = newMessage.trim().length > 0 || selectedFiles.length > 0;
   const selectedContactPresence = selectedContact ? presenceState[selectedContact.uid] : undefined;
   const selectedContactOnline = selectedContact ? onlineUserIds.has(selectedContact.uid) : false;
   const selectedContactTyping = selectedContactPresence?.typingTo === profile.uid;
@@ -757,7 +762,7 @@ export default function Chat({ profile }: ChatProps) {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center rounded-[2rem] border border-gray-200 bg-white">
+      <div className="flex h-full items-center justify-center bg-white">
         <div className="text-center">
           <Loader2 size={32} className="mx-auto animate-spin text-teal-600" />
           <p className="mt-3 text-sm font-medium text-gray-500">Loading conversations...</p>
@@ -768,7 +773,7 @@ export default function Chat({ profile }: ChatProps) {
 
   if (error) {
     return (
-      <div className="flex h-full flex-col items-center justify-center rounded-[2rem] border border-red-200 bg-white p-6 text-center">
+      <div className="flex h-full flex-col items-center justify-center bg-white p-6 text-center">
         <div className="rounded-2xl bg-red-50 px-4 py-3 text-red-700">
           <p className="font-bold">Something went wrong</p>
           <p className="mt-1 text-sm">{error}</p>
@@ -784,7 +789,7 @@ export default function Chat({ profile }: ChatProps) {
   }
 
   return (
-    <div className="relative flex h-[100dvh] overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm md:h-screen">
+    <div className="relative flex h-[100svh] overflow-hidden bg-white md:h-screen">
       <aside
         className={`${
           showChatOnMobile ? 'hidden md:flex' : 'flex'
@@ -816,7 +821,7 @@ export default function Chat({ profile }: ChatProps) {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-white">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-white scroll-smooth">
           {filteredActiveChats.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-6 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-50 text-gray-300">
@@ -872,9 +877,16 @@ export default function Chat({ profile }: ChatProps) {
                       </span>
                     </div>
                     <div className="mt-1 flex items-center justify-between gap-3">
-                      <p className={`truncate text-xs font-medium ${typing ? 'text-emerald-600' : 'text-gray-500'}`}>
-                        {typing ? 'Typing...' : chat.lastMessage || chat.user.role}
-                      </p>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        {!typing && chat.lastMessageSenderUid === profile.uid && (
+                          <ReceiptIcon
+                            state={chat.lastMessageReadAt ? 'read' : selectedContact?.uid === chat.otherUid && onlineUserIds.has(chat.user.uid) ? 'delivered' : 'sent'}
+                          />
+                        )}
+                        <p className={`truncate text-xs font-medium ${typing ? 'text-emerald-600' : 'text-gray-500'}`}>
+                          {typing ? 'Typing...' : chat.lastMessage || chat.user.role}
+                        </p>
+                      </div>
                       {unread > 0 && (
                         <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
                           {unread > 9 ? '9+' : unread}
@@ -892,7 +904,7 @@ export default function Chat({ profile }: ChatProps) {
       <section className={`${showChatOnMobile ? 'flex' : 'hidden md:flex'} relative min-h-0 flex-1 flex-col bg-[#efeae2]`}>
         {selectedContact ? (
           <>
-            <header className="flex flex-none items-center justify-between border-b border-gray-200 bg-[#f0f2f5] px-4 py-3 shadow-sm">
+            <header className="flex flex-none items-center justify-between border-b border-black/5 bg-[#f7f7f5]/95 px-4 py-3 backdrop-blur-sm shadow-sm">
               <div className="flex min-w-0 items-center gap-3">
                 <button
                   onClick={() => closeConversation(true)}
@@ -930,7 +942,7 @@ export default function Chat({ profile }: ChatProps) {
 
             <div className="relative min-h-0 flex-1">
               <div
-                className="absolute inset-0 overflow-y-auto px-3 py-4 md:px-6 md:py-5"
+                className="absolute inset-0 overflow-y-auto px-3 py-4 md:px-6 md:py-5 scroll-smooth overscroll-y-contain"
                 style={{
                   backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(15, 23, 42, 0.05) 1px, transparent 0)',
                   backgroundSize: '24px 24px',
@@ -1076,11 +1088,11 @@ export default function Chat({ profile }: ChatProps) {
 
               <div
                 ref={composerRef}
-                className="absolute inset-x-0 z-20 border-t border-gray-200 bg-[#f0f2f5] px-3 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] transition-[bottom,transform] duration-200 ease-out"
+                className="fixed inset-x-0 z-20 bg-[#f3ede4]/96 px-3 py-2 backdrop-blur-sm transition-[bottom,transform] duration-200 ease-out md:absolute"
                 style={{
                   bottom: keyboardInset,
-                  paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
-                  transform: inputFocused || keyboardInset > 0 ? 'translateY(-6px)' : 'translateY(0)',
+                  paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
+                  transform: inputFocused || keyboardInset > 0 ? 'translateY(-2px)' : 'translateY(0)',
                 }}
               >
                 {selectedFiles.length > 0 && (
@@ -1115,16 +1127,16 @@ export default function Chat({ profile }: ChatProps) {
                 )}
 
                 <form onSubmit={handleSendMessage} className="flex items-end gap-2">
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 self-end pb-1">
                     <div className="relative" ref={attachmentMenuRef}>
                       <button
                         type="button"
                         onClick={() => setShowAttachmentMenu((prev) => !prev)}
-                        className={`inline-flex h-11 w-11 items-center justify-center rounded-full transition-all ${
-                          showAttachmentMenu ? 'bg-teal-50 text-teal-600' : 'text-gray-500 hover:bg-gray-200'
+                        className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition-all ${
+                          showAttachmentMenu ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-700 hover:bg-white/80'
                         }`}
                       >
-                        <PlusSquare size={22} />
+                        <PlusSquare size={21} />
                       </button>
 
                       <AnimatePresence>
@@ -1176,12 +1188,18 @@ export default function Chat({ profile }: ChatProps) {
                     <input type="file" multiple ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
                   </div>
 
-                  <div className="relative flex-1 rounded-[1.75rem] bg-white shadow-sm">
+                  <div className="flex flex-1 items-end gap-2 rounded-[1.75rem] bg-white px-1.5 py-1 shadow-[0_1px_2px_rgba(15,23,42,0.08)]">
                     <textarea
                       ref={inputRef}
                       rows={1}
                       value={newMessage}
                       onChange={(event) => setNewMessage(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && !event.shiftKey) {
+                          event.preventDefault();
+                          void handleSendMessage();
+                        }
+                      }}
                       onFocus={() => {
                         setInputFocused(true);
                         window.setTimeout(() => {
@@ -1196,17 +1214,41 @@ export default function Chat({ profile }: ChatProps) {
                       autoCorrect="on"
                       spellCheck
                       enterKeyHint="send"
-                      className="max-h-40 w-full resize-none overflow-y-auto rounded-[1.75rem] border-transparent bg-transparent px-4 py-3 text-[15px] text-gray-900 caret-teal-600 focus:outline-none focus:ring-0"
+                      className="max-h-32 min-h-[40px] w-full resize-none overflow-y-auto rounded-[1.75rem] border-transparent bg-transparent px-3 py-2.5 text-[15px] leading-5 text-gray-900 caret-teal-600 focus:outline-none focus:ring-0"
                     />
+
+                    {!hasComposerValue && (
+                      <div className="flex items-center gap-1 self-center pr-1 text-gray-600">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            fileInputRef.current?.removeAttribute('capture');
+                            fileInputRef.current?.setAttribute('accept', 'image/*');
+                            fileInputRef.current?.click();
+                          }}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-gray-100"
+                          aria-label="Open camera"
+                        >
+                          <Camera size={19} />
+                        </button>
+                        <button
+                          type="button"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-gray-100"
+                          aria-label="Voice note"
+                        >
+                          <Mic size={18} />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  {(newMessage.trim() || selectedFiles.length > 0) && (
+                  {hasComposerValue && (
                     <button
                       type="submit"
                       disabled={uploading}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-teal-600 text-white shadow-md transition-all hover:bg-teal-700 disabled:bg-gray-400"
+                      className="inline-flex h-11 w-11 items-center justify-center self-end rounded-full bg-teal-600 text-white shadow-md transition-all hover:bg-teal-700 disabled:bg-gray-400"
                     >
-                      {uploading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                      {uploading ? <Loader2 size={19} className="animate-spin" /> : <Send size={19} />}
                     </button>
                   )}
                 </form>

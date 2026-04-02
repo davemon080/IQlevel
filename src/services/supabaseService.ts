@@ -244,6 +244,8 @@ type ActiveChatSummary = {
   user: UserProfile;
   lastMessage: string;
   updatedAt: string;
+  lastMessageSenderUid?: string;
+  lastMessageReadAt?: string;
 };
 
 const memoryCache = new Map<string, CacheEntry<unknown>>();
@@ -2204,6 +2206,8 @@ export const supabaseService = {
         user: receiverProfile,
         lastMessage: lastMessageText,
         updatedAt: createdAt,
+        lastMessageSenderUid: message.senderUid,
+        lastMessageReadAt: undefined,
       });
     }
 
@@ -2213,6 +2217,8 @@ export const supabaseService = {
         user: senderProfile,
         lastMessage: lastMessageText,
         updatedAt: createdAt,
+        lastMessageSenderUid: message.senderUid,
+        lastMessageReadAt: undefined,
       });
     }
 
@@ -2595,21 +2601,40 @@ export const supabaseService = {
     const otherUids = normalizedRows.map((r) => r.other_uid as string);
     if (otherUids.length === 0) return [];
 
+    const messageRows = await runQuery<DbMessage[]>(
+      supabase
+        .from('messages')
+        .select('*')
+        .or(`sender_uid.eq.${uid},receiver_uid.eq.${uid}`)
+        .order('created_at', { ascending: false })
+        .limit(300),
+      'fetchActiveChats:messages'
+    );
+    const latestMessageByOtherUid = new Map<string, DbMessage>();
+    messageRows.forEach((row) => {
+      const otherUid = row.sender_uid === uid ? row.receiver_uid : row.sender_uid;
+      if (!otherUid || latestMessageByOtherUid.has(otherUid)) return;
+      latestMessageByOtherUid.set(otherUid, row);
+    });
+
     const profiles = await this.getUsersByUids(otherUids);
-    const profileMap = new Map(profiles.map((p) => [p.uid, p]));
+    const profileMap = new Map<string, UserProfile>(profiles.map((p) => [p.uid, p]));
 
     const mapped = normalizedRows
-      .map((chat) => {
+      .map((chat): ActiveChatSummary | null => {
         const user = profileMap.get(chat.other_uid);
         if (!user) return null;
+        const latestMessage = latestMessageByOtherUid.get(chat.other_uid);
         return {
           lastMessage: typeof chat.last_message === 'string' ? chat.last_message : '',
           updatedAt: typeof chat.updated_at === 'string' ? chat.updated_at : new Date().toISOString(),
           otherUid: chat.other_uid as string,
           user,
+          lastMessageSenderUid: latestMessage?.sender_uid,
+          lastMessageReadAt: latestMessage?.read_at || undefined,
         };
       })
-      .filter((c): c is ActiveChatSummary => {
+      .filter((c): c is NonNullable<typeof c> => {
         if (!c) return false;
         const clearedAt = getConversationClearedAt(uid, c.otherUid);
         return !clearedAt || new Date(c.updatedAt).getTime() > new Date(clearedAt).getTime();
@@ -2686,7 +2711,7 @@ export const supabaseService = {
       'getRecentConversations'
     );
 
-    const convoMap = new Map<string, { lastMessage: string; updatedAt: string }>();
+    const convoMap = new Map<string, { lastMessage: string; updatedAt: string; lastMessageSenderUid?: string; lastMessageReadAt?: string }>();
     rows.forEach((msg) => {
       const otherUid = msg.sender_uid === uid ? msg.receiver_uid : msg.sender_uid;
       if (!otherUid) return;
@@ -2694,6 +2719,8 @@ export const supabaseService = {
         convoMap.set(otherUid, {
           lastMessage: msg.content || (Array.isArray(msg.attachments) && msg.attachments.length > 0 ? 'Attachment' : ''),
           updatedAt: msg.created_at || new Date().toISOString(),
+          lastMessageSenderUid: msg.sender_uid,
+          lastMessageReadAt: msg.read_at || undefined,
         });
       }
     });
@@ -2702,10 +2729,10 @@ export const supabaseService = {
     if (otherUids.length === 0) return [];
 
     const profiles = await this.getUsersByUids(otherUids);
-    const profileMap = new Map(profiles.map((p) => [p.uid, p]));
+    const profileMap = new Map<string, UserProfile>(profiles.map((p) => [p.uid, p]));
 
     const mapped = otherUids
-      .map((otherUid) => {
+      .map((otherUid): ActiveChatSummary | null => {
         const user = profileMap.get(otherUid);
         if (!user) return null;
         const convo = convoMap.get(otherUid)!;
@@ -2714,9 +2741,11 @@ export const supabaseService = {
           user,
           lastMessage: convo.lastMessage,
           updatedAt: convo.updatedAt,
+          lastMessageSenderUid: convo.lastMessageSenderUid,
+          lastMessageReadAt: convo.lastMessageReadAt,
         };
       })
-      .filter((c): c is ActiveChatSummary => {
+      .filter((c): c is NonNullable<typeof c> => {
         if (!c) return false;
         const clearedAt = getConversationClearedAt(uid, c.otherUid);
         return !clearedAt || new Date(c.updatedAt).getTime() > new Date(clearedAt).getTime();
