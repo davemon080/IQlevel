@@ -196,6 +196,7 @@ export default function Chat({ profile }: ChatProps) {
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const composerRef = React.useRef<HTMLDivElement>(null);
+  const messagesContainerRef = React.useRef<HTMLDivElement>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const attachmentMenuRef = React.useRef<HTMLDivElement>(null);
   const initialLoadRef = React.useRef(true);
@@ -207,7 +208,7 @@ export default function Chat({ profile }: ChatProps) {
   const selectedContactPresence = selectedContact ? presenceState[selectedContact.uid] : undefined;
   const selectedContactOnline = selectedContact ? onlineUserIds.has(selectedContact.uid) : false;
   const selectedContactTyping = selectedContactPresence?.typingTo === profile.uid;
-  const conversationBottomPadding = composerHeight + 20;
+  const conversationBottomPadding = 24;
 
   const filteredActiveChats = React.useMemo(() => {
     const query = sidebarSearchQuery.trim().toLowerCase();
@@ -760,6 +761,25 @@ export default function Chat({ profile }: ChatProps) {
   }, [inputFocused, keyboardInset, messages, selectedContact?.uid, selectedContactTyping]);
 
   React.useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleViewportShift = () => {
+      const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 160;
+      if (!nearBottom) return;
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    };
+
+    const viewport = window.visualViewport;
+    viewport?.addEventListener('resize', handleViewportShift);
+    viewport?.addEventListener('scroll', handleViewportShift);
+    return () => {
+      viewport?.removeEventListener('resize', handleViewportShift);
+      viewport?.removeEventListener('scroll', handleViewportShift);
+    };
+  }, []);
+
+  React.useEffect(() => {
     if (!inlineError) return;
     const timeout = window.setTimeout(() => setInlineError(null), 4200);
     return () => window.clearTimeout(timeout);
@@ -923,7 +943,7 @@ export default function Chat({ profile }: ChatProps) {
         </div>
       </aside>
 
-      <section className={`${showChatOnMobile ? 'flex' : 'hidden md:flex'} relative min-h-0 flex-1 flex-col bg-[#efeae2]`}>
+      <section className={`${showChatOnMobile ? 'grid' : 'hidden md:grid'} min-h-0 flex-1 grid-rows-[auto,minmax(0,1fr),auto] bg-[#efeae2]`}>
         {selectedContact ? (
           <>
             <header className="flex flex-none items-center justify-between border-b border-black/5 bg-[#f7f7f5]/95 px-4 py-3 backdrop-blur-sm shadow-sm">
@@ -963,16 +983,17 @@ export default function Chat({ profile }: ChatProps) {
               </button>
             </header>
 
-            <div className="relative min-h-0 flex-1">
-              <div
-                className="absolute inset-0 overflow-y-auto px-3 py-4 md:px-6 md:py-5 scroll-smooth overscroll-y-contain"
-                style={{
-                  backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(15, 23, 42, 0.05) 1px, transparent 0)',
-                  backgroundSize: '24px 24px',
-                  paddingBottom: `${conversationBottomPadding}px`,
-                  WebkitTouchCallout: 'none',
-                }}
-              >
+            <div
+              ref={messagesContainerRef}
+              className="min-h-0 overflow-y-auto px-3 py-4 md:px-6 md:py-5 scroll-smooth overscroll-y-contain"
+              style={{
+                backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(15, 23, 42, 0.05) 1px, transparent 0)',
+                backgroundSize: '24px 24px',
+                paddingBottom: `${conversationBottomPadding}px`,
+                scrollPaddingBottom: `${conversationBottomPadding}px`,
+                WebkitTouchCallout: 'none',
+              }}
+            >
                 {messagesLoading ? (
                   <div className="space-y-4 p-6">
                     {[0, 1, 2, 3].map((item) => (
@@ -1108,196 +1129,195 @@ export default function Chat({ profile }: ChatProps) {
                 )}
 
                 <div ref={messagesEndRef} />
-              </div>
+            </div>
 
-              <div
-                ref={composerRef}
-                className="absolute inset-x-0 bottom-0 z-20 bg-[#f3ede4]/96 px-3 py-2 backdrop-blur-sm transition-transform duration-200 ease-out"
-                style={{
-                  paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
-                  transform: inputFocused || keyboardInset > 0 ? 'translateY(-2px)' : 'translateY(0)',
-                }}
-              >
-                {inlineError && (
-                  <div className="mb-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 shadow-sm">
-                    {inlineError}
-                  </div>
-                )}
-                {selectedFiles.length > 0 && (
-                  <div className="mb-3 flex flex-wrap gap-2 rounded-2xl bg-white/80 p-2">
-                    {selectedFiles.map((file, index) => (
-                      <div key={`${file.name}-${index}`} className="relative">
-                        <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 text-center shadow-sm">
-                          {file.type.startsWith('image/') ? (
-                            <CachedImage
-                              src={URL.createObjectURL(file)}
-                              alt={file.name}
-                              fallbackMode="media"
-                              wrapperClassName="h-full w-full rounded-xl"
-                              imgClassName="h-full w-full rounded-xl object-cover"
-                            />
-                          ) : (
-                            <div>
-                              <FileIcon size={22} className="mx-auto text-teal-600" />
-                              <p className="mt-1 line-clamp-2 text-[8px] font-bold text-gray-700">{file.name}</p>
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeFile(index)}
-                          className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow-md"
-                        >
-                          <X size={12} />
-                        </button>
+            <div
+              ref={composerRef}
+              className="z-20 border-t border-black/5 bg-[#f3ede4]/96 px-3 py-2 backdrop-blur-sm transition-transform duration-200 ease-out"
+              style={{
+                paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
+                transform: inputFocused || keyboardInset > 0 ? 'translateY(-1px)' : 'translateY(0)',
+              }}
+            >
+              {inlineError && (
+                <div className="mb-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 shadow-sm">
+                  {inlineError}
+                </div>
+              )}
+              {selectedFiles.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2 rounded-2xl bg-white/80 p-2">
+                  {selectedFiles.map((file, index) => (
+                    <div key={`${file.name}-${index}`} className="relative">
+                      <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 text-center shadow-sm">
+                        {file.type.startsWith('image/') ? (
+                          <CachedImage
+                            src={URL.createObjectURL(file)}
+                            alt={file.name}
+                            fallbackMode="media"
+                            wrapperClassName="h-full w-full rounded-xl"
+                            imgClassName="h-full w-full rounded-xl object-cover"
+                          />
+                        ) : (
+                          <div>
+                            <FileIcon size={22} className="mx-auto text-teal-600" />
+                            <p className="mt-1 line-clamp-2 text-[8px] font-bold text-gray-700">{file.name}</p>
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                <form onSubmit={handleSendMessage} className="flex items-end gap-2">
-                  <div className="flex items-center gap-1 self-end pb-1">
-                    <div className="relative" ref={attachmentMenuRef}>
                       <button
                         type="button"
-                        onClick={() => setShowAttachmentMenu((prev) => !prev)}
-                        className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition-all ${
-                          showAttachmentMenu ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-700 hover:bg-white/80'
-                        }`}
+                        onClick={() => removeFile(index)}
+                        className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow-md"
                       >
-                        <PlusSquare size={21} />
+                        <X size={12} />
                       </button>
-
-                      <AnimatePresence>
-                        {showAttachmentMenu && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 10, scale: 0.96 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 10, scale: 0.96 }}
-                            className="absolute bottom-full left-0 mb-3 min-w-[200px] rounded-3xl border border-gray-100 bg-white p-2 shadow-xl"
-                          >
-                            <AttachmentMenuButton
-                              icon={<ImageIcon size={18} />}
-                              iconClassName="bg-pink-50 text-pink-600"
-                              label="Camera"
-                              onClick={() => {
-                                fileInputRef.current?.setAttribute('accept', 'image/*');
-                                fileInputRef.current?.setAttribute('capture', 'environment');
-                                fileInputRef.current?.click();
-                                setShowAttachmentMenu(false);
-                              }}
-                            />
-                            <AttachmentMenuButton
-                              icon={<ImageIcon size={18} />}
-                              iconClassName="bg-blue-50 text-blue-600"
-                              label="Photos & Videos"
-                              onClick={() => {
-                                fileInputRef.current?.removeAttribute('capture');
-                                fileInputRef.current?.setAttribute('accept', 'image/*');
-                                fileInputRef.current?.click();
-                                setShowAttachmentMenu(false);
-                              }}
-                            />
-                            <AttachmentMenuButton
-                              icon={<FileIcon size={18} />}
-                              iconClassName="bg-purple-50 text-purple-600"
-                              label="Documents"
-                              onClick={() => {
-                                fileInputRef.current?.removeAttribute('capture');
-                                fileInputRef.current?.setAttribute('accept', '.pdf,.doc,.docx,.txt,.zip');
-                                fileInputRef.current?.click();
-                                setShowAttachmentMenu(false);
-                              }}
-                            />
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
                     </div>
+                  ))}
+                </div>
+              )}
 
-                    <input type="file" multiple ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
-                  </div>
-
-                  <div className="flex flex-1 items-end gap-2 rounded-[1.75rem] bg-white px-1.5 py-1 shadow-[0_1px_2px_rgba(15,23,42,0.08)]">
-                    <textarea
-                      ref={inputRef}
-                      rows={1}
-                      value={newMessage}
-                      onChange={(event) => setNewMessage(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' && !event.shiftKey) {
-                          event.preventDefault();
-                          void handleSendMessage();
-                        }
-                      }}
-                      onFocus={() => {
-                        setInputFocused(true);
-                        window.setTimeout(() => {
-                          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                        }, 120);
-                      }}
-                      onBlur={() => {
-                        window.setTimeout(() => setInputFocused(false), 120);
-                      }}
-                      placeholder={editingMessageId ? 'Edit your message' : 'Type a message'}
-                      autoComplete="off"
-                      autoCorrect="on"
-                      spellCheck
-                      enterKeyHint="send"
-                      className="max-h-32 min-h-[40px] w-full resize-none overflow-y-auto rounded-[1.75rem] border-transparent bg-transparent px-3 py-2.5 text-[15px] leading-5 text-gray-900 caret-teal-600 focus:outline-none focus:ring-0"
-                    />
-
-                    {!hasComposerValue && (
-                      <div className="flex items-center gap-1 self-center pr-1 text-gray-600">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            fileInputRef.current?.removeAttribute('capture');
-                            fileInputRef.current?.setAttribute('accept', 'image/*');
-                            fileInputRef.current?.click();
-                          }}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-gray-100"
-                          aria-label="Open camera"
-                        >
-                          <Camera size={19} />
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-gray-100"
-                          aria-label="Voice note"
-                        >
-                          <Mic size={18} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {hasComposerValue && (
-                    <button
-                      type="submit"
-                      disabled={uploading}
-                      className="inline-flex h-11 w-11 items-center justify-center self-end rounded-full bg-teal-600 text-white shadow-md transition-all hover:bg-teal-700 disabled:bg-gray-400"
-                    >
-                      {uploading ? <Loader2 size={19} className="animate-spin" /> : <Send size={19} />}
-                    </button>
-                  )}
-                </form>
-
-                {editingMessageId && (
-                  <div className="mt-2 flex items-center justify-between rounded-2xl bg-white px-4 py-2 text-xs text-gray-600 shadow-sm">
-                    <span>Editing message</span>
+              <form onSubmit={handleSendMessage} className="flex items-end gap-2">
+                <div className="flex items-center gap-1 self-end pb-1">
+                  <div className="relative" ref={attachmentMenuRef}>
                     <button
                       type="button"
-                      onClick={() => {
-                        setEditingMessageId(null);
-                        setNewMessage('');
-                      }}
-                      className="font-bold text-red-600"
+                      onClick={() => setShowAttachmentMenu((prev) => !prev)}
+                      className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition-all ${
+                        showAttachmentMenu ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-700 hover:bg-white/80'
+                      }`}
                     >
-                      Cancel
+                      <PlusSquare size={21} />
                     </button>
+
+                    <AnimatePresence>
+                      {showAttachmentMenu && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, scale: 0.96 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.96 }}
+                          className="absolute bottom-full left-0 mb-3 min-w-[200px] rounded-3xl border border-gray-100 bg-white p-2 shadow-xl"
+                        >
+                          <AttachmentMenuButton
+                            icon={<ImageIcon size={18} />}
+                            iconClassName="bg-pink-50 text-pink-600"
+                            label="Camera"
+                            onClick={() => {
+                              fileInputRef.current?.setAttribute('accept', 'image/*');
+                              fileInputRef.current?.setAttribute('capture', 'environment');
+                              fileInputRef.current?.click();
+                              setShowAttachmentMenu(false);
+                            }}
+                          />
+                          <AttachmentMenuButton
+                            icon={<ImageIcon size={18} />}
+                            iconClassName="bg-blue-50 text-blue-600"
+                            label="Photos & Videos"
+                            onClick={() => {
+                              fileInputRef.current?.removeAttribute('capture');
+                              fileInputRef.current?.setAttribute('accept', 'image/*');
+                              fileInputRef.current?.click();
+                              setShowAttachmentMenu(false);
+                            }}
+                          />
+                          <AttachmentMenuButton
+                            icon={<FileIcon size={18} />}
+                            iconClassName="bg-purple-50 text-purple-600"
+                            label="Documents"
+                            onClick={() => {
+                              fileInputRef.current?.removeAttribute('capture');
+                              fileInputRef.current?.setAttribute('accept', '.pdf,.doc,.docx,.txt,.zip');
+                              fileInputRef.current?.click();
+                              setShowAttachmentMenu(false);
+                            }}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
+
+                  <input type="file" multiple ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
+                </div>
+
+                <div className="flex flex-1 items-end gap-2 rounded-[1.75rem] bg-white px-1.5 py-1 shadow-[0_1px_2px_rgba(15,23,42,0.08)]">
+                  <textarea
+                    ref={inputRef}
+                    rows={1}
+                    value={newMessage}
+                    onChange={(event) => setNewMessage(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        void handleSendMessage();
+                      }
+                    }}
+                    onFocus={() => {
+                      setInputFocused(true);
+                      window.setTimeout(() => {
+                        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                      }, 120);
+                    }}
+                    onBlur={() => {
+                      window.setTimeout(() => setInputFocused(false), 120);
+                    }}
+                    placeholder={editingMessageId ? 'Edit your message' : 'Type a message'}
+                    autoComplete="off"
+                    autoCorrect="on"
+                    spellCheck
+                    enterKeyHint="send"
+                    className="max-h-32 min-h-[40px] w-full resize-none overflow-y-auto rounded-[1.75rem] border-transparent bg-transparent px-3 py-2.5 text-[15px] leading-5 text-gray-900 caret-teal-600 focus:outline-none focus:ring-0"
+                  />
+
+                  {!hasComposerValue && (
+                    <div className="flex items-center gap-1 self-center pr-1 text-gray-600">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          fileInputRef.current?.removeAttribute('capture');
+                          fileInputRef.current?.setAttribute('accept', 'image/*');
+                          fileInputRef.current?.click();
+                        }}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-gray-100"
+                        aria-label="Open camera"
+                      >
+                        <Camera size={19} />
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-gray-100"
+                        aria-label="Voice note"
+                      >
+                        <Mic size={18} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {hasComposerValue && (
+                  <button
+                    type="submit"
+                    disabled={uploading}
+                    className="inline-flex h-11 w-11 items-center justify-center self-end rounded-full bg-teal-600 text-white shadow-md transition-all hover:bg-teal-700 disabled:bg-gray-400"
+                  >
+                    {uploading ? <Loader2 size={19} className="animate-spin" /> : <Send size={19} />}
+                  </button>
                 )}
-              </div>
+              </form>
+
+              {editingMessageId && (
+                <div className="mt-2 flex items-center justify-between rounded-2xl bg-white px-4 py-2 text-xs text-gray-600 shadow-sm">
+                  <span>Editing message</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingMessageId(null);
+                      setNewMessage('');
+                    }}
+                    className="font-bold text-red-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
           </>
         ) : (
