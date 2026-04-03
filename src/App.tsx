@@ -19,6 +19,7 @@ import Settings from './components/Settings';
 import FriendRequests from './components/FriendRequests';
 import ManageGigs from './components/ManageGigs';
 import Wallets from './components/Wallets';
+import WalletHistory from './components/WalletHistory';
 import ProcessTransfer from './components/ProcessTransfer';
 import ProcessTransferDetails from './components/ProcessTransferDetails';
 import JobDetails from './components/JobDetails';
@@ -269,6 +270,7 @@ export default function App() {
             <Route path="/profile/:uid" element={<Profile profile={profile} />} />
             <Route path="/messages" element={<Chat profile={profile} />} />
             <Route path="/wallets" element={<Wallets profile={profile} />} />
+            <Route path="/wallets/history" element={<WalletHistory profile={profile} />} />
             <Route path="/wallets/transfer" element={<ProcessTransfer profile={profile} />} />
             <Route path="/wallets/transfer/details" element={<ProcessTransferDetails profile={profile} />} />
             <Route path="/comments/:postId" element={<Comments profile={profile} />} />
