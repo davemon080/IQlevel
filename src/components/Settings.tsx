@@ -52,6 +52,11 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [walletPinEnabled, setWalletPinEnabled] = useState(false);
+  const [currentWalletPin, setCurrentWalletPin] = useState('');
+  const [nextWalletPin, setNextWalletPin] = useState('');
+  const [confirmWalletPin, setConfirmWalletPin] = useState('');
+  const [savingWalletPin, setSavingWalletPin] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
     wallet: true,
     gigs: true,
@@ -77,6 +82,10 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
 
   React.useEffect(() => {
     setNotificationSettings(supabaseService.getNotificationSettings(profile.uid));
+  }, [profile.uid]);
+
+  React.useEffect(() => {
+    supabaseService.hasTransactionPin(profile.uid).then(setWalletPinEnabled).catch(() => undefined);
   }, [profile.uid]);
 
   React.useEffect(() => {
@@ -149,6 +158,32 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
       setMessage({ type: 'error', text: error.message });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveWalletPin = async () => {
+    setMessage(null);
+    if (!/^\d{4}$/.test(nextWalletPin)) {
+      setMessage({ type: 'error', text: 'Wallet PIN must be exactly 4 digits.' });
+      return;
+    }
+    if (nextWalletPin !== confirmWalletPin) {
+      setMessage({ type: 'error', text: 'Wallet PIN confirmation does not match.' });
+      return;
+    }
+
+    setSavingWalletPin(true);
+    try {
+      await supabaseService.setTransactionPin(profile.uid, nextWalletPin, walletPinEnabled ? currentWalletPin : undefined);
+      setWalletPinEnabled(true);
+      setCurrentWalletPin('');
+      setNextWalletPin('');
+      setConfirmWalletPin('');
+      setMessage({ type: 'success', text: 'Wallet PIN updated successfully.' });
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Failed to update wallet PIN.' });
+    } finally {
+      setSavingWalletPin(false);
     }
   };
 
@@ -364,7 +399,7 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
                 <SettingItem 
                   icon={Lock} 
                   label="Security" 
-                  sublabel="Password and authentication"
+                  sublabel="Password, wallet PIN and authentication"
                   onClick={() => setActiveSection('security')}
                   color="text-amber-600"
                 />
@@ -581,6 +616,63 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
               >
                 {loading ? 'Changing Password...' : 'Update Password'}
               </button>
+
+              <div className="space-y-4 rounded-3xl border border-gray-200 bg-gray-50 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900">Wallet PIN</h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {walletPinEnabled ? 'Update your 4-digit wallet PIN for transfers and protected payments.' : 'Create your 4-digit wallet PIN for transfers and protected payments.'}
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${walletPinEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {walletPinEnabled ? 'Active' : 'Not Set'}
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {walletPinEnabled && (
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      pattern="\d{4}"
+                      maxLength={4}
+                      value={currentWalletPin}
+                      onChange={(e) => setCurrentWalletPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      placeholder="Current 4-digit PIN"
+                      className="w-full rounded-xl bg-white px-4 py-3 text-sm transition-all outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  )}
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="\d{4}"
+                    maxLength={4}
+                    value={nextWalletPin}
+                    onChange={(e) => setNextWalletPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder={walletPinEnabled ? 'New 4-digit PIN' : 'Create 4-digit PIN'}
+                    className="w-full rounded-xl bg-white px-4 py-3 text-sm transition-all outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="\d{4}"
+                    maxLength={4}
+                    value={confirmWalletPin}
+                    onChange={(e) => setConfirmWalletPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder="Confirm 4-digit PIN"
+                    className="w-full rounded-xl bg-white px-4 py-3 text-sm transition-all outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+
+                <button
+                  onClick={handleSaveWalletPin}
+                  disabled={savingWalletPin}
+                  className="w-full rounded-2xl bg-gray-900 py-3 text-sm font-bold text-white transition-all hover:bg-gray-800 disabled:opacity-70"
+                >
+                  {savingWalletPin ? 'Saving Wallet PIN...' : walletPinEnabled ? 'Update Wallet PIN' : 'Create Wallet PIN'}
+                </button>
+              </div>
 
               <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
                 <div className="flex gap-3">
