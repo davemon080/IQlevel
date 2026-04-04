@@ -82,6 +82,13 @@ export interface CompanyPartnerRequest {
   createdAt: string;
 }
 
+export interface CompanyFollow {
+  id: string;
+  companyUid: string;
+  followerUid: string;
+  createdAt: string;
+}
+
 export interface MarketItem {
   id: string;
   sellerUid: string;

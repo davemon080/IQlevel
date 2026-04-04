@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest, ActiveGig, AppPreferences, ConnectedDevice, UserPerformanceSummary, WithdrawalAccount } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest, ActiveGig, AppPreferences, ConnectedDevice, UserPerformanceSummary, WithdrawalAccount, CompanyFollow } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 
@@ -100,6 +100,13 @@ type DbCompanyPartnerRequest = {
   location: string;
   registration_urls: string[] | null;
   status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+};
+
+type DbCompanyFollow = {
+  id: string;
+  company_uid: string;
+  follower_uid: string;
   created_at: string;
 };
 
@@ -427,6 +434,15 @@ function mapCompanyPartnerRequestFromDb(row: DbCompanyPartnerRequest): CompanyPa
     location: row.location,
     registrationUrls: row.registration_urls || [],
     status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+function mapCompanyFollowFromDb(row: DbCompanyFollow): CompanyFollow {
+  return {
+    id: row.id,
+    companyUid: row.company_uid,
+    followerUid: row.follower_uid,
     createdAt: row.created_at,
   };
 }
@@ -2175,6 +2191,54 @@ export const supabaseService = {
       return rows.map(mapCompanyPartnerRequestFromDb);
     };
     return subscribeToTable('company_partner_requests', fetcher, callback, `status=eq.approved`, onError, cacheKey);
+  },
+
+  async listCompanyFollowsByCompanyUid(companyUid: string): Promise<CompanyFollow[]> {
+    const rows = await runQuery<DbCompanyFollow[]>(
+      supabase.from('company_follows').select('*').eq('company_uid', companyUid).order('created_at', { ascending: false }),
+      'listCompanyFollowsByCompanyUid'
+    );
+    return rows.map(mapCompanyFollowFromDb);
+  },
+
+  async listCompanyFollowsByFollowerUid(followerUid: string): Promise<CompanyFollow[]> {
+    const rows = await runQuery<DbCompanyFollow[]>(
+      supabase.from('company_follows').select('*').eq('follower_uid', followerUid).order('created_at', { ascending: false }),
+      'listCompanyFollowsByFollowerUid'
+    );
+    return rows.map(mapCompanyFollowFromDb);
+  },
+
+  subscribeToCompanyFollowsByCompanyUid(companyUid: string, callback: (follows: CompanyFollow[]) => void, onError?: (error: any) => void) {
+    const fetcher = async () => this.listCompanyFollowsByCompanyUid(companyUid);
+    return subscribeToTable('company_follows', fetcher, callback, `company_uid=eq.${companyUid}`, onError, `company:follows:${companyUid}`);
+  },
+
+  subscribeToCompanyFollowsByFollowerUid(followerUid: string, callback: (follows: CompanyFollow[]) => void, onError?: (error: any) => void) {
+    const fetcher = async () => this.listCompanyFollowsByFollowerUid(followerUid);
+    return subscribeToTable('company_follows', fetcher, callback, `follower_uid=eq.${followerUid}`, onError, `company:follows:follower:${followerUid}`);
+  },
+
+  async setCompanyFollow(companyUid: string, followerUid: string, shouldFollow: boolean): Promise<void> {
+    if (shouldFollow) {
+      await runQuery(
+        supabase.from('company_follows').upsert(
+          {
+            company_uid: companyUid,
+            follower_uid: followerUid,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: 'company_uid,follower_uid' }
+        ),
+        'setCompanyFollow:follow'
+      );
+      return;
+    }
+
+    await runQuery(
+      supabase.from('company_follows').delete().eq('company_uid', companyUid).eq('follower_uid', followerUid),
+      'setCompanyFollow:unfollow'
+    );
   },
 
   async listMarketSellerRatings(): Promise<MarketSellerRating[]> {

@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { UserProfile, Post, CompanyPartnerRequest } from '../types';
+import { UserProfile, Post, CompanyPartnerRequest, CompanyFollow } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { ArrowLeft, Building2, Camera, ExternalLink, Globe, MapPin, MessageSquare, Save, Share2, Plus, Trash2, Copy } from 'lucide-react';
+import { ArrowLeft, Building2, Camera, ExternalLink, Globe, MapPin, MessageSquare, Save, Share2, Plus, Trash2, Copy, Heart, Users } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import CachedImage from './CachedImage';
 
@@ -23,6 +23,10 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
   const [saving, setSaving] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
+  const [companyFollowers, setCompanyFollowers] = useState<CompanyFollow[]>([]);
+  const [myCompanyFollows, setMyCompanyFollows] = useState<CompanyFollow[]>([]);
+  const [followedCompanies, setFollowedCompanies] = useState<Record<string, CompanyPartnerRequest>>({});
+  const [followingCompany, setFollowingCompany] = useState(false);
 
   const isOwnProfile = uid === loggedInProfile.uid;
 
@@ -53,12 +57,33 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
       finishInitialLoad();
     });
 
+    const unsubscribeFollowerState = supabaseService.subscribeToCompanyFollowsByFollowerUid(loggedInProfile.uid, setMyCompanyFollows);
+
     return () => {
       unsubscribeProfile();
       unsubscribePosts();
       unsubscribePartners();
+      unsubscribeFollowerState();
     };
-  }, [editing, uid]);
+  }, [editing, loggedInProfile.uid, uid]);
+
+  useEffect(() => {
+    if (!companyPartner) {
+      setCompanyFollowers([]);
+      return;
+    }
+    const unsubscribe = supabaseService.subscribeToCompanyFollowsByCompanyUid(companyPartner.userUid, setCompanyFollowers);
+    return () => unsubscribe();
+  }, [companyPartner]);
+
+  useEffect(() => {
+    const companyUids = Array.from(new Set(myCompanyFollows.map((item) => item.companyUid)));
+    if (companyUids.length === 0) {
+      setFollowedCompanies({});
+      return;
+    }
+    supabaseService.getApprovedCompanyPartnerRequestsByUserUids(companyUids).then(setFollowedCompanies).catch(() => undefined);
+  }, [myCompanyFollows]);
 
   const completion = useMemo(() => {
     if (!userProfile) return 0;
@@ -158,8 +183,10 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
   if (!userProfile) return <div className="max-w-5xl mx-auto p-6 text-sm text-gray-500">Profile not found.</div>;
 
   if (companyPartner) {
+    const isFollowingCompany = myCompanyFollows.some((item) => item.companyUid === companyPartner.userUid);
+
     return (
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+      <div className="space-y-6 px-4 py-8">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100">
             <ArrowLeft size={20} className="text-gray-600" />
@@ -191,6 +218,24 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
+                {!isOwnProfile && (
+                  <button
+                    type="button"
+                    disabled={followingCompany}
+                    onClick={async () => {
+                      setFollowingCompany(true);
+                      try {
+                        await supabaseService.setCompanyFollow(companyPartner.userUid, loggedInProfile.uid, !isFollowingCompany);
+                      } finally {
+                        setFollowingCompany(false);
+                      }
+                    }}
+                    className={`rounded-2xl px-4 py-3 text-sm font-bold inline-flex items-center gap-2 ${isFollowingCompany ? 'bg-white text-teal-700' : 'border border-white/30 text-white hover:bg-white/10'}`}
+                  >
+                    <Heart size={14} className={isFollowingCompany ? 'fill-current' : ''} />
+                    {isFollowingCompany ? 'Following' : 'Follow'}
+                  </button>
+                )}
                 <button
                   onClick={() => navigate(`/messages?uid=${userProfile.uid}`)}
                   className="rounded-2xl bg-white px-4 py-3 text-sm font-bold text-teal-700 hover:bg-teal-50"
@@ -210,9 +255,19 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 )}
               </div>
             </div>
+            <div className="mt-6 flex flex-wrap gap-4 text-sm text-white/90">
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 font-semibold">
+                <Users size={14} />
+                {companyFollowers.length} follower{companyFollowers.length === 1 ? '' : 's'}
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 font-semibold">
+                <Building2 size={14} />
+                Approved company profile
+              </span>
+            </div>
           </div>
 
-          <div className="grid gap-6 p-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[1.18fr_0.82fr]">
             <div className="space-y-6">
               <section className="rounded-3xl bg-gray-50 p-5">
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-gray-400">About this company</p>
@@ -524,6 +579,41 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                   </div>
                 )}
               </section>
+
+              {myCompanyFollows.length > 0 && (
+                <section className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold text-gray-900">Following</p>
+                    <span className="text-xs font-semibold text-gray-400">{myCompanyFollows.length} compan{myCompanyFollows.length === 1 ? 'y' : 'ies'}</span>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {myCompanyFollows.map((follow) => {
+                      const company = followedCompanies[follow.companyUid];
+                      if (!company) return null;
+                      return (
+                        <button
+                          key={follow.id}
+                          type="button"
+                          onClick={() => navigate(`/profile/${company.userUid}`)}
+                          className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 text-left hover:border-teal-200 hover:bg-teal-50"
+                        >
+                          <CachedImage
+                            src={company.companyLogoUrl}
+                            alt={company.companyName}
+                            fallbackMode="logo"
+                            wrapperClassName="h-14 w-14 rounded-2xl"
+                            imgClassName="h-full w-full rounded-2xl object-cover"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-gray-900">{company.companyName}</p>
+                            <p className="truncate text-xs text-gray-500">{company.location}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
             </div>
           )}
 

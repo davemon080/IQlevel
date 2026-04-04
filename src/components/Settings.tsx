@@ -7,6 +7,7 @@ import { User, Lock, Bell, LogOut, ChevronRight, Camera, Check, AlertCircle, Glo
 import CachedImage from './CachedImage';
 import { getErrorMessage } from '../utils/errors';
 import { startPaystackTransaction } from '../utils/paystack';
+import { useConfirmDialog } from './ConfirmDialog';
 
 interface SettingsProps { profile: UserProfile; onLogout: () => void; onProfileUpdate: (profile: UserProfile) => void; }
 type Section = 'main' | 'profile' | 'security' | 'notifications' | 'market' | 'language' | 'appearance' | 'devices';
@@ -16,6 +17,7 @@ const BTN = 'w-full rounded-2xl bg-teal-700 py-4 font-bold text-white hover:bg-t
 export default function Settings({ profile, onLogout, onProfileUpdate }: SettingsProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const section = useMemo<Section>(() => {
     const part = location.pathname.split('/').filter(Boolean)[1];
     return (['profile','security','notifications','market','language','appearance','devices'] as const).includes(part as any) ? (part as Section) : 'main';
@@ -106,17 +108,18 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
           <MenuRow icon={Globe} label="Language" sublabel={preferences.language} onClick={() => go('language')} />
           <MenuRow icon={Palette} label="Appearance" sublabel={preferences.appearance} onClick={() => go('appearance')} />
           <MenuRow icon={Smartphone} label="Connected Devices" sublabel={`${preferences.connectedDevices.length} device(s)`} onClick={() => go('devices')} />
-          <div className="bg-gray-50/70 p-4"><button onClick={onLogout} className="flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-bold text-red-600 hover:bg-red-50"><LogOut size={20} />Log Out</button></div>
+          <div className="bg-gray-50/70 p-4"><button onClick={async () => { const ok = await confirm({ title: 'Log out now?', description: 'You will need to sign back in to continue using your account.', confirmLabel: 'Log Out', tone: 'danger' }); if (ok) onLogout(); }} className="flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-bold text-red-600 hover:bg-red-50"><LogOut size={20} />Log Out</button></div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl pb-24 md:pb-8">
-      <div className="mb-6 flex items-start gap-4"><button onClick={() => go('main')} className="rounded-xl p-2 hover:bg-gray-100"><ChevronRight size={24} className="rotate-180" /></button><div><h2 className="text-xl font-bold text-gray-900 capitalize">{section}</h2><p className="text-sm text-gray-500">Manage this settings page.</p></div></div>
-      {message && <div className={`mb-6 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm ${message.type === 'success' ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-red-200 bg-red-50 text-red-700'}`}>{message.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}{message.text}</div>}
-      <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+    <>
+      <div className="mx-auto max-w-3xl pb-24 md:pb-8">
+        <div className="mb-6 flex items-start gap-4"><button onClick={() => go('main')} className="rounded-xl p-2 hover:bg-gray-100"><ChevronRight size={24} className="rotate-180" /></button><div><h2 className="text-xl font-bold text-gray-900 capitalize">{section}</h2><p className="text-sm text-gray-500">Manage this settings page.</p></div></div>
+        {message && <div className={`mb-6 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm ${message.type === 'success' ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-red-200 bg-red-50 text-red-700'}`}>{message.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}{message.text}</div>}
+        <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
         {section === 'profile' && <div className="space-y-6"><div className="flex flex-col items-center gap-4 rounded-3xl border border-gray-200 bg-gray-50 p-6"><div className="relative"><CachedImage src={photoURL} alt="Profile" fallbackMode="avatar" wrapperClassName="h-28 w-28 rounded-3xl shadow-lg" imgClassName="h-full w-full rounded-3xl object-cover" /><label className="absolute bottom-2 right-2 cursor-pointer rounded-xl bg-teal-600 p-2 text-white"><Camera size={16} /><input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadPhoto(e.target.files[0])} /></label></div><p className="text-xs text-gray-500">{uploadingPhoto ? 'Uploading...' : 'Upload a new profile photo.'}</p></div><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className={INPUT} placeholder="Display name" /><textarea value={bio} onChange={(e) => setBio(e.target.value)} className={`${INPUT} min-h-[120px]`} placeholder="Bio" /><button onClick={saveProfile} className={BTN}>Save Profile</button></div>}
         {section === 'security' && <div className="space-y-4"><input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className={INPUT} placeholder="Current password" /><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={INPUT} placeholder="New password" /><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={INPUT} placeholder="Confirm password" /><button onClick={changePassword} className={BTN}>Change Password</button></div>}
         {section === 'notifications' && <div className="space-y-4">{([{ key: 'wallet', label: 'Wallet activity' }, { key: 'gigs', label: 'Gig activity' }, { key: 'feed', label: 'Feed activity' }, { key: 'friendRequests', label: 'Friend requests' }] as const).map((item) => <label key={item.key} className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">{item.label}</span><input type="checkbox" checked={notificationSettings[item.key]} onChange={(e) => setNotificationSettings((prev) => ({ ...prev, [item.key]: e.target.checked }))} className="h-5 w-5" /></label>)}<button onClick={saveNotifications} className={BTN}>Save Preferences</button></div>}
@@ -124,8 +127,10 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
         {section === 'appearance' && <div className="space-y-4">{['system','light','dark'].map((item) => <label key={item} className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900 capitalize">{item}</span><input type="radio" checked={preferences.appearance === item} onChange={() => setPreferences((prev) => ({ ...prev, appearance: item as any }))} /></label>)}<button onClick={() => savePreference('appearance')} className={BTN}>Save Appearance</button></div>}
         {section === 'devices' && <div className="space-y-4">{preferences.connectedDevices.map((device) => <div key={device.id} className="rounded-2xl border border-gray-200 bg-gray-50 p-4"><div className="flex items-start justify-between gap-4"><div><div className="flex items-center gap-2"><p className="text-sm font-bold text-gray-900">{device.label}</p>{device.current && <span className="rounded-full bg-teal-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-teal-700">Current</span>}</div><p className="text-xs text-gray-500">{device.platform}</p><p className="mt-2 text-xs text-gray-400">Last active {new Date(device.lastActiveAt).toLocaleString()}</p></div><button disabled={device.current} onClick={async () => { try { const devices = await supabaseService.removeConnectedDeviceSession(profile.uid, device.id); setPreferences((prev) => ({ ...prev, connectedDevices: devices })); flash('success', `${device.label} removed.`); } catch (e) { flash('error', getErrorMessage(e, 'Unable to remove device.')); } }} className="inline-flex items-center gap-2 rounded-2xl border border-red-200 bg-white px-4 py-3 text-sm font-bold text-red-600 disabled:border-gray-200 disabled:text-gray-400"><Trash2 size={16} />Remove</button></div></div>)}</div>}
         {section === 'market' && <div className="space-y-4">{!marketRegistered && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Marketplace access is locked. Pay the one-time N500 fee to unlock the market page and market management features.</div>}{!marketRegistered && <button onClick={payForMarketAccess} className={BTN}>Pay N500 To Unlock Market</button>}<input value={marketBrandName} onChange={(e) => setMarketBrandName(e.target.value)} className={INPUT} placeholder="Brand name" disabled={!marketRegistered} /><input value={marketPhone} onChange={(e) => setMarketPhone(e.target.value)} className={INPUT} placeholder="Phone number" disabled={!marketRegistered} /><input value={marketLocation} onChange={(e) => setMarketLocation(e.target.value)} className={INPUT} placeholder="Location" disabled={!marketRegistered} /><label className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">Show brand name</span><input type="checkbox" checked={showBrandName} onChange={(e) => setShowBrandName(e.target.checked)} disabled={!marketRegistered} /></label><label className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">Show phone number</span><input type="checkbox" checked={showPhoneNumber} onChange={(e) => setShowPhoneNumber(e.target.checked)} disabled={!marketRegistered} /></label><label className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">Show location</span><input type="checkbox" checked={showLocation} onChange={(e) => setShowLocation(e.target.checked)} disabled={!marketRegistered} /></label>{marketRegistered && <button onClick={saveMarket} className={BTN}>Save Market Settings</button>}</div>}
+        </div>
       </div>
-    </div>
+      {confirmDialog}
+    </>
   );
 }
 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserProfile, FriendRequest, Connection, Post, CompanyPartnerRequest } from '../types';
+import { UserProfile, FriendRequest, Connection, Post, CompanyPartnerRequest, CompanyFollow } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Star, MessageSquare, UserPlus, Users, Check, Sparkles, TrendingUp, Building2 } from 'lucide-react';
+import { Search, Star, MessageSquare, UserPlus, Users, Check, Sparkles, TrendingUp, Building2, Heart } from 'lucide-react';
 import { motion } from 'motion/react';
 import CachedImage from './CachedImage';
 
@@ -19,6 +19,8 @@ export default function Network({ profile }: NetworkProps) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [highlights, setHighlights] = useState<Post[]>([]);
   const [partners, setPartners] = useState<CompanyPartnerRequest[]>([]);
+  const [companyFollowMap, setCompanyFollowMap] = useState<Record<string, CompanyFollow[]>>({});
+  const [myCompanyFollows, setMyCompanyFollows] = useState<CompanyFollow[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'suggested' | 'discover'>('suggested');
@@ -76,6 +78,7 @@ export default function Network({ profile }: NetworkProps) {
     const unsubscribePartners = supabaseService.subscribeToApprovedCompanyPartnerRequests(15, (approvedPartners) => {
       setPartners(approvedPartners);
     });
+    const unsubscribeMyCompanyFollows = supabaseService.subscribeToCompanyFollowsByFollowerUid(profile.uid, setMyCompanyFollows);
 
     const unsubscribeRequests = supabaseService.subscribeToIncomingFriendRequests(
       profile.uid,
@@ -96,11 +99,29 @@ export default function Network({ profile }: NetworkProps) {
       unsubscribeUsers();
       unsubscribePosts();
       unsubscribePartners();
+      unsubscribeMyCompanyFollows();
       unsubscribeRequests();
       unsubscribeOutgoing();
       unsubscribeConnections();
     };
   }, [profile.uid]);
+
+  useEffect(() => {
+    if (partners.length === 0) {
+      setCompanyFollowMap({});
+      return;
+    }
+
+    const unsubs = partners.map((partner) =>
+      supabaseService.subscribeToCompanyFollowsByCompanyUid(partner.userUid, (follows) => {
+        setCompanyFollowMap((prev) => ({ ...prev, [partner.userUid]: follows }));
+      })
+    );
+
+    return () => {
+      unsubs.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [partners]);
 
   useEffect(() => {
     const uids = Array.from(new Set(highlights.map((post) => post.authorUid).filter(Boolean)));
@@ -364,12 +385,18 @@ export default function Network({ profile }: NetworkProps) {
                       <span className="absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-white shadow-sm">
                         <Building2 size={12} className="text-teal-700" />
                       </span>
+                      <span className="absolute -top-1 -left-1 inline-flex h-6 min-w-[24px] items-center justify-center rounded-full border-2 border-white bg-white px-1 shadow-sm">
+                        <Heart size={12} className={`text-rose-500 ${myCompanyFollows.some((item) => item.companyUid === partner.userUid) ? 'fill-current' : ''}`} />
+                      </span>
                     </div>
                     <span className="text-[10px] sm:text-xs font-semibold text-gray-700 text-center truncate w-20 sm:w-24">
                       {partner.companyName}
                     </span>
                     <span className="text-[9px] sm:text-[10px] text-teal-600 font-medium text-center truncate w-20 sm:w-24">
                       {partner.location}
+                    </span>
+                    <span className="text-[9px] sm:text-[10px] text-gray-400 font-medium text-center truncate w-20 sm:w-24">
+                      {companyFollowMap[partner.userUid]?.length || 0} followers
                     </span>
                   </Link>
                 ))
