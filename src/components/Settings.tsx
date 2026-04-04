@@ -9,7 +9,7 @@ import { getErrorMessage } from '../utils/errors';
 import { startPaystackTransaction } from '../utils/paystack';
 import { useConfirmDialog } from './ConfirmDialog';
 
-interface SettingsProps { profile: UserProfile; onLogout: () => void; onProfileUpdate: (profile: UserProfile) => void; }
+interface SettingsProps { profile: UserProfile; onLogout: () => Promise<void>; onProfileUpdate: (profile: UserProfile) => void; }
 type Section = 'main' | 'profile' | 'security' | 'notifications' | 'market' | 'language' | 'appearance' | 'devices';
 const INPUT = 'w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-teal-300 focus:bg-white focus:ring-2 focus:ring-teal-500/20';
 const BTN = 'w-full rounded-2xl bg-teal-700 py-4 font-bold text-white hover:bg-teal-800 disabled:opacity-60';
@@ -41,6 +41,7 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   const [showPhoneNumber, setShowPhoneNumber] = useState(false);
   const [showLocation, setShowLocation] = useState(false);
   const [showBrandName, setShowBrandName] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => { setNotificationSettings(supabaseService.getNotificationSettings(profile.uid)); setPreferences(supabaseService.getAppPreferences(profile.uid)); }, [profile.uid]);
   useEffect(() => { supabaseService.getMarketSettings(profile.uid).then((s) => { setMarketPhone(s.phoneNumber || profile.phoneNumber || ''); setMarketLocation(s.location || profile.location || ''); setMarketBrandName(s.brandName || profile.companyInfo?.name || ''); setMarketRegistered(s.isRegistered); setShowPhoneNumber(s.showPhoneNumber); setShowLocation(s.showLocation); setShowBrandName(s.showBrandName); }); }, [profile.companyInfo?.name, profile.location, profile.phoneNumber, profile.uid]);
@@ -87,30 +88,33 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
 
   if (section === 'main') {
     return (
-      <div className="mx-auto max-w-3xl pb-24 md:pb-8">
-        <div className="mb-8"><h1 className="text-3xl font-bold text-gray-900">Settings</h1><p className="text-gray-500">Manage your account and preferences.</p></div>
-        <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-100 bg-gray-50/70 p-6">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <CachedImage src={profile.photoURL} alt={profile.displayName} fallbackMode="avatar" wrapperClassName="h-16 w-16 rounded-2xl shadow-md" imgClassName="h-full w-full rounded-2xl object-cover" />
-                <div><h2 className="text-lg font-bold text-gray-900">{profile.displayName}</h2><p className="text-sm text-gray-500">{profile.email}</p><button onClick={copyId} className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700"><Copy size={12} />{copiedId ? 'Copied' : `ID: ${profile.publicId || profile.uid}`}</button></div>
+      <>
+        <div className="mx-auto max-w-3xl pb-24 md:pb-8">
+          <div className="mb-8"><h1 className="text-3xl font-bold text-gray-900">Settings</h1><p className="text-gray-500">Manage your account and preferences.</p></div>
+          <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+            <div className="border-b border-gray-100 bg-gray-50/70 p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <CachedImage src={profile.photoURL} alt={profile.displayName} fallbackMode="avatar" wrapperClassName="h-16 w-16 rounded-2xl shadow-md" imgClassName="h-full w-full rounded-2xl object-cover" />
+                  <div><h2 className="text-lg font-bold text-gray-900">{profile.displayName}</h2><p className="text-sm text-gray-500">{profile.email}</p><button onClick={copyId} className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700"><Copy size={12} />{copiedId ? 'Copied' : `ID: ${profile.publicId || profile.uid}`}</button></div>
+                </div>
+                <Link to={`/profile/${profile.uid}`} className="rounded-xl border border-gray-200 bg-white p-3 text-teal-700"><User size={20} /></Link>
               </div>
-              <Link to={`/profile/${profile.uid}`} className="rounded-xl border border-gray-200 bg-white p-3 text-teal-700"><User size={20} /></Link>
             </div>
+            <MenuRow icon={User} label="Personal Information" sublabel="Name, bio, and profile photo" onClick={() => go('profile')} />
+            <MenuRow icon={Lock} label="Security" sublabel="Password management" onClick={() => go('security')} />
+            <MenuRow icon={Bell} label="Notifications" sublabel="Control what notifications you receive" onClick={() => go('notifications')} />
+            <LinkRow to="/wallets" icon={Wallet} label="Wallets" sublabel="Balances and transactions" />
+            <LinkRow to="/active-gigs" icon={BriefcaseBusiness} label="My Active Gigs" sublabel="Current assigned gigs" />
+            <MenuRow icon={Store} label="Market" sublabel="Seller details and visibility" onClick={() => go('market')} />
+            <MenuRow icon={Globe} label="Language" sublabel={preferences.language} onClick={() => go('language')} />
+            <MenuRow icon={Palette} label="Appearance" sublabel={preferences.appearance} onClick={() => go('appearance')} />
+            <MenuRow icon={Smartphone} label="Connected Devices" sublabel={`${preferences.connectedDevices.length} device(s)`} onClick={() => go('devices')} />
+            <div className="bg-gray-50/70 p-4"><button onClick={async () => { const ok = await confirm({ title: 'Log out now?', description: 'You will need to sign back in to continue using your account.', confirmLabel: 'Log Out', tone: 'danger' }); if (!ok) return; try { setLoggingOut(true); await onLogout(); } catch (error) { flash('error', getErrorMessage(error, 'Unable to log out right now.')); } finally { setLoggingOut(false); } }} disabled={loggingOut} className="flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-bold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"><LogOut size={20} />{loggingOut ? 'Logging out...' : 'Log Out'}</button></div>
           </div>
-          <MenuRow icon={User} label="Personal Information" sublabel="Name, bio, and profile photo" onClick={() => go('profile')} />
-          <MenuRow icon={Lock} label="Security" sublabel="Password management" onClick={() => go('security')} />
-          <MenuRow icon={Bell} label="Notifications" sublabel="Control what notifications you receive" onClick={() => go('notifications')} />
-          <LinkRow to="/wallets" icon={Wallet} label="Wallets" sublabel="Balances and transactions" />
-          <LinkRow to="/active-gigs" icon={BriefcaseBusiness} label="My Active Gigs" sublabel="Current assigned gigs" />
-          <MenuRow icon={Store} label="Market" sublabel="Seller details and visibility" onClick={() => go('market')} />
-          <MenuRow icon={Globe} label="Language" sublabel={preferences.language} onClick={() => go('language')} />
-          <MenuRow icon={Palette} label="Appearance" sublabel={preferences.appearance} onClick={() => go('appearance')} />
-          <MenuRow icon={Smartphone} label="Connected Devices" sublabel={`${preferences.connectedDevices.length} device(s)`} onClick={() => go('devices')} />
-          <div className="bg-gray-50/70 p-4"><button onClick={async () => { const ok = await confirm({ title: 'Log out now?', description: 'You will need to sign back in to continue using your account.', confirmLabel: 'Log Out', tone: 'danger' }); if (ok) onLogout(); }} className="flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-bold text-red-600 hover:bg-red-50"><LogOut size={20} />Log Out</button></div>
         </div>
-      </div>
+        {confirmDialog}
+      </>
     );
   }
 

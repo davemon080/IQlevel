@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, FriendRequest, Connection, Post, CompanyPartnerRequest, CompanyFollow } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Star, MessageSquare, UserPlus, Users, Check, Sparkles, TrendingUp, Building2, Heart } from 'lucide-react';
+import { Search, Star, MessageSquare, UserPlus, Users, Check, Sparkles, TrendingUp, Building2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import CachedImage from './CachedImage';
 
@@ -25,6 +25,7 @@ export default function Network({ profile }: NetworkProps) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'suggested' | 'discover'>('suggested');
   const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>({});
+  const [followBusyUid, setFollowBusyUid] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [hasMoreUsers, setHasMoreUsers] = useState(true);
   const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
@@ -366,12 +367,11 @@ export default function Network({ profile }: NetworkProps) {
             <div className="flex items-start gap-5 sm:gap-6 overflow-x-auto px-1 pb-2">
               {partners.length > 0 ? (
                 partners.map((partner) => (
-                  <Link
+                  <div
                     key={partner.id}
-                    to={`/profile/${partner.userUid}`}
-                    className="shrink-0 flex flex-col items-center gap-2 min-w-[92px] sm:min-w-[110px]"
+                    className="shrink-0 flex min-w-[144px] flex-col items-center gap-2 rounded-[1.75rem] border border-gray-100 bg-white px-3 py-4 text-center shadow-sm sm:min-w-[170px]"
                   >
-                    <div className="relative">
+                    <Link to={`/profile/${partner.userUid}`} className="relative">
                       <CachedImage
                         src={partner.companyLogoUrl}
                         alt={partner.companyName}
@@ -385,20 +385,47 @@ export default function Network({ profile }: NetworkProps) {
                       <span className="absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-white shadow-sm">
                         <Building2 size={12} className="text-teal-700" />
                       </span>
-                      <span className="absolute -top-1 -left-1 inline-flex h-6 min-w-[24px] items-center justify-center rounded-full border-2 border-white bg-white px-1 shadow-sm">
-                        <Heart size={12} className={`text-rose-500 ${myCompanyFollows.some((item) => item.companyUid === partner.userUid) ? 'fill-current' : ''}`} />
+                    </Link>
+                    <Link to={`/profile/${partner.userUid}`} className="block w-full">
+                      <span className="block truncate text-[10px] font-semibold text-gray-700 sm:text-xs">
+                        {partner.companyName}
                       </span>
-                    </div>
-                    <span className="text-[10px] sm:text-xs font-semibold text-gray-700 text-center truncate w-20 sm:w-24">
-                      {partner.companyName}
-                    </span>
-                    <span className="text-[9px] sm:text-[10px] text-teal-600 font-medium text-center truncate w-20 sm:w-24">
+                    </Link>
+                    <span className="w-full truncate text-[9px] font-medium text-teal-600 sm:text-[10px]">
                       {partner.location}
                     </span>
-                    <span className="text-[9px] sm:text-[10px] text-gray-400 font-medium text-center truncate w-20 sm:w-24">
+                    <span className="w-full truncate text-[9px] font-medium text-gray-400 sm:text-[10px]">
                       {companyFollowMap[partner.userUid]?.length || 0} followers
                     </span>
-                  </Link>
+                    <button
+                      type="button"
+                      disabled={followBusyUid === partner.userUid || partner.userUid === profile.uid}
+                      onClick={async () => {
+                        const isFollowing = myCompanyFollows.some((item) => item.companyUid === partner.userUid);
+                        setFollowBusyUid(partner.userUid);
+                        try {
+                          await supabaseService.setCompanyFollow(partner.userUid, profile.uid, !isFollowing);
+                        } catch (error) {
+                          console.error('Error updating company follow:', error);
+                        } finally {
+                          setFollowBusyUid(null);
+                        }
+                      }}
+                      className={`mt-1 inline-flex min-h-10 w-full items-center justify-center rounded-2xl px-3 py-2 text-[10px] font-bold transition-colors sm:text-xs ${
+                        myCompanyFollows.some((item) => item.companyUid === partner.userUid)
+                          ? 'border border-teal-200 bg-teal-50 text-teal-700'
+                          : 'bg-teal-700 text-white hover:bg-teal-800'
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
+                    >
+                      {partner.userUid === profile.uid
+                        ? 'Your company'
+                        : followBusyUid === partner.userUid
+                        ? 'Updating...'
+                        : myCompanyFollows.some((item) => item.companyUid === partner.userUid)
+                        ? 'Following'
+                        : 'Follow company'}
+                    </button>
+                  </div>
                 ))
               ) : (
                 <p className="text-xs text-gray-400 italic">No approved partners yet.</p>

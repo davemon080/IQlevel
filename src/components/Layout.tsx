@@ -18,7 +18,7 @@ interface LayoutProps {
   children: React.ReactNode;
   user: User;
   profile: UserProfile;
-  onLogout: () => void;
+  onLogout: () => Promise<void>;
 }
 
 export default function Layout({ children, user, profile, onLogout }: LayoutProps) {
@@ -28,6 +28,7 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
   const [isSearchOpen, setIsSearchOpen] = React.useState(false);
   const [unreadNotifications, setUnreadNotifications] = React.useState(0);
   const [unreadMessages, setUnreadMessages] = React.useState(0);
+  const [loggingOut, setLoggingOut] = React.useState(false);
   const { confirm, confirmDialog } = useConfirmDialog();
 
   const navItems = [
@@ -131,16 +132,24 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
                 tone: 'danger',
               });
               if (!confirmed) return;
-              onLogout();
+              try {
+                setLoggingOut(true);
+                await onLogout();
+              } catch (error) {
+                console.error('Unable to log out:', error);
+              } finally {
+                setLoggingOut(false);
+              }
             }}
+            disabled={loggingOut}
             className={cn(
-              "w-full flex items-center gap-3 px-4 py-3 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-xl transition-colors font-medium",
+              "w-full flex items-center gap-3 px-4 py-3 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-xl transition-colors font-medium disabled:cursor-not-allowed disabled:opacity-60",
               isMessagesPage && "px-0 justify-center"
             )}
             title="Logout"
           >
             <LogOut size={20} />
-            {!isMessagesPage && 'Logout'}
+            {!isMessagesPage && (loggingOut ? 'Logging out...' : 'Logout')}
           </button>
         </div>
       </aside>

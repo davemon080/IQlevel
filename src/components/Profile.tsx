@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { UserProfile, Post, CompanyPartnerRequest, CompanyFollow } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { ArrowLeft, Building2, Camera, ExternalLink, Globe, MapPin, MessageSquare, Save, Share2, Plus, Trash2, Copy, Heart, Users } from 'lucide-react';
+import { ArrowLeft, Building2, Camera, ExternalLink, Globe, MapPin, MessageSquare, Save, Share2, Plus, Trash2, Copy, Users } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import CachedImage from './CachedImage';
 
@@ -186,18 +186,18 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
     const isFollowingCompany = myCompanyFollows.some((item) => item.companyUid === companyPartner.userUid);
 
     return (
-      <div className="space-y-6 px-4 py-8">
-        <div className="flex items-center gap-3">
+      <div className="-mx-4 -mt-4 space-y-0 pb-8 md:mx-0 md:mt-0 md:space-y-6">
+        <div className="flex items-center gap-3 px-4 pt-6 md:px-0 md:pt-0">
           <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100">
             <ArrowLeft size={20} className="text-gray-600" />
           </button>
           <h1 className="text-2xl font-bold text-gray-900">Company Profile</h1>
         </div>
 
-        <div className="overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm">
-          <div className="bg-gradient-to-r from-teal-700 via-emerald-600 to-lime-500 px-6 py-10 text-white">
-            <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-              <div className="flex items-center gap-4">
+        <div className="overflow-hidden bg-white shadow-sm md:rounded-[2rem] md:border md:border-gray-200">
+          <div className="bg-gradient-to-r from-teal-700 via-emerald-600 to-lime-500 px-4 py-8 text-white sm:px-6 md:px-8 md:py-10">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                 <CachedImage
                   src={companyPartner.companyLogoUrl}
                   alt={companyPartner.companyName}
@@ -205,37 +205,38 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"
-                  wrapperClassName="h-24 w-24 rounded-3xl border border-white/30 bg-white/15 p-2"
+                  wrapperClassName="h-24 w-24 rounded-3xl border border-white/30 bg-white/15 p-2 shadow-lg shadow-black/10"
                   imgClassName="h-full w-full rounded-[1.25rem] object-cover"
                 />
-                <div>
+                <div className="min-w-0">
                   <p className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em]">
                     <Building2 size={12} />
                     Approved Partner
                   </p>
-                  <h2 className="mt-3 text-3xl font-black">{companyPartner.companyName}</h2>
+                  <h2 className="mt-3 text-3xl font-black leading-tight sm:text-4xl">{companyPartner.companyName}</h2>
                   <p className="mt-1 text-sm text-white/85">{companyPartner.location}</p>
+                  {!isOwnProfile && (
+                    <button
+                      type="button"
+                      disabled={followingCompany}
+                      onClick={async () => {
+                        setFollowingCompany(true);
+                        try {
+                          await supabaseService.setCompanyFollow(companyPartner.userUid, loggedInProfile.uid, !isFollowingCompany);
+                        } finally {
+                          setFollowingCompany(false);
+                        }
+                      }}
+                      className={`mt-4 inline-flex min-h-11 items-center justify-center rounded-2xl px-5 py-3 text-sm font-bold transition-colors ${
+                        isFollowingCompany ? 'bg-white text-teal-700' : 'border border-white/30 text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {followingCompany ? 'Updating...' : isFollowingCompany ? 'Following company' : 'Follow company'}
+                    </button>
+                  )}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {!isOwnProfile && (
-                  <button
-                    type="button"
-                    disabled={followingCompany}
-                    onClick={async () => {
-                      setFollowingCompany(true);
-                      try {
-                        await supabaseService.setCompanyFollow(companyPartner.userUid, loggedInProfile.uid, !isFollowingCompany);
-                      } finally {
-                        setFollowingCompany(false);
-                      }
-                    }}
-                    className={`rounded-2xl px-4 py-3 text-sm font-bold inline-flex items-center gap-2 ${isFollowingCompany ? 'bg-white text-teal-700' : 'border border-white/30 text-white hover:bg-white/10'}`}
-                  >
-                    <Heart size={14} className={isFollowingCompany ? 'fill-current' : ''} />
-                    {isFollowingCompany ? 'Following' : 'Follow'}
-                  </button>
-                )}
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <button
                   onClick={() => navigate(`/messages?uid=${userProfile.uid}`)}
                   className="rounded-2xl bg-white px-4 py-3 text-sm font-bold text-teal-700 hover:bg-teal-50"
@@ -267,7 +268,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             </div>
           </div>
 
-          <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[1.18fr_0.82fr]">
+          <div className="grid gap-6 px-4 py-5 sm:px-6 sm:py-6 lg:grid-cols-[1.18fr_0.82fr] lg:px-8">
             <div className="space-y-6">
               <section className="rounded-3xl bg-gray-50 p-5">
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-gray-400">About this company</p>

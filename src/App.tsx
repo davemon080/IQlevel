@@ -205,8 +205,19 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    supabaseService.stopPresenceTracking();
-    await supabase.auth.signOut();
+    try {
+      supabaseService.stopPresenceTracking();
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) {
+        throw signOutError;
+      }
+      setProfile(null);
+      setUser(null);
+      setShowOnboarding(false);
+    } catch (nextError) {
+      console.error('Logout error:', nextError);
+      throw nextError;
+    }
   };
 
   if (loading) {
