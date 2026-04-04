@@ -1,1 +1,138 @@
 @import "tailwindcss";
+
+html, body, #root {
+  min-height: 100%;
+}
+
+body {
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+html[data-connect-appearance='dark'] body {
+  background: #0b1220;
+  color: #e5edf7;
+}
+
+html[data-connect-appearance='dark'] .bg-white,
+html[data-connect-appearance='dark'] .bg-gray-50,
+html[data-connect-appearance='dark'] .bg-gray-100 {
+  background-color: #111827 !important;
+}
+
+html[data-connect-appearance='dark'] .border-gray-100,
+html[data-connect-appearance='dark'] .border-gray-200,
+html[data-connect-appearance='dark'] .border-gray-300 {
+  border-color: #334155 !important;
+}
+
+html[data-connect-appearance='dark'] .text-gray-900 {
+  color: #f8fafc !important;
+}
+
+html[data-connect-appearance='dark'] .text-gray-800,
+html[data-connect-appearance='dark'] .text-gray-700 {
+  color: #e2e8f0 !important;
+}
+
+html[data-connect-appearance='dark'] .text-gray-600,
+html[data-connect-appearance='dark'] .text-gray-500,
+html[data-connect-appearance='dark'] .text-gray-400 {
+  color: #94a3b8 !important;
+}
+
+html[data-connect-appearance='dark'] .shadow-sm,
+html[data-connect-appearance='dark'] .shadow-md,
+html[data-connect-appearance='dark'] .shadow-lg,
+html[data-connect-appearance='dark'] .shadow-xl,
+html[data-connect-appearance='dark'] .shadow-2xl {
+  box-shadow: 0 14px 40px rgba(2, 6, 23, 0.45) !important;
+}
+
+html[data-connect-appearance='dark'] .hover\:bg-gray-50:hover,
+html[data-connect-appearance='dark'] .hover\:bg-gray-100:hover,
+html[data-connect-appearance='dark'] .hover\:bg-white:hover {
+  background-color: #1e293b !important;
+}
+
+html[data-connect-appearance='dark'] input,
+html[data-connect-appearance='dark'] textarea,
+html[data-connect-appearance='dark'] select {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+html[data-connect-appearance='dark'] input::placeholder,
+html[data-connect-appearance='dark'] textarea::placeholder {
+  color: #64748b !important;
+}
+
+html[data-connect-appearance='dark'] .bg-red-50 {
+  background-color: rgba(127, 29, 29, 0.24) !important;
+}
+
+html[data-connect-appearance='dark'] .bg-emerald-50 {
+  background-color: rgba(6, 78, 59, 0.24) !important;
+}
+
+html[data-connect-appearance='dark'] .bg-amber-50 {
+  background-color: rgba(120, 53, 15, 0.24) !important;
+}
+
+html[data-connect-appearance='dark'] .bg-teal-50 {
+  background-color: rgba(15, 118, 110, 0.2) !important;
+}
+
+html[data-connect-appearance='dark'] .text-red-700 {
+  color: #fca5a5 !important;
+}
+
+html[data-connect-appearance='dark'] .text-emerald-700 {
+  color: #6ee7b7 !important;
+}
+
+html[data-connect-appearance='dark'] .text-amber-700 {
+  color: #fcd34d !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-connect-appearance='system'] body {
+    background: #0b1220;
+    color: #e5edf7;
+  }
+
+  html[data-connect-appearance='system'] .bg-white,
+  html[data-connect-appearance='system'] .bg-gray-50,
+  html[data-connect-appearance='system'] .bg-gray-100 {
+    background-color: #111827 !important;
+  }
+
+  html[data-connect-appearance='system'] .border-gray-100,
+  html[data-connect-appearance='system'] .border-gray-200,
+  html[data-connect-appearance='system'] .border-gray-300 {
+    border-color: #334155 !important;
+  }
+
+  html[data-connect-appearance='system'] .text-gray-900 {
+    color: #f8fafc !important;
+  }
+
+  html[data-connect-appearance='system'] .text-gray-800,
+  html[data-connect-appearance='system'] .text-gray-700 {
+    color: #e2e8f0 !important;
+  }
+
+  html[data-connect-appearance='system'] .text-gray-600,
+  html[data-connect-appearance='system'] .text-gray-500,
+  html[data-connect-appearance='system'] .text-gray-400 {
+    color: #94a3b8 !important;
+  }
+
+  html[data-connect-appearance='system'] input,
+  html[data-connect-appearance='system'] textarea,
+  html[data-connect-appearance='system'] select {
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+    border-color: #334155 !important;
+  }
+}

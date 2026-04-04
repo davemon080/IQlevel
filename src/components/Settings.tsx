@@ -6,6 +6,7 @@ import type { AppPreferences, NotificationSettings, UserProfile } from '../types
 import { User, Lock, Bell, LogOut, ChevronRight, Camera, Check, AlertCircle, Globe, Smartphone, Wallet, Copy, Store, Palette, BriefcaseBusiness, Trash2 } from 'lucide-react';
 import CachedImage from './CachedImage';
 import { getErrorMessage } from '../utils/errors';
+import { startPaystackTransaction } from '../utils/paystack';
 
 interface SettingsProps { profile: UserProfile; onLogout: () => void; onProfileUpdate: (profile: UserProfile) => void; }
 type Section = 'main' | 'profile' | 'security' | 'notifications' | 'market' | 'language' | 'appearance' | 'devices';
@@ -34,13 +35,15 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   const [marketPhone, setMarketPhone] = useState(profile.phoneNumber || '');
   const [marketLocation, setMarketLocation] = useState(profile.location || '');
   const [marketBrandName, setMarketBrandName] = useState(profile.companyInfo?.name || '');
+  const [marketRegistered, setMarketRegistered] = useState(false);
   const [showPhoneNumber, setShowPhoneNumber] = useState(false);
   const [showLocation, setShowLocation] = useState(false);
   const [showBrandName, setShowBrandName] = useState(true);
 
   useEffect(() => { setNotificationSettings(supabaseService.getNotificationSettings(profile.uid)); setPreferences(supabaseService.getAppPreferences(profile.uid)); }, [profile.uid]);
-  useEffect(() => { supabaseService.getMarketSettings(profile.uid).then((s) => { setMarketPhone(s.phoneNumber || profile.phoneNumber || ''); setMarketLocation(s.location || profile.location || ''); setMarketBrandName(s.brandName || profile.companyInfo?.name || ''); setShowPhoneNumber(s.showPhoneNumber); setShowLocation(s.showLocation); setShowBrandName(s.showBrandName); }); }, [profile.companyInfo?.name, profile.location, profile.phoneNumber, profile.uid]);
+  useEffect(() => { supabaseService.getMarketSettings(profile.uid).then((s) => { setMarketPhone(s.phoneNumber || profile.phoneNumber || ''); setMarketLocation(s.location || profile.location || ''); setMarketBrandName(s.brandName || profile.companyInfo?.name || ''); setMarketRegistered(s.isRegistered); setShowPhoneNumber(s.showPhoneNumber); setShowLocation(s.showLocation); setShowBrandName(s.showBrandName); }); }, [profile.companyInfo?.name, profile.location, profile.phoneNumber, profile.uid]);
   useEffect(() => { document.documentElement.lang = preferences.language; document.documentElement.dataset.connectAppearance = preferences.appearance; }, [preferences]);
+  useEffect(() => { supabaseService.getConnectedDeviceSessions(profile.uid).then((devices) => setPreferences((prev) => ({ ...prev, connectedDevices: devices }))).catch(() => undefined); }, [profile.uid]);
 
   const flash = (type: 'success' | 'error', text: string) => setMessage({ type, text });
   const saveProfile = async () => {
@@ -57,6 +60,25 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   const saveMarket = async () => {
     try { const updated = await supabaseService.updateMarketSettings(profile.uid, { phoneNumber: marketPhone.trim(), location: marketLocation.trim(), brandName: marketBrandName.trim(), showPhoneNumber, showLocation, showBrandName }); onProfileUpdate({ ...profile, phoneNumber: updated.phoneNumber, location: updated.location, companyInfo: { name: updated.brandName, about: profile.companyInfo?.about || '' } }); flash('success', 'Market settings saved.'); }
     catch (e) { flash('error', getErrorMessage(e, 'Unable to save market settings.')); }
+  };
+  const payForMarketAccess = async () => {
+    try {
+      await startPaystackTransaction({
+        email: profile.email,
+        amountKobo: 50000,
+        metadata: {
+          custom_fields: [
+            { display_name: 'Connect user', variable_name: 'connect_user_id', value: profile.publicId || profile.uid },
+            { display_name: 'Payment purpose', variable_name: 'payment_purpose', value: 'market_access_fee' },
+          ],
+        },
+      });
+      await supabaseService.completeMarketplaceRegistration(profile.uid);
+      setMarketRegistered(true);
+      flash('success', 'Marketplace access payment completed. You can now use the market feature.');
+    } catch (e) {
+      flash('error', getErrorMessage(e, 'Unable to complete the marketplace payment.'));
+    }
   };
   const uploadPhoto = async (file: File) => { setUploadingPhoto(true); try { setPhotoURL(await supabaseService.uploadUserAsset(file, 'profile/avatar')); } catch (e) { flash('error', getErrorMessage(e, 'Unable to upload photo.')); } finally { setUploadingPhoto(false); } };
   const copyId = async () => { await navigator.clipboard.writeText(profile.publicId || profile.uid); setCopiedId(true); setTimeout(() => setCopiedId(false), 1200); };
@@ -100,8 +122,8 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
         {section === 'notifications' && <div className="space-y-4">{([{ key: 'wallet', label: 'Wallet activity' }, { key: 'gigs', label: 'Gig activity' }, { key: 'feed', label: 'Feed activity' }, { key: 'friendRequests', label: 'Friend requests' }] as const).map((item) => <label key={item.key} className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">{item.label}</span><input type="checkbox" checked={notificationSettings[item.key]} onChange={(e) => setNotificationSettings((prev) => ({ ...prev, [item.key]: e.target.checked }))} className="h-5 w-5" /></label>)}<button onClick={saveNotifications} className={BTN}>Save Preferences</button></div>}
         {section === 'language' && <div className="space-y-4">{['en-US','en-GB','fr-FR'].map((item) => <label key={item} className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">{item}</span><input type="radio" checked={preferences.language === item} onChange={() => setPreferences((prev) => ({ ...prev, language: item as any }))} /></label>)}<button onClick={() => savePreference('language')} className={BTN}>Save Language</button></div>}
         {section === 'appearance' && <div className="space-y-4">{['system','light','dark'].map((item) => <label key={item} className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900 capitalize">{item}</span><input type="radio" checked={preferences.appearance === item} onChange={() => setPreferences((prev) => ({ ...prev, appearance: item as any }))} /></label>)}<button onClick={() => savePreference('appearance')} className={BTN}>Save Appearance</button></div>}
-        {section === 'devices' && <div className="space-y-4">{preferences.connectedDevices.map((device) => <div key={device.id} className="rounded-2xl border border-gray-200 bg-gray-50 p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-sm font-bold text-gray-900">{device.label}</p><p className="text-xs text-gray-500">{device.platform}</p><p className="mt-2 text-xs text-gray-400">Last active {new Date(device.lastActiveAt).toLocaleString()}</p></div><button disabled={device.current} onClick={() => { setPreferences(supabaseService.removeConnectedDevice(profile.uid, device.id)); flash('success', `${device.label} removed.`); }} className="inline-flex items-center gap-2 rounded-2xl border border-red-200 bg-white px-4 py-3 text-sm font-bold text-red-600 disabled:border-gray-200 disabled:text-gray-400"><Trash2 size={16} />Remove</button></div></div>)}</div>}
-        {section === 'market' && <div className="space-y-4"><input value={marketBrandName} onChange={(e) => setMarketBrandName(e.target.value)} className={INPUT} placeholder="Brand name" /><input value={marketPhone} onChange={(e) => setMarketPhone(e.target.value)} className={INPUT} placeholder="Phone number" /><input value={marketLocation} onChange={(e) => setMarketLocation(e.target.value)} className={INPUT} placeholder="Location" /><label className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">Show brand name</span><input type="checkbox" checked={showBrandName} onChange={(e) => setShowBrandName(e.target.checked)} /></label><label className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">Show phone number</span><input type="checkbox" checked={showPhoneNumber} onChange={(e) => setShowPhoneNumber(e.target.checked)} /></label><label className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">Show location</span><input type="checkbox" checked={showLocation} onChange={(e) => setShowLocation(e.target.checked)} /></label><button onClick={saveMarket} className={BTN}>Save Market Settings</button></div>}
+        {section === 'devices' && <div className="space-y-4">{preferences.connectedDevices.map((device) => <div key={device.id} className="rounded-2xl border border-gray-200 bg-gray-50 p-4"><div className="flex items-start justify-between gap-4"><div><div className="flex items-center gap-2"><p className="text-sm font-bold text-gray-900">{device.label}</p>{device.current && <span className="rounded-full bg-teal-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-teal-700">Current</span>}</div><p className="text-xs text-gray-500">{device.platform}</p><p className="mt-2 text-xs text-gray-400">Last active {new Date(device.lastActiveAt).toLocaleString()}</p></div><button disabled={device.current} onClick={async () => { try { const devices = await supabaseService.removeConnectedDeviceSession(profile.uid, device.id); setPreferences((prev) => ({ ...prev, connectedDevices: devices })); flash('success', `${device.label} removed.`); } catch (e) { flash('error', getErrorMessage(e, 'Unable to remove device.')); } }} className="inline-flex items-center gap-2 rounded-2xl border border-red-200 bg-white px-4 py-3 text-sm font-bold text-red-600 disabled:border-gray-200 disabled:text-gray-400"><Trash2 size={16} />Remove</button></div></div>)}</div>}
+        {section === 'market' && <div className="space-y-4">{!marketRegistered && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Marketplace access is locked. Pay the one-time N500 fee to unlock the market page and market management features.</div>}{!marketRegistered && <button onClick={payForMarketAccess} className={BTN}>Pay N500 To Unlock Market</button>}<input value={marketBrandName} onChange={(e) => setMarketBrandName(e.target.value)} className={INPUT} placeholder="Brand name" disabled={!marketRegistered} /><input value={marketPhone} onChange={(e) => setMarketPhone(e.target.value)} className={INPUT} placeholder="Phone number" disabled={!marketRegistered} /><input value={marketLocation} onChange={(e) => setMarketLocation(e.target.value)} className={INPUT} placeholder="Location" disabled={!marketRegistered} /><label className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">Show brand name</span><input type="checkbox" checked={showBrandName} onChange={(e) => setShowBrandName(e.target.checked)} disabled={!marketRegistered} /></label><label className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">Show phone number</span><input type="checkbox" checked={showPhoneNumber} onChange={(e) => setShowPhoneNumber(e.target.checked)} disabled={!marketRegistered} /></label><label className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">Show location</span><input type="checkbox" checked={showLocation} onChange={(e) => setShowLocation(e.target.checked)} disabled={!marketRegistered} /></label>{marketRegistered && <button onClick={saveMarket} className={BTN}>Save Market Settings</button>}</div>}
       </div>
     </div>
   );

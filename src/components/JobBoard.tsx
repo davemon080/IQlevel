@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Job, CompanyPartnerRequest } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { Search, Filter, Briefcase, MapPin, Clock, CheckCircle, Plus, Settings, Store } from 'lucide-react';
+import { Search, Filter, Briefcase, MapPin, Clock, CheckCircle, Plus, Settings, Store, Lock, ArrowRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useCurrency } from '../context/CurrencyContext';
 import { convertToUSD, formatMoneyFromUSD } from '../utils/currency';
 import CachedImage from './CachedImage';
@@ -14,6 +14,7 @@ interface JobBoardProps {
 }
 
 export default function JobBoard({ profile }: JobBoardProps) {
+  const navigate = useNavigate();
   const { currency } = useCurrency();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
@@ -26,6 +27,8 @@ export default function JobBoard({ profile }: JobBoardProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [myPartnerRequest, setMyPartnerRequest] = useState<CompanyPartnerRequest | null>(null);
   const [companyByUid, setCompanyByUid] = useState<Record<string, CompanyPartnerRequest>>({});
+  const [marketRegistered, setMarketRegistered] = useState(false);
+  const [showMarketPrompt, setShowMarketPrompt] = useState(false);
   const [newJob, setNewJob] = useState({
     title: '',
     description: '',
@@ -42,6 +45,12 @@ export default function JobBoard({ profile }: JobBoardProps) {
 
   useEffect(() => {
     supabaseService.getMyCompanyPartnerRequest(profile.uid).then(setMyPartnerRequest).catch(() => undefined);
+  }, [profile.uid]);
+
+  useEffect(() => {
+    supabaseService.getMarketSettings(profile.uid).then((settings) => {
+      setMarketRegistered(settings.isRegistered);
+    }).catch(() => undefined);
   }, [profile.uid]);
 
   useEffect(() => {
@@ -91,13 +100,14 @@ export default function JobBoard({ profile }: JobBoardProps) {
           <p className="text-sm sm:text-base text-gray-500">Find the perfect gig or hire top talent.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Link
-            to="/market"
+          <button
+            type="button"
+            onClick={() => marketRegistered ? navigate('/market') : setShowMarketPrompt(true)}
             className="inline-flex items-center gap-2 self-start rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700"
           >
             <Store size={18} />
             Market
-          </Link>
+          </button>
           {myPartnerRequest?.status === 'approved' ? (
             <Link
               to="/manage-gigs"
@@ -366,6 +376,30 @@ export default function JobBoard({ profile }: JobBoardProps) {
         >
           <Plus size={24} />
         </button>
+      )}
+
+      {showMarketPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
+          <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} className="max-w-md rounded-[2rem] bg-white p-6 shadow-2xl">
+            <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-700">
+              <Lock size={26} />
+            </div>
+            <h3 className="mt-5 text-2xl font-black text-gray-900">Marketplace Access Locked</h3>
+            <p className="mt-3 text-sm leading-7 text-gray-500">
+              New users need to complete the one-time N500 marketplace registration payment before they can open the market page.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button type="button" onClick={() => setShowMarketPrompt(false)} className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50">
+                Close
+              </button>
+              <Link to="/settings/market" onClick={() => setShowMarketPrompt(false)} className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-teal-700 px-4 py-3 text-sm font-bold text-white hover:bg-teal-800">
+                <Store size={16} />
+                Market Settings
+                <ArrowRight size={16} />
+              </Link>
+            </div>
+          </motion.div>
+        </div>
       )}
     </div>
   );

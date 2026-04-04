@@ -145,6 +145,11 @@ export default function App() {
     return () => stopPresence();
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+    supabaseService.syncConnectedDeviceSession(user.id).catch(() => undefined);
+  }, [user]);
+
   const handleGoogleLogin = async () => {
     try {
       setAuthSubmitting(true);
@@ -264,10 +269,10 @@ export default function App() {
             <Route path="/jobs" element={<JobBoard profile={profile} />} />
             <Route path="/jobs/:jobId" element={<JobDetails profile={profile} />} />
             <Route path="/jobs/:jobId/apply" element={<JobApply profile={profile} />} />
-            <Route path="/market" element={<Market profile={profile} />} />
-            <Route path="/market/sell" element={<SellItem profile={profile} />} />
-            <Route path="/market/:itemId" element={<MarketItemDetails profile={profile} />} />
-            <Route path="/market/:itemId/edit" element={<EditMarketItem profile={profile} />} />
+            <Route path="/market" element={<MarketAccessGuard profile={profile}><Market profile={profile} /></MarketAccessGuard>} />
+            <Route path="/market/sell" element={<MarketAccessGuard profile={profile}><SellItem profile={profile} /></MarketAccessGuard>} />
+            <Route path="/market/:itemId" element={<MarketAccessGuard profile={profile}><MarketItemDetails profile={profile} /></MarketAccessGuard>} />
+            <Route path="/market/:itemId/edit" element={<MarketAccessGuard profile={profile}><EditMarketItem profile={profile} /></MarketAccessGuard>} />
             <Route path="/network" element={<Network profile={profile} />} />
             <Route path="/requests" element={<FriendRequests profile={profile} />} />
             <Route path="/manage-gigs" element={<ManageGigs profile={profile} />} />
@@ -548,4 +553,54 @@ function TikTokBrandIcon({ className = '' }: { className?: string }) {
       <path d="M14.9 3c.4 1.8 1.5 3.2 3.3 4v2.7a8.1 8.1 0 0 1-3.3-1.1v5.4a5.5 5.5 0 1 1-5.5-5.5c.4 0 .8 0 1.2.1v2.9a2.8 2.8 0 1 0 1.6 2.5V3h2.7Z" />
     </svg>
   );
+}
+
+function MarketAccessGuard({ profile, children }: { profile: UserProfile; children: React.ReactNode }) {
+  const [allowed, setAllowed] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let active = true;
+    supabaseService
+      .getMarketSettings(profile.uid)
+      .then((settings) => {
+        if (!active) return;
+        setAllowed(settings.isRegistered);
+      })
+      .catch(() => {
+        if (!active) return;
+        setAllowed(false);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [profile.uid]);
+
+  if (loading) {
+    return <div className="rounded-[2rem] border border-gray-200 bg-white p-8 text-sm text-gray-500 shadow-sm">Checking marketplace access...</div>;
+  }
+
+  if (!allowed) {
+    return (
+      <div className="mx-auto max-w-2xl rounded-[2rem] border border-gray-200 bg-white p-8 shadow-sm">
+        <h2 className="text-2xl font-black text-gray-900">Marketplace Locked</h2>
+        <p className="mt-3 text-sm leading-7 text-gray-500">
+          Marketplace access stays locked until you complete the one-time N500 registration payment from market settings.
+        </p>
+        <Link
+          to="/settings/market"
+          className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-teal-700 px-5 py-3 text-sm font-bold text-white hover:bg-teal-800"
+        >
+          Open Market Settings
+          <ArrowRight size={16} />
+        </Link>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
 }

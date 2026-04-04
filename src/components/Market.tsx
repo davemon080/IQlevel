@@ -29,7 +29,6 @@ export default function Market({ profile }: MarketProps) {
     supabaseService.getMarketSettings(profile.uid).then((settings) => {
       if (!active) return;
       if (!settings.isRegistered) {
-        navigate('/settings?section=market', { replace: true });
         return;
       }
       setAccessReady(true);
@@ -115,7 +114,21 @@ export default function Market({ profile }: MarketProps) {
   }, [filteredItems]);
 
   if (!accessReady) {
-    return <div className="rounded-[2rem] border border-gray-200 bg-white p-8 text-sm text-gray-500 shadow-sm">Checking marketplace access...</div>;
+    return (
+      <div className="rounded-[2rem] border border-gray-200 bg-white p-8 shadow-sm">
+        <h2 className="text-2xl font-black text-gray-900">Marketplace Access Locked</h2>
+        <p className="mt-3 text-sm leading-7 text-gray-500">
+          Complete the one-time N500 marketplace payment from market settings before you can browse or manage market listings.
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate('/settings/market')}
+          className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-teal-700 px-5 py-3 text-sm font-bold text-white hover:bg-teal-800"
+        >
+          Go To Market Settings
+        </button>
+      </div>
+    );
   }
 
   return (

@@ -611,6 +611,26 @@ function buildWithdrawalReference(account: WithdrawalAccount) {
   return `bank_withdrawal:${account.bankCode}:${account.accountNumber}:${account.accountName}`;
 }
 
+function getCurrentDeviceId() {
+  if (typeof window === 'undefined') return 'server-session';
+  const key = 'connect_current_device_id';
+  const existing = window.localStorage.getItem(key);
+  if (existing) return existing;
+  const next = `device-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`;
+  window.localStorage.setItem(key, next);
+  return next;
+}
+
+function getCurrentDeviceLabel() {
+  if (typeof navigator === 'undefined') return 'Current browser';
+  const ua = navigator.userAgent.toLowerCase();
+  if (ua.includes('iphone')) return 'iPhone browser';
+  if (ua.includes('android')) return 'Android browser';
+  if (ua.includes('windows')) return 'Windows browser';
+  if (ua.includes('mac os')) return 'Mac browser';
+  return 'Browser session';
+}
+
 function getConversationKey(uid: string, otherUid: string) {
   return [uid, otherUid].sort().join(':');
 }
@@ -1093,6 +1113,90 @@ export const supabaseService = {
     const current = this.getAppPreferences(uid);
     const nextDevices = current.connectedDevices.filter((device) => device.id !== deviceId || device.current);
     return this.updateAppPreferences(uid, { connectedDevices: nextDevices });
+  },
+
+  async syncConnectedDeviceSession(uid: string): Promise<ConnectedDevice[]> {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    if (!data.user || data.user.id !== uid) {
+      return this.getAppPreferences(uid).connectedDevices;
+    }
+
+    const existingDevices = Array.isArray(data.user.user_metadata?.connected_devices)
+      ? (data.user.user_metadata.connected_devices as ConnectedDevice[])
+      : [];
+    const deviceId = getCurrentDeviceId();
+    const nextDevice: ConnectedDevice = {
+      id: deviceId,
+      label: getCurrentDeviceLabel(),
+      platform: typeof navigator !== 'undefined' ? navigator.userAgent : 'Browser',
+      lastActiveAt: new Date().toISOString(),
+      current: true,
+      sessionLabel: 'Current session',
+    };
+
+    const merged = [
+      nextDevice,
+      ...existingDevices
+        .filter((device) => device?.id && device.id !== deviceId)
+        .map((device) => ({ ...device, current: false })),
+    ].slice(0, 10);
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      data: {
+        ...data.user.user_metadata,
+        connected_devices: merged,
+      },
+    });
+    if (updateError) throw updateError;
+
+    const preferences = this.updateAppPreferences(uid, { connectedDevices: merged });
+    return preferences.connectedDevices;
+  },
+
+  async getConnectedDeviceSessions(uid: string): Promise<ConnectedDevice[]> {
+    const { data, error } = await supabase.auth.getUser();
+    if (!error && data.user && data.user.id === uid && Array.isArray(data.user.user_metadata?.connected_devices)) {
+      const deviceId = getCurrentDeviceId();
+      const devices = (data.user.user_metadata.connected_devices as ConnectedDevice[]).map((device) => ({
+        ...device,
+        current: device.id === deviceId,
+      }));
+      this.updateAppPreferences(uid, { connectedDevices: devices });
+      return devices;
+    }
+    return this.getAppPreferences(uid).connectedDevices;
+  },
+
+  async removeConnectedDeviceSession(uid: string, deviceId: string): Promise<ConnectedDevice[]> {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    if (!data.user || data.user.id !== uid) {
+      return this.removeConnectedDevice(uid, deviceId).connectedDevices;
+    }
+
+    const existingDevices = Array.isArray(data.user.user_metadata?.connected_devices)
+      ? (data.user.user_metadata.connected_devices as ConnectedDevice[])
+      : [];
+    const currentDeviceId = getCurrentDeviceId();
+    if (deviceId === currentDeviceId) {
+      throw new Error('Your current session cannot be removed from this device list.');
+    }
+
+    const nextDevices = existingDevices
+      .filter((device) => device?.id && device.id !== deviceId)
+      .map((device) => ({ ...device, current: device.id === currentDeviceId }));
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      data: {
+        ...data.user.user_metadata,
+        connected_devices: nextDevices,
+      },
+    });
+    if (updateError) throw updateError;
+
+    this.updateAppPreferences(uid, { connectedDevices: nextDevices });
+    return nextDevices;
   },
 
   listWithdrawalAccounts(uid: string): WithdrawalAccount[] {
@@ -2225,6 +2329,35 @@ export const supabaseService = {
         about: this.profileCache.get(uid)?.companyInfo?.about || '',
       },
     });
+    return mapped;
+  },
+
+  async completeMarketplaceRegistration(uid: string): Promise<MarketSettings> {
+    const existing = await this.getMarketSettings(uid);
+    const row = await runQuery<DbMarketSettings>(
+      supabase
+        .from('market_settings')
+        .upsert(
+          {
+            user_uid: uid,
+            phone_number: existing.phoneNumber || null,
+            location: existing.location || null,
+            brand_name: existing.brandName || null,
+            is_registered: true,
+            registered_at: new Date().toISOString(),
+            show_phone_number: existing.showPhoneNumber,
+            show_location: existing.showLocation,
+            show_brand_name: existing.showBrandName,
+          },
+          { onConflict: 'user_uid' }
+        )
+        .select('*')
+        .single(),
+      'completeMarketplaceRegistration'
+    );
+
+    const mapped = mapMarketSettingsFromDb(row);
+    writeCache(`market:settings:${uid}`, mapped);
     return mapped;
   },
 

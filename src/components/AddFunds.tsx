@@ -5,37 +5,10 @@ import { UserProfile, Wallet } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { formatAmount } from '../utils/currency';
 import { getErrorMessage } from '../utils/errors';
+import { startPaystackTransaction } from '../utils/paystack';
 
 interface AddFundsProps {
   profile: UserProfile;
-}
-
-declare global {
-  interface Window {
-    PaystackPop?: any;
-  }
-}
-
-const PAYSTACK_PUBLIC_KEY = 'pk_test_e9672a354a3fbf8d3e696c1265b29355181a3e11';
-
-async function ensurePaystackScript() {
-  if (window.PaystackPop) return;
-  await new Promise<void>((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>('script[data-paystack-inline]');
-    if (existing) {
-      existing.addEventListener('load', () => resolve(), { once: true });
-      existing.addEventListener('error', () => reject(new Error('Failed to load Paystack.')), { once: true });
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = 'https://js.paystack.co/v1/inline.js';
-    script.async = true;
-    script.dataset.paystackInline = 'true';
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load Paystack.'));
-    document.body.appendChild(script);
-  });
 }
 
 export default function AddFunds({ profile }: AddFundsProps) {
@@ -82,46 +55,25 @@ export default function AddFunds({ profile }: AddFundsProps) {
 
     setProcessing(true);
     try {
-      await ensurePaystackScript();
-
-      await new Promise<void>((resolve, reject) => {
-        const paystack = window.PaystackPop?.setup?.({
-          key: PAYSTACK_PUBLIC_KEY,
-          email: profile.email,
-          amount: Math.round(amountNumber * 100),
-          currency: 'NGN',
-          metadata: {
-            custom_fields: [
-              {
-                display_name: 'Connect User',
-                variable_name: 'connect_user_id',
-                value: profile.publicId || profile.uid,
-              },
-            ],
-          },
-          callback: async (response: { reference?: string }) => {
-            try {
-              await supabaseService.topUpWallet(profile.uid, 'NGN', amountNumber, 'card');
-              const refreshed = await supabaseService.getOrCreateWallet(profile.uid);
-              setWallet(refreshed);
-              setAmount('');
-              setSuccess(`Funds added successfully. Reference: ${response?.reference || 'Paystack payment confirmed'}`);
-              resolve();
-            } catch (nextError) {
-              reject(nextError);
-            }
-          },
-          onClose: () => {
-            reject(new Error('Payment window was closed before completion.'));
-          },
-        });
-
-        if (!paystack?.openIframe) {
-          reject(new Error('Paystack popup could not be initialized.'));
-          return;
-        }
-        paystack.openIframe();
+      const response = await startPaystackTransaction({
+        email: profile.email,
+        amountKobo: Math.round(amountNumber * 100),
+        metadata: {
+          custom_fields: [
+            {
+              display_name: 'Connect User',
+              variable_name: 'connect_user_id',
+              value: profile.publicId || profile.uid,
+            },
+          ],
+        },
       });
+
+      await supabaseService.topUpWallet(profile.uid, 'NGN', amountNumber, 'card');
+      const refreshed = await supabaseService.getOrCreateWallet(profile.uid);
+      setWallet(refreshed);
+      setAmount('');
+      setSuccess(`Funds added successfully. Reference: ${response?.reference || 'Paystack payment confirmed'}`);
     } catch (nextError) {
       setError(getErrorMessage(nextError, 'Unable to start Paystack right now.'));
     } finally {

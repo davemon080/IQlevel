@@ -228,6 +228,7 @@ export interface ConnectedDevice {
   platform: string;
   lastActiveAt: string;
   current: boolean;
+  sessionLabel?: string;
 }
 
 export interface AppPreferences {
