@@ -1226,13 +1226,30 @@ export const supabaseService = {
       ...profile,
       publicId: profile.publicId || buildPublicId(profile.uid),
     }) as DbUserProfile;
-    await runQuery(
-      supabase.from('users').upsert(
-        { ...payload, created_at: new Date().toISOString() },
-        { onConflict: 'uid' }
-      ),
-      'createUserProfile'
-    );
+    try {
+      await runQuery(
+        supabase.from('users').upsert(
+          { ...payload, created_at: new Date().toISOString() },
+          { onConflict: 'uid' }
+        ),
+        'createUserProfile'
+      );
+    } catch (error: any) {
+      const message = String(error?.message || '').toLowerCase();
+      if ('date_of_birth' in payload && (message.includes('date_of_birth') || message.includes('column'))) {
+        const fallbackPayload = { ...payload };
+        delete fallbackPayload.date_of_birth;
+        await runQuery(
+          supabase.from('users').upsert(
+            { ...fallbackPayload, created_at: new Date().toISOString() },
+            { onConflict: 'uid' }
+          ),
+          'createUserProfile:fallbackWithoutDateOfBirth'
+        );
+      } else {
+        throw error;
+      }
+    }
     const nextProfile = {
       ...profile,
       publicId: profile.publicId || buildPublicId(profile.uid),

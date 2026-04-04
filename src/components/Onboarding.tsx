@@ -60,8 +60,15 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
     website: '',
   });
 
-  const currentStep = STEPS[stepIndex];
-  const progress = useMemo(() => Math.round(((stepIndex + 1) / STEPS.length) * 100), [stepIndex]);
+  const visibleSteps = useMemo(() => {
+    if (draft.role === 'client') {
+      return STEPS.filter((step) => step.id !== 'education');
+    }
+    return STEPS;
+  }, [draft.role]);
+
+  const currentStep = visibleSteps[stepIndex];
+  const progress = useMemo(() => Math.round(((stepIndex + 1) / visibleSteps.length) * 100), [stepIndex, visibleSteps.length]);
 
   const updateDraft = (key: keyof OnboardingDraft, value: string | UserRole | null) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -73,12 +80,12 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
       return;
     }
     setError('');
-    setStepIndex((prev) => Math.min(prev + 1, STEPS.length - 1));
+    setStepIndex((prev) => Math.min(prev + 1, visibleSteps.length - 1));
   };
 
   const handleSkip = () => {
     setError('');
-    setStepIndex((prev) => Math.min(prev + 1, STEPS.length - 1));
+    setStepIndex((prev) => Math.min(prev + 1, visibleSteps.length - 1));
   };
 
   const handleComplete = async () => {
@@ -107,13 +114,19 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
         phoneNumber: draft.phoneNumber.trim(),
         location: draft.location.trim(),
         status: draft.status.trim(),
-        skills,
-        education: {
-          university: draft.university.trim(),
-          degree: draft.degree.trim(),
-          year: draft.year.trim(),
-          verified: false,
-        },
+        skills: draft.role === 'client' ? [] : skills,
+        education: draft.role === 'client'
+          ? {
+              university: '',
+              degree: '',
+              verified: false,
+            }
+          : {
+              university: draft.university.trim(),
+              degree: draft.degree.trim(),
+              year: draft.year.trim(),
+              verified: false,
+            },
         socialLinks: {
           linkedin: draft.linkedin.trim(),
           github: draft.github.trim(),
@@ -150,7 +163,7 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
           </div>
 
           <div className="mt-10 space-y-4">
-            {STEPS.map((step, index) => {
+            {visibleSteps.map((step, index) => {
               const complete = index < stepIndex;
               const active = index === stepIndex;
               return (
@@ -179,7 +192,7 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
           <div className="mb-8">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-teal-700">Step {stepIndex + 1} of {STEPS.length}</p>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-teal-700">Step {stepIndex + 1} of {visibleSteps.length}</p>
                 <h2 className="mt-2 text-3xl font-black text-gray-900">{currentStep.title}</h2>
                 <p className="mt-2 text-sm text-gray-500">{currentStep.description}</p>
               </div>
@@ -249,7 +262,7 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
                   <input value={draft.location} onChange={(e) => updateDraft('location', e.target.value)} className={INPUT_CLASS} placeholder="City, state, or campus" />
                 </Field>
                 <Field label="Status headline">
-                  <input value={draft.status} onChange={(e) => updateDraft('status', e.target.value)} className={INPUT_CLASS} placeholder="Frontend student, hiring manager, designer..." />
+                  <input value={draft.status} onChange={(e) => updateDraft('status', e.target.value)} className={INPUT_CLASS} placeholder={draft.role === 'client' ? 'Hiring manager, founder, recruiter...' : 'Frontend student, designer, copywriter...'} />
                 </Field>
               </div>
             )}
@@ -274,7 +287,7 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
             {currentStep.id === 'about' && (
               <div className="space-y-4">
                 <Field label="Short bio">
-                  <textarea value={draft.bio} onChange={(e) => updateDraft('bio', e.target.value)} className={`${INPUT_CLASS} min-h-[140px]`} placeholder="Tell people what you do, what you are studying, and what kind of opportunities you want." />
+                  <textarea value={draft.bio} onChange={(e) => updateDraft('bio', e.target.value)} className={`${INPUT_CLASS} min-h-[140px]`} placeholder={draft.role === 'client' ? 'Tell people about your company, team, or the kind of talent you want to hire.' : 'Tell people what you do, what you are studying, and what kind of opportunities you want.'} />
                 </Field>
                 <div className="grid gap-4 md:grid-cols-3">
                   <Field label="LinkedIn">
@@ -302,7 +315,7 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
                 <ArrowLeft size={16} />
                 Back
               </button>
-              {currentStep.skippable && stepIndex < STEPS.length - 1 && (
+              {currentStep.skippable && stepIndex < visibleSteps.length - 1 && (
                 <button
                   type="button"
                   onClick={handleSkip}
@@ -314,7 +327,7 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
               )}
             </div>
 
-            {stepIndex < STEPS.length - 1 ? (
+            {stepIndex < visibleSteps.length - 1 ? (
               <button
                 type="button"
                 onClick={handleNext}
