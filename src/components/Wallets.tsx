@@ -1,15 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { UserProfile, Wallet, WalletCurrency } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import {
-  ArrowLeft,
-  ChevronDown,
-  HandCoins,
-  Landmark,
-  PlusCircle,
-  RefreshCw,
-  SendHorizontal,
-} from 'lucide-react';
+import { ArrowLeft, ChevronDown, HandCoins, Landmark, PlusCircle, RefreshCw, SendHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatAmount } from '../utils/currency';
 import { useCurrency } from '../context/CurrencyContext';
@@ -17,8 +9,6 @@ import { useCurrency } from '../context/CurrencyContext';
 interface WalletsProps {
   profile: UserProfile;
 }
-
-type WalletAction = 'add' | 'withdraw' | null;
 
 export default function Wallets({ profile }: WalletsProps) {
   const navigate = useNavigate();
@@ -28,10 +18,6 @@ export default function Wallets({ profile }: WalletsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [activeAction, setActiveAction] = useState<WalletAction>(null);
-  const [amount, setAmount] = useState(0);
-  const [method, setMethod] = useState<'card' | 'transfer'>('card');
-  const [submitting, setSubmitting] = useState(false);
 
   const loadWalletData = async () => {
     setLoading(true);
@@ -73,37 +59,6 @@ export default function Wallets({ profile }: WalletsProps) {
     if (currency === 'NGN') return wallet.ngnBalance;
     return wallet.eurBalance;
   }, [wallet, currency]);
-
-  const submitAction = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(null);
-
-    if (!activeAction) return;
-    if (amount <= 0 || Number.isNaN(amount)) {
-      setError('Enter a valid amount.');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      if (activeAction === 'add') {
-        await supabaseService.topUpWallet(profile.uid, currency, amount, method);
-        setSuccess('Funds added successfully.');
-      } else {
-        await supabaseService.withdrawFromWallet(profile.uid, currency, amount, method);
-        setSuccess('Withdrawal successful.');
-      }
-
-      setAmount(0);
-      setActiveAction(null);
-      await loadWalletData();
-    } catch (e: any) {
-      setError(e.message || 'Transaction failed.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -173,10 +128,8 @@ export default function Wallets({ profile }: WalletsProps) {
           Transfer
         </button>
         <button
-          onClick={() => setActiveAction((prev) => (prev === 'withdraw' ? null : 'withdraw'))}
-          className={`flex flex-col items-center gap-2 rounded-2xl px-4 py-4 text-center text-sm font-bold transition-all ${
-            activeAction === 'withdraw' ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-          }`}
+          onClick={() => navigate('/wallets/withdraw')}
+          className="flex flex-col items-center gap-2 rounded-2xl bg-gray-50 px-4 py-4 text-center text-sm font-bold text-gray-700 transition-all hover:bg-gray-100"
         >
           <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm">
             <Landmark size={20} />
@@ -184,10 +137,8 @@ export default function Wallets({ profile }: WalletsProps) {
           Withdraw
         </button>
         <button
-          onClick={() => setActiveAction((prev) => (prev === 'add' ? null : 'add'))}
-          className={`flex flex-col items-center gap-2 rounded-2xl px-4 py-4 text-center text-sm font-bold transition-all ${
-            activeAction === 'add' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-          }`}
+          onClick={() => navigate('/wallets/add-funds')}
+          className="flex flex-col items-center gap-2 rounded-2xl bg-gray-50 px-4 py-4 text-center text-sm font-bold text-gray-700 transition-all hover:bg-gray-100"
         >
           <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm">
             <PlusCircle size={20} />
@@ -204,47 +155,6 @@ export default function Wallets({ profile }: WalletsProps) {
           History
         </button>
       </div>
-
-      {activeAction && (
-        <form onSubmit={submitAction} className="space-y-3 rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="space-y-1">
-            <label className="text-xs font-semibold uppercase tracking-wider text-gray-500">Amount ({currency})</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={amount || ''}
-              onChange={(e) => setAmount(parseFloat(e.target.value))}
-              className="w-full rounded-xl bg-gray-50 px-3 py-2.5 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-teal-500"
-              required
-            />
-          </div>
-
-          <div className="flex gap-2">
-            {(['card', 'transfer'] as const).map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setMethod(item)}
-                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${
-                  method === item ? 'border-teal-200 bg-teal-50 text-teal-700' : 'border-gray-200 bg-white text-gray-700'
-                }`}
-              >
-                {item === 'card' ? <PlusCircle size={14} /> : <Landmark size={14} />}
-                {item === 'card' ? 'Card' : 'Transfer'}
-              </button>
-            ))}
-          </div>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-xl bg-teal-700 py-2.5 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-70"
-          >
-            {submitting ? 'Processing...' : activeAction === 'add' ? 'Add Funds' : 'Withdraw'}
-          </button>
-        </form>
-      )}
 
       {error && <div className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
       {success && <div className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</div>}

@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest, ActiveGig, AppPreferences, ConnectedDevice, UserPerformanceSummary } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest, ActiveGig, AppPreferences, ConnectedDevice, UserPerformanceSummary, WithdrawalAccount } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 
@@ -207,6 +207,7 @@ type DbPostCommentNotificationRow = {
 
 const NOTIFICATION_SETTINGS_KEY_PREFIX = 'connect_notification_settings_';
 const APP_PREFERENCES_KEY_PREFIX = 'connect_app_preferences_';
+const WITHDRAWAL_ACCOUNTS_KEY_PREFIX = 'connect_withdrawal_accounts_';
 const CHAT_READ_KEY_PREFIX = 'connect_chat_read_map_';
 const CHAT_READ_EVENT = 'connect:chat-read-updated';
 const CHAT_CLEAR_KEY_PREFIX = 'connect_chat_cleared_map_';
@@ -604,6 +605,10 @@ function getDefaultAppPreferences(): AppPreferences {
     appearance: 'system',
     connectedDevices: getDefaultConnectedDevices(),
   };
+}
+
+function buildWithdrawalReference(account: WithdrawalAccount) {
+  return `bank_withdrawal:${account.bankCode}:${account.accountNumber}:${account.accountName}`;
 }
 
 function getConversationKey(uid: string, otherUid: string) {
@@ -1088,6 +1093,26 @@ export const supabaseService = {
     const current = this.getAppPreferences(uid);
     const nextDevices = current.connectedDevices.filter((device) => device.id !== deviceId || device.current);
     return this.updateAppPreferences(uid, { connectedDevices: nextDevices });
+  },
+
+  listWithdrawalAccounts(uid: string): WithdrawalAccount[] {
+    return loadJsonFromStorage<WithdrawalAccount[]>(`${WITHDRAWAL_ACCOUNTS_KEY_PREFIX}${uid}`, []);
+  },
+
+  saveWithdrawalAccount(uid: string, account: Omit<WithdrawalAccount, 'id' | 'createdAt'>): WithdrawalAccount[] {
+    const existing = this.listWithdrawalAccounts(uid).filter(
+      (item) => !(item.accountNumber === account.accountNumber && item.bankCode === account.bankCode)
+    );
+    const nextAccount: WithdrawalAccount = {
+      ...account,
+      id: `wa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: new Date().toISOString(),
+    };
+    const next = [nextAccount, ...existing];
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(`${WITHDRAWAL_ACCOUNTS_KEY_PREFIX}${uid}`, JSON.stringify(next));
+    }
+    return next;
   },
 
   getFeedCacheSnapshot(): FeedCacheSnapshot | null {
@@ -3212,6 +3237,57 @@ export const supabaseService = {
       }),
       'withdrawWallet:transaction'
     );
+  },
+
+  async withdrawToBankAccountWithPin(
+    uid: string,
+    currency: WalletCurrency,
+    amount: number,
+    pin: string,
+    account: WithdrawalAccount
+  ) {
+    const pinValid = await this.verifyTransactionPin(uid, pin);
+    if (!pinValid) {
+      throw new Error('Invalid transaction PIN.');
+    }
+
+    const wallet = await this.getOrCreateWallet(uid);
+    const current = currency === 'USD' ? wallet.usdBalance : currency === 'NGN' ? wallet.ngnBalance : wallet.eurBalance;
+    if (amount > current) {
+      throw new Error('Insufficient balance.');
+    }
+
+    const nextBalances = {
+      usd_balance: wallet.usdBalance - (currency === 'USD' ? amount : 0),
+      ngn_balance: wallet.ngnBalance - (currency === 'NGN' ? amount : 0),
+      eur_balance: wallet.eurBalance - (currency === 'EUR' ? amount : 0),
+    };
+    const timestamp = new Date().toISOString();
+
+    await runQuery(
+      supabase
+        .from('wallets')
+        .update({ ...nextBalances, updated_at: timestamp })
+        .eq('user_uid', uid),
+      'withdrawToBankAccountWithPin:update'
+    );
+
+    await runQuery(
+      supabase.from('wallet_transactions').insert({
+        user_uid: uid,
+        currency,
+        type: 'withdraw',
+        method: 'transfer',
+        amount,
+        status: 'completed',
+        reference: buildWithdrawalReference(account),
+        created_at: timestamp,
+      }),
+      'withdrawToBankAccountWithPin:transaction'
+    );
+
+    removeCache(`wallet:${uid}`);
+    removeCache(`wallet:transactions:${uid}`);
   },
 
   async transferByUserId(senderUid: string, recipientIdentifier: string, currency: WalletCurrency, amount: number) {

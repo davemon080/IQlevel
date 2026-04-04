@@ -22,6 +22,9 @@ import Wallets from './components/Wallets';
 import WalletHistory from './components/WalletHistory';
 import ProcessTransfer from './components/ProcessTransfer';
 import ProcessTransferDetails from './components/ProcessTransferDetails';
+import AddFunds from './components/AddFunds';
+import WithdrawFunds from './components/WithdrawFunds';
+import WithdrawAmount from './components/WithdrawAmount';
 import JobDetails from './components/JobDetails';
 import JobApply from './components/JobApply';
 import Notifications from './components/Notifications';
@@ -272,6 +275,9 @@ export default function App() {
             <Route path="/profile/:uid" element={<Profile profile={profile} />} />
             <Route path="/messages" element={<Chat profile={profile} />} />
             <Route path="/wallets" element={<Wallets profile={profile} />} />
+            <Route path="/wallets/add-funds" element={<AddFunds profile={profile} />} />
+            <Route path="/wallets/withdraw" element={<WithdrawFunds profile={profile} />} />
+            <Route path="/wallets/withdraw/amount" element={<WithdrawAmount profile={profile} />} />
             <Route path="/wallets/history" element={<WalletHistory profile={profile} />} />
             <Route path="/wallets/transfer" element={<ProcessTransfer profile={profile} />} />
             <Route path="/wallets/transfer/details" element={<ProcessTransferDetails profile={profile} />} />

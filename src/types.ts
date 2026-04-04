@@ -180,6 +180,15 @@ export interface Wallet {
   updatedAt: string;
 }
 
+export interface WithdrawalAccount {
+  id: string;
+  accountNumber: string;
+  bankCode: string;
+  bankName: string;
+  accountName: string;
+  createdAt: string;
+}
+
 export interface WalletTransaction {
   id: string;
   userUid: string;
