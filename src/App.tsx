@@ -46,6 +46,7 @@ export default function App() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -176,6 +177,9 @@ export default function App() {
 
     try {
       if (authMode === 'register') {
+        if (password !== confirmPassword) {
+          throw new Error('Passwords do not match.');
+        }
         const { data, error: authError } = await supabase.auth.signUp({
           email,
           password,
@@ -246,6 +250,8 @@ export default function App() {
                 setEmail={setEmail}
                 password={password}
                 setPassword={setPassword}
+                confirmPassword={confirmPassword}
+                setConfirmPassword={setConfirmPassword}
                 displayName={displayName}
                 setDisplayName={setDisplayName}
                 error={error}
@@ -317,6 +323,8 @@ interface AuthScreenProps {
   setEmail: React.Dispatch<React.SetStateAction<string>>;
   password: string;
   setPassword: React.Dispatch<React.SetStateAction<string>>;
+  confirmPassword: string;
+  setConfirmPassword: React.Dispatch<React.SetStateAction<string>>;
   displayName: string;
   setDisplayName: React.Dispatch<React.SetStateAction<string>>;
   error: string;
@@ -334,6 +342,8 @@ function AuthScreen({
   setEmail,
   password,
   setPassword,
+  confirmPassword,
+  setConfirmPassword,
   displayName,
   setDisplayName,
   error,
@@ -352,9 +362,9 @@ function AuthScreen({
   ];
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(135deg,#f5fbfa_0%,#ecfdf5_50%,#f8fafc_100%)] p-4 md:p-6">
-      <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-7xl overflow-hidden rounded-[2rem] border border-white/70 bg-white shadow-[0_24px_90px_rgba(15,23,42,0.08)] lg:grid-cols-[1.08fr_0.92fr]">
-        <section className="relative hidden flex-col justify-between overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.24),_transparent_28%),linear-gradient(155deg,#0f766e,#0f766e_35%,#14532d_100%)] px-10 py-12 text-white lg:flex">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(91,33,182,0.24),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(76,29,149,0.22),_transparent_28%),linear-gradient(135deg,#07030f_0%,#12071e_42%,#1c0c33_100%)] p-4 md:p-6">
+      <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/95 shadow-[0_24px_90px_rgba(9,3,20,0.45)] lg:grid-cols-[1.02fr_0.98fr]">
+        <section className="relative hidden flex-col justify-between overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(192,132,252,0.22),_transparent_28%),linear-gradient(155deg,#13061f,#261041_38%,#090312_100%)] px-8 py-10 text-white lg:flex">
           <div className="absolute inset-0 opacity-20">
             <div className="absolute -left-16 top-16 h-52 w-52 rounded-full border border-white/30" />
             <div className="absolute right-10 top-10 h-28 w-28 rounded-full bg-white/10" />
@@ -363,7 +373,7 @@ function AuthScreen({
 
           <div className="relative z-10 max-w-xl">
             <div className="inline-flex items-center gap-3 rounded-full bg-white/12 px-4 py-2 text-sm font-bold uppercase tracking-[0.25em]">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-teal-700">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-violet-700">
                 <Link2 size={18} />
               </span>
               Connect
@@ -400,7 +410,7 @@ function AuthScreen({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-3 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-white/18"
                 >
-                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-teal-700">
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-violet-700">
                     <Icon className="h-4 w-4" />
                   </span>
                   {social.label}
@@ -411,10 +421,10 @@ function AuthScreen({
         </section>
 
         <section className="flex items-center justify-center px-4 py-8 sm:px-8 lg:px-10">
-          <div className="w-full max-w-md">
+          <div className="w-full max-w-sm">
             <div className="mb-8 text-center lg:text-left">
-              <div className="inline-flex items-center gap-2 text-teal-700 lg:hidden">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-teal-600 text-white">
+              <div className="inline-flex items-center gap-2 text-violet-700 lg:hidden">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-violet-700 text-white">
                   <Link2 size={18} />
                 </span>
                 <span className="text-2xl font-black">Connect</span>
@@ -439,7 +449,7 @@ function AuthScreen({
                     required
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-base outline-none transition-all focus:border-teal-300 focus:bg-white focus:ring-2 focus:ring-teal-500/20"
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-base outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-500/20"
                   />
                 </div>
               )}
@@ -451,7 +461,7 @@ function AuthScreen({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-base outline-none transition-all focus:border-teal-300 focus:bg-white focus:ring-2 focus:ring-teal-500/20"
+                  className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-base outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-500/20"
                 />
               </div>
               <div className="relative">
@@ -462,7 +472,7 @@ function AuthScreen({
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-12 text-base outline-none transition-all focus:border-teal-300 focus:bg-white focus:ring-2 focus:ring-teal-500/20"
+                  className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-12 text-base outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-500/20"
                 />
                 <button
                   type="button"
@@ -473,6 +483,19 @@ function AuthScreen({
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              {authMode === 'register' && (
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Confirm password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-base outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-500/20"
+                  />
+                </div>
+              )}
 
               {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
@@ -483,7 +506,7 @@ function AuthScreen({
               <button
                 type="submit"
                 disabled={authSubmitting}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-teal-700 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-teal-800 disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-700 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-violet-800 disabled:opacity-60"
               >
                 {authMode === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />}
                 {authSubmitting
@@ -516,7 +539,7 @@ function AuthScreen({
                 {authMode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
                 <button
                   onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-                  className="font-bold text-teal-700 hover:underline"
+                  className="font-bold text-violet-700 hover:underline"
                 >
                   {authMode === 'login' ? 'Register now' : 'Sign in instead'}
                 </button>
@@ -524,13 +547,13 @@ function AuthScreen({
               <button
                 type="button"
                 onClick={() => navigate('/partner-with-connect')}
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition-all hover:border-teal-200 hover:bg-teal-50"
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition-all hover:border-violet-200 hover:bg-violet-50"
               >
                 Partner with Connect
                 <ArrowRight size={16} />
               </button>
               <p className="mt-3 text-xs text-gray-500">
-                Companies can also use the dedicated <Link to="/partner-with-connect" className="font-bold text-teal-700 hover:underline">partnership page</Link>.
+                Companies can also use the dedicated <Link to="/partner-with-connect" className="font-bold text-violet-700 hover:underline">partnership page</Link>.
               </p>
             </div>
           </div>
