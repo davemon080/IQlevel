@@ -362,9 +362,9 @@ function AuthScreen({
   ];
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(91,33,182,0.24),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(76,29,149,0.22),_transparent_28%),linear-gradient(135deg,#07030f_0%,#12071e_42%,#1c0c33_100%)] p-4 md:p-6">
-      <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/95 shadow-[0_24px_90px_rgba(9,3,20,0.45)] lg:grid-cols-[1.02fr_0.98fr]">
-        <section className="relative hidden flex-col justify-between overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(192,132,252,0.22),_transparent_28%),linear-gradient(155deg,#13061f,#261041_38%,#090312_100%)] px-8 py-10 text-white lg:flex">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(91,33,182,0.24),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(76,29,149,0.22),_transparent_28%),linear-gradient(135deg,#07030f_0%,#12071e_42%,#1c0c33_100%)] p-3 md:p-4">
+      <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-5xl overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/95 shadow-[0_24px_90px_rgba(9,3,20,0.45)] lg:grid-cols-[0.98fr_1.02fr]">
+        <section className="relative hidden flex-col justify-between overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(192,132,252,0.22),_transparent_28%),linear-gradient(155deg,#13061f,#261041_38%,#090312_100%)] px-7 py-8 text-white lg:flex">
           <div className="absolute inset-0 opacity-20">
             <div className="absolute -left-16 top-16 h-52 w-52 rounded-full border border-white/30" />
             <div className="absolute right-10 top-10 h-28 w-28 rounded-full bg-white/10" />
@@ -378,28 +378,28 @@ function AuthScreen({
               </span>
               Connect
             </div>
-            <h1 className="mt-8 text-5xl font-black leading-tight">
+            <h1 className="mt-6 text-4xl font-black leading-tight">
               Build your network, land gigs, and grow your student brand in one place.
             </h1>
-            <p className="mt-5 max-w-lg text-base leading-8 text-white/82">
+            <p className="mt-4 max-w-lg text-sm leading-7 text-white/82">
               Connect brings social discovery, professional identity, and student-friendly opportunities together so freelancers, clients, and campus talent can move faster.
             </p>
           </div>
 
-          <div className="relative z-10 grid gap-4 md:grid-cols-3">
+          <div className="relative z-10 grid gap-3 md:grid-cols-3">
             {[
               { title: 'Live profiles', value: 'Verified identity, skills, and portfolio visibility.' },
               { title: 'Real gigs', value: 'Find work, manage proposals, and stay active on the feed.' },
               { title: 'Built for students', value: 'Show education, campus context, and creative progress.' },
             ].map((item) => (
-              <div key={item.title} className="rounded-[1.5rem] border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
+              <div key={item.title} className="rounded-[1.35rem] border border-white/15 bg-white/10 p-3.5 backdrop-blur-sm">
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-white/70">{item.title}</p>
-                <p className="mt-3 text-sm leading-6 text-white/90">{item.value}</p>
+                <p className="mt-2 text-xs leading-6 text-white/90">{item.value}</p>
               </div>
             ))}
           </div>
 
-          <div className="relative z-10 mt-8 flex flex-wrap items-center gap-3">
+          <div className="relative z-10 mt-6 flex flex-wrap items-center gap-2.5">
             {socials.map((social) => {
               const Icon = social.icon;
               return (
@@ -408,7 +408,7 @@ function AuthScreen({
                   href={social.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-3 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-white/18"
+                  className="inline-flex items-center gap-3 rounded-2xl border border-white/15 bg-white/10 px-3.5 py-2.5 text-xs font-bold text-white transition-all hover:bg-white/18"
                 >
                   <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-violet-700">
                     <Icon className="h-4 w-4" />
@@ -420,16 +420,16 @@ function AuthScreen({
           </div>
         </section>
 
-        <section className="flex items-center justify-center px-4 py-8 sm:px-8 lg:px-10">
+        <section className="flex items-center justify-center px-4 py-6 sm:px-7 lg:px-8">
           <div className="w-full max-w-sm">
-            <div className="mb-8 text-center lg:text-left">
+            <div className="mb-6 text-center lg:text-left">
               <div className="inline-flex items-center gap-2 text-violet-700 lg:hidden">
                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-violet-700 text-white">
                   <Link2 size={18} />
                 </span>
                 <span className="text-2xl font-black">Connect</span>
               </div>
-              <h2 className="mt-4 text-3xl font-black text-gray-900">
+              <h2 className="mt-3 text-2xl font-black text-gray-900">
                 {authMode === 'login' ? 'Welcome back' : 'Create your account'}
               </h2>
               <p className="mt-2 text-sm text-gray-500">
@@ -439,7 +439,7 @@ function AuthScreen({
               </p>
             </div>
 
-            <form onSubmit={onEmailAuth} className="space-y-4">
+            <form onSubmit={onEmailAuth} className="space-y-3">
               {authMode === 'register' && (
                 <div className="relative">
                   <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -449,7 +449,7 @@ function AuthScreen({
                     required
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-base outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-500/20"
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-500/20"
                   />
                 </div>
               )}
@@ -461,7 +461,7 @@ function AuthScreen({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-base outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-500/20"
+                  className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-500/20"
                 />
               </div>
               <div className="relative">
@@ -472,7 +472,7 @@ function AuthScreen({
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-12 text-base outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-500/20"
+                  className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-12 text-sm outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-500/20"
                 />
                 <button
                   type="button"
@@ -492,7 +492,7 @@ function AuthScreen({
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-base outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-500/20"
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-500/20"
                   />
                 </div>
               )}
@@ -506,7 +506,7 @@ function AuthScreen({
               <button
                 type="submit"
                 disabled={authSubmitting}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-700 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-violet-800 disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-700 px-4 py-2.5 text-sm font-bold text-white transition-all hover:bg-violet-800 disabled:opacity-60"
               >
                 {authMode === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />}
                 {authSubmitting
@@ -519,7 +519,7 @@ function AuthScreen({
               </button>
             </form>
 
-            <div className="my-6 flex items-center gap-4">
+            <div className="my-4 flex items-center gap-4">
               <div className="h-px flex-1 bg-gray-200" />
               <span className="text-xs font-bold uppercase tracking-[0.18em] text-gray-400">Or continue with</span>
               <div className="h-px flex-1 bg-gray-200" />
@@ -528,13 +528,13 @@ function AuthScreen({
             <button
               onClick={onGoogleLogin}
               disabled={authSubmitting}
-              className="mb-6 inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+              className="mb-4 inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
             >
               <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="h-5 w-5" />
               Continue with Google
             </button>
 
-            <div className="rounded-[1.75rem] border border-gray-200 bg-gray-50 p-4">
+            <div className="rounded-[1.5rem] border border-gray-200 bg-gray-50 p-3.5">
               <p className="text-sm text-gray-600">
                 {authMode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
                 <button
@@ -547,12 +547,12 @@ function AuthScreen({
               <button
                 type="button"
                 onClick={() => navigate('/partner-with-connect')}
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition-all hover:border-violet-200 hover:bg-violet-50"
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 transition-all hover:border-violet-200 hover:bg-violet-50"
               >
                 Partner with Connect
                 <ArrowRight size={16} />
               </button>
-              <p className="mt-3 text-xs text-gray-500">
+              <p className="mt-2.5 text-xs text-gray-500">
                 Companies can also use the dedicated <Link to="/partner-with-connect" className="font-bold text-violet-700 hover:underline">partnership page</Link>.
               </p>
             </div>
