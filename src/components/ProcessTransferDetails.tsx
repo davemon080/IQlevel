@@ -189,7 +189,7 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
       </div>
 
       {recipientProfile && (
-        <form onSubmit={openPinPad} className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
+        <form onSubmit={openPinPad} className="rounded-2xl border border-violet-100 bg-white/95 p-5 space-y-4">
           <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-100">
             <UserCheck size={20} className="text-emerald-600" />
             <div className="min-w-0">
@@ -207,7 +207,7 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
             <select
               value={currency}
               onChange={(e) => setCurrency(e.target.value as WalletCurrency)}
-              className="w-full px-3 py-2.5 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2.5 outline-none focus:ring-2 focus:ring-violet-500"
             >
               <option value="USD">USD</option>
               <option value="NGN">NGN</option>
@@ -227,14 +227,14 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
               onFocus={() => {
                 amountInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
               }}
-              className="w-full px-3 py-2.5 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2.5 outline-none focus:ring-2 focus:ring-violet-500"
               required
             />
           </div>
 
           <button
             type="submit"
-            className="w-full py-2.5 rounded-xl bg-teal-700 text-white font-bold hover:bg-teal-800"
+            className="w-full rounded-xl bg-violet-700 py-2.5 text-white font-bold hover:bg-violet-800"
           >
             Complete Transaction
           </button>
@@ -276,7 +276,7 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
                   {Array.from({ length: 4 }).map((_, idx) => (
                     <span
                       key={idx}
-                      className={`w-3 h-3 rounded-full ${idx < pin.length ? 'bg-teal-600' : 'bg-gray-300'}`}
+                      className={`w-3 h-3 rounded-full ${idx < pin.length ? 'bg-violet-600' : 'bg-gray-300'}`}
                     />
                   ))}
                 </div>
@@ -312,7 +312,7 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
                   type="button"
                   onClick={submitTransfer}
                   disabled={processing || pin.length !== 4}
-                  className="w-full py-3 rounded-xl bg-teal-700 text-white font-bold disabled:opacity-70"
+                  className="w-full rounded-xl bg-violet-700 py-3 text-white font-bold disabled:opacity-70"
                 >
                   {processing ? 'Processing Transfer...' : 'Complete Transfer'}
                 </button>

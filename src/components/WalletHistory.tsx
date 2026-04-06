@@ -87,7 +87,7 @@ export default function WalletHistory({ profile }: WalletHistoryProps) {
           No transactions yet.
         </div>
       ) : (
-        <div className="space-y-3 rounded-3xl border border-gray-200 bg-white p-5">
+        <div className="space-y-3 rounded-3xl border border-violet-100 bg-white/95 p-5">
           {transactions.map((tx) => {
             const isCredit = tx.type === 'topup';
             const isTransferOut = tx.reference?.startsWith('transfer_out:');
@@ -131,7 +131,7 @@ export default function WalletHistory({ profile }: WalletHistoryProps) {
                   <button
                     type="button"
                     onClick={() => void shareReceiptImage(profile, tx)}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-100"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100"
                   >
                     <Share2 size={14} />
                     Share Receipt

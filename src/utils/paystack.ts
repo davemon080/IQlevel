@@ -35,10 +35,12 @@ export async function startPaystackTransaction({
   email,
   amountKobo,
   metadata,
+  reference,
 }: {
   email: string;
   amountKobo: number;
   metadata?: Record<string, unknown>;
+  reference?: string;
 }) {
   await ensurePaystackV2Script();
 
@@ -55,6 +57,7 @@ export async function startPaystackTransaction({
       amount: amountKobo,
       currency: 'NGN',
       metadata,
+      reference,
       onSuccess: (transaction: { reference?: string }) => resolve(transaction),
       onCancel: () => reject(new Error('Payment window was closed before completion.')),
     });

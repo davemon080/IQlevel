@@ -72,10 +72,10 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
   }, [location.pathname, profile.uid, targetUid]);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(124,58,237,0.08),_transparent_18%),linear-gradient(180deg,#faf7ff_0%,#f5f0ff_48%,#efe8ff_100%)] flex flex-col md:flex-row">
       {/* Desktop Sidebar */}
       <aside className={cn(
-        "hidden md:flex flex-col w-64 bg-white border-r border-gray-200 fixed h-full z-20 transition-all",
+        "hidden md:flex flex-col w-64 bg-white/92 border-r border-violet-100 fixed h-full z-20 transition-all backdrop-blur-sm",
         isMessagesPage && "w-20"
       )}>
         <div className={cn("p-6", isMessagesPage && "px-2 text-center")}>
@@ -163,7 +163,7 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
       )}>
         {/* Top Search Bar (Desktop) */}
         {!isMessagesPage && (
-          <header className="hidden md:flex items-center justify-between px-8 py-4 bg-white border-b border-gray-200 sticky top-0 z-10">
+          <header className="hidden md:flex items-center justify-between px-8 py-4 bg-white/88 border-b border-violet-100 sticky top-0 z-10 backdrop-blur-sm">
             <div className="relative w-96">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
               <input
@@ -189,7 +189,7 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
 
         {/* Mobile Header */}
         {!isMessagesPage && (
-        <header className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-10">
+        <header className="md:hidden flex items-center justify-between px-4 py-3 bg-white/88 border-b border-violet-100 sticky top-0 z-10 backdrop-blur-sm">
           <span className="flex items-center gap-2 text-xl font-bold text-teal-700">
             <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-teal-600 text-white">
               <Link2 size={14} />
@@ -224,7 +224,7 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
 
       {/* Mobile Bottom Nav */}
       {!(isMessagesPage && targetUid) && (
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex items-center justify-around px-2 py-2 z-20">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/92 border-t border-violet-100 flex items-center justify-around px-2 py-2 z-20 backdrop-blur-sm">
           {navItems.map((item) => (
             <Link
               key={item.path}

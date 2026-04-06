@@ -66,7 +66,7 @@ export default function Notifications({ profile }: NotificationsProps) {
         </button>
       </div>
 
-      <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden">
+      <div className="bg-white/95 rounded-3xl border border-violet-100 overflow-hidden shadow-sm">
         {loading ? (
           <p className="p-6 text-sm text-gray-500">Loading notifications...</p>
         ) : notifications.length === 0 ? (
@@ -80,11 +80,11 @@ export default function Notifications({ profile }: NotificationsProps) {
               key={notification.id}
               onClick={() => handleOpen(notification)}
               className={`w-full p-4 text-left border-b border-gray-100 hover:bg-gray-50 ${
-                notification.read ? 'bg-white' : 'bg-teal-50/30'
+                notification.read ? 'bg-white' : 'bg-violet-50/60'
               }`}
             >
               <div className="flex items-start gap-3">
-                <div className={`mt-1 w-2.5 h-2.5 rounded-full ${notification.read ? 'bg-gray-300' : 'bg-teal-500'}`} />
+                <div className={`mt-1 w-2.5 h-2.5 rounded-full ${notification.read ? 'bg-gray-300' : 'bg-violet-500'}`} />
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-gray-900">{notification.title}</p>
                   <p className="text-xs text-gray-600 mt-1">{notification.body}</p>

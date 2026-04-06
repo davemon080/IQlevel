@@ -102,15 +102,15 @@ export default function AddFunds({ profile }: AddFundsProps) {
         </div>
       </div>
 
-      <div className="rounded-3xl bg-gradient-to-br from-teal-700 to-emerald-700 p-6 text-white shadow-lg">
-        <p className="text-xs uppercase tracking-wider opacity-80">Current NGN Balance</p>
-        <p className="mt-2 text-3xl font-black">{formatAmount(wallet?.ngnBalance || 0, 'NGN')}</p>
+      <div className="rounded-[2rem] border border-violet-300/30 bg-[radial-gradient(circle_at_top_left,_rgba(196,181,253,0.18),_transparent_24%),linear-gradient(135deg,#12071f_0%,#241042_52%,#090312_100%)] p-6 text-white shadow-[0_22px_70px_rgba(15,6,33,0.45)]">
+        <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-violet-200/90">Current NGN Balance</p>
+        <p className="mt-3 text-3xl font-black md:text-4xl">{formatAmount(wallet?.ngnBalance || 0, 'NGN')}</p>
         <p className="mt-3 max-w-xl text-sm leading-6 text-white/82">
           Wallet funding uses Paystack checkout and credits your NGN balance immediately after a successful payment response.
         </p>
       </div>
 
-      <form onSubmit={handleAddFunds} className="space-y-4 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+      <form onSubmit={handleAddFunds} className="space-y-4 rounded-3xl border border-violet-100 bg-white/95 p-6 shadow-sm">
         <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-800">
           Paystack funding is configured for NGN. If checkout does not open, confirm your `VITE_PAYSTACK_PUBLIC_KEY` is set correctly.
         </div>
@@ -122,12 +122,12 @@ export default function AddFunds({ profile }: AddFundsProps) {
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="w-full rounded-2xl bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-500"
+            className="w-full rounded-2xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-violet-500"
             placeholder="Enter amount to fund"
             required
           />
         </div>
-        <button type="submit" disabled={processing} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-teal-700 py-3 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-60">
+        <button type="submit" disabled={processing} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-700 py-3 text-sm font-bold text-white hover:bg-violet-800 disabled:opacity-60">
           <Wallet2 size={18} />
           {processing ? 'Launching Paystack...' : 'Add Funds'}
         </button>

@@ -119,14 +119,14 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
         </div>
       </div>
 
-      <div className="bg-gradient-to-br from-teal-700 to-emerald-700 text-white rounded-3xl p-6 shadow-lg space-y-3">
-        <p className="text-xs uppercase tracking-wider opacity-80">Available Balance</p>
+      <div className="rounded-[2rem] border border-violet-300/30 bg-[radial-gradient(circle_at_top_left,_rgba(196,181,253,0.18),_transparent_24%),linear-gradient(135deg,#12071f_0%,#241042_52%,#090312_100%)] p-6 text-white shadow-[0_22px_70px_rgba(15,6,33,0.45)] space-y-3">
+        <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-violet-200/90">Available Balance</p>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-3xl font-black">{formatAmount(availableBalance, currency)}</p>
           <select
             value={currency}
             onChange={(e) => setCurrency(e.target.value as WalletCurrency)}
-            className="w-36 px-3 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white text-sm"
+            className="w-36 rounded-xl border border-white/20 bg-black/20 px-3 py-2.5 text-sm text-white"
           >
             <option value="USD" className="text-gray-900">USD</option>
             <option value="NGN" className="text-gray-900">NGN</option>
@@ -135,7 +135,7 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
         </div>
       </div>
 
-      <form onSubmit={verifyRecipient} className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
+      <form onSubmit={verifyRecipient} className="rounded-2xl border border-violet-100 bg-white/95 p-5 space-y-4">
         <div className="space-y-1">
           <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Recipient ID</label>
           <input
@@ -147,14 +147,14 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
               recipientInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }}
             placeholder="Enter recipient public ID or UID"
-            className="w-full px-3 py-2.5 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-teal-500"
+            className="w-full rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2.5 outline-none focus:ring-2 focus:ring-violet-500"
             required
           />
         </div>
         <button
           type="submit"
           disabled={verifyingRecipient}
-          className="w-full py-2.5 rounded-xl bg-teal-700 text-white font-bold hover:bg-teal-800 disabled:opacity-70"
+          className="w-full rounded-xl bg-violet-700 py-2.5 text-white font-bold hover:bg-violet-800 disabled:opacity-70"
         >
           {verifyingRecipient ? 'Verifying...' : 'Verify User ID'}
         </button>

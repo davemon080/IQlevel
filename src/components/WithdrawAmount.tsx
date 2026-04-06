@@ -125,7 +125,7 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
       </div>
 
       {account && (
-        <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="rounded-3xl border border-violet-100 bg-white/95 p-5 shadow-sm">
           <div className="flex items-center gap-3">
             <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
               <Landmark size={20} />
@@ -138,15 +138,15 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
         </div>
       )}
 
-      <div className="rounded-3xl bg-gradient-to-br from-teal-700 to-emerald-700 p-6 text-white shadow-lg">
-        <p className="text-xs uppercase tracking-wider opacity-80">Available Balance</p>
-        <p className="mt-2 text-3xl font-black">{formatAmount(availableBalance, currency)}</p>
+      <div className="rounded-[2rem] border border-violet-300/30 bg-[radial-gradient(circle_at_top_left,_rgba(196,181,253,0.18),_transparent_24%),linear-gradient(135deg,#12071f_0%,#241042_52%,#090312_100%)] p-6 text-white shadow-[0_22px_70px_rgba(15,6,33,0.45)]">
+        <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-violet-200/90">Available Balance</p>
+        <p className="mt-3 text-3xl font-black md:text-4xl">{formatAmount(availableBalance, currency)}</p>
       </div>
 
-      <form onSubmit={openPinPad} className="space-y-4 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+      <form onSubmit={openPinPad} className="space-y-4 rounded-3xl border border-violet-100 bg-white/95 p-6 shadow-sm">
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Currency</label>
-          <select value={currency} onChange={(e) => setCurrency(e.target.value as WalletCurrency)} className="w-full rounded-2xl bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-500">
+          <select value={currency} onChange={(e) => setCurrency(e.target.value as WalletCurrency)} className="w-full rounded-2xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-violet-500">
             <option value="USD">USD</option>
             <option value="NGN">NGN</option>
             <option value="EUR">EUR</option>
@@ -161,12 +161,12 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="w-full rounded-2xl bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-500"
+            className="w-full rounded-2xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-violet-500"
             placeholder="Enter withdrawal amount"
           />
         </div>
 
-        <button type="submit" className="w-full rounded-2xl bg-teal-700 py-3 text-sm font-bold text-white hover:bg-teal-800">
+        <button type="submit" className="w-full rounded-2xl bg-violet-700 py-3 text-sm font-bold text-white hover:bg-violet-800">
           Complete Withdrawal
         </button>
       </form>
@@ -198,7 +198,7 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
 
                 <div className="flex items-center justify-center gap-2">
                   {Array.from({ length: 4 }).map((_, idx) => (
-                    <span key={idx} className={`h-3 w-3 rounded-full ${idx < pin.length ? 'bg-teal-600' : 'bg-gray-300'}`} />
+                    <span key={idx} className={`h-3 w-3 rounded-full ${idx < pin.length ? 'bg-violet-600' : 'bg-gray-300'}`} />
                   ))}
                 </div>
 
@@ -220,7 +220,7 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
                   ))}
                 </div>
 
-                <button type="button" onClick={completeWithdrawal} disabled={processing || pin.length !== 4} className="w-full rounded-xl bg-teal-700 py-3 font-bold text-white disabled:opacity-60">
+                <button type="button" onClick={completeWithdrawal} disabled={processing || pin.length !== 4} className="w-full rounded-xl bg-violet-700 py-3 font-bold text-white disabled:opacity-60">
                   {processing ? 'Processing Withdrawal...' : 'Confirm Withdrawal'}
                 </button>
               </div>

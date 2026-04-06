@@ -90,9 +90,9 @@ export default function WithdrawFunds({ profile }: WithdrawFundsProps) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <form onSubmit={verifyAccount} className="space-y-4 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+        <form onSubmit={verifyAccount} className="space-y-4 rounded-3xl border border-violet-100 bg-white/95 p-6 shadow-sm">
           <div className="flex items-center gap-3">
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-50 text-teal-700">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
               <Landmark size={20} />
             </span>
             <div>
@@ -109,21 +109,21 @@ export default function WithdrawFunds({ profile }: WithdrawFundsProps) {
               maxLength={10}
               value={accountNumber}
               onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
-              className="w-full rounded-2xl bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full rounded-2xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-violet-500"
               placeholder="0123456789"
             />
           </div>
 
           <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Bank Name</label>
-            <select value={bankCode} onChange={(e) => setBankCode(e.target.value)} className="w-full rounded-2xl bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-teal-500">
+            <select value={bankCode} onChange={(e) => setBankCode(e.target.value)} className="w-full rounded-2xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-violet-500">
               {NIGERIAN_BANKS.map((bank) => (
                 <option key={bank.code} value={bank.code}>{bank.name}</option>
               ))}
             </select>
           </div>
 
-          <button type="submit" disabled={verifying} className="w-full rounded-2xl bg-teal-700 py-3 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-60">
+          <button type="submit" disabled={verifying} className="w-full rounded-2xl bg-violet-700 py-3 text-sm font-bold text-white hover:bg-violet-800 disabled:opacity-60">
             {verifying ? 'Verifying...' : 'Verify Account'}
           </button>
 
@@ -148,7 +148,7 @@ export default function WithdrawFunds({ profile }: WithdrawFundsProps) {
           )}
         </form>
 
-        <div className="space-y-4 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="space-y-4 rounded-3xl border border-violet-100 bg-white/95 p-6 shadow-sm">
           <div className="flex items-center gap-3">
             <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-100 text-gray-700">
               <Building2 size={20} />
@@ -165,7 +165,7 @@ export default function WithdrawFunds({ profile }: WithdrawFundsProps) {
             </div>
           ) : (
             accounts.map((account) => (
-              <button key={account.id} type="button" onClick={() => proceedToAmount(account)} className="w-full rounded-2xl border border-gray-200 bg-gray-50 p-4 text-left hover:border-teal-200 hover:bg-teal-50">
+              <button key={account.id} type="button" onClick={() => proceedToAmount(account)} className="w-full rounded-2xl border border-gray-200 bg-gray-50 p-4 text-left hover:border-violet-200 hover:bg-violet-50">
                 <p className="text-sm font-bold text-gray-900">{account.accountName}</p>
                 <p className="mt-1 text-xs text-gray-500">{account.bankName} • {account.accountNumber}</p>
               </button>
