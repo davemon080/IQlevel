@@ -37,8 +37,24 @@ export default function ProcessTransfer({ profile }: ProcessTransferProps) {
       .finally(() => {
         if (active) setLoading(false);
       });
+
+    const unsubscribeWallet = supabaseService.subscribeToWallet(
+      profile.uid,
+      (nextWallet) => {
+        if (!active) return;
+        setWallet(nextWallet);
+        setLoading(false);
+      },
+      (e: any) => {
+        if (!active) return;
+        setError(e.message || 'Failed to load wallet balance.');
+        setLoading(false);
+      }
+    );
+
     return () => {
       active = false;
+      unsubscribeWallet();
     };
   }, [profile.uid]);
 

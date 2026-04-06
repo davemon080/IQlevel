@@ -40,11 +40,13 @@ export default function Comments({ profile }: CommentsProps) {
         if (active) setLoading(false);
       });
 
-    const unsubscribe = supabaseService.subscribeToPostComments(postId, setComments);
+    const unsubscribePost = supabaseService.subscribeToPostById(postId, setPost);
+    const unsubscribeComments = supabaseService.subscribeToPostComments(postId, setComments);
 
     return () => {
       active = false;
-      unsubscribe();
+      unsubscribePost();
+      unsubscribeComments();
     };
   }, [postId]);
 

@@ -39,8 +39,14 @@ export default function JobDetails({ profile }: JobDetailsProps) {
         if (active) setLoading(false);
       });
 
+    const unsubscribeJob = supabaseService.subscribeToJobById(jobId, (jobItem) => {
+      if (!active) return;
+      setJob(jobItem);
+    });
+
     return () => {
       active = false;
+      unsubscribeJob();
     };
   }, [jobId, profile.uid]);
 

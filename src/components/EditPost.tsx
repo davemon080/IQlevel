@@ -32,8 +32,21 @@ export default function EditPost({ profile }: EditPostProps) {
       setImageUrl(post.imageUrl || null);
       setLoading(false);
     });
+
+    const unsubscribe = supabaseService.subscribeToPostById(postId, (post) => {
+      if (!active) return;
+      if (!post || post.authorUid !== profile.uid) {
+        navigate('/');
+        return;
+      }
+      setContent(post.content);
+      setImageUrl(post.imageUrl || null);
+      setLoading(false);
+    });
+
     return () => {
       active = false;
+      unsubscribe();
     };
   }, [navigate, postId, profile.uid]);
 

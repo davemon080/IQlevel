@@ -60,8 +60,27 @@ export default function EditMarketItem({ profile }: EditMarketItemProps) {
       setExistingImages(item.imageUrls);
       setLoading(false);
     });
+
+    const unsubscribe = supabaseService.subscribeToMarketItemById(itemId, (item) => {
+      if (!active) return;
+      if (!item || item.sellerUid !== profile.uid) {
+        navigate('/market');
+        return;
+      }
+      setTitle(item.title);
+      setCategory((item.category as (typeof MARKET_CATEGORIES)[number]) || MARKET_CATEGORIES[0]);
+      setDescription(item.description || '');
+      setPrice(convertAmount(item.price, item.priceCurrency, currency).toFixed(2));
+      setStockQuantity(String(item.stockQuantity));
+      setIsNegotiable(item.isNegotiable);
+      setIsAnonymous(item.isAnonymous);
+      setExistingImages(item.imageUrls);
+      setLoading(false);
+    });
+
     return () => {
       active = false;
+      unsubscribe();
     };
   }, [currency, itemId, navigate, profile.uid]);
 

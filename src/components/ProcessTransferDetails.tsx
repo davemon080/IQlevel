@@ -56,17 +56,13 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
         return;
       }
       try {
-        const [nextWallet, recipient] = await Promise.all([
-          supabaseService.getOrCreateWallet(profile.uid),
-          supabaseService.resolveUserByIdentifier(decodeURIComponent(recipientIdentifier)),
-        ]);
+        const recipient = await supabaseService.resolveUserByIdentifier(decodeURIComponent(recipientIdentifier));
         if (!active) return;
         if (!recipient) {
           setError('Recipient not found. Please verify user ID again.');
         } else {
           setRecipientProfile(recipient);
         }
-        setWallet(nextWallet);
       } catch (e: any) {
         if (!active) return;
         setError(e.message || 'Failed to load transfer details.');
@@ -75,8 +71,24 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
       }
     };
     load();
+
+    const unsubscribeWallet = supabaseService.subscribeToWallet(
+      profile.uid,
+      (nextWallet) => {
+        if (!active) return;
+        setWallet(nextWallet);
+        setLoading(false);
+      },
+      (e: any) => {
+        if (!active) return;
+        setError(e.message || 'Failed to load transfer details.');
+        setLoading(false);
+      }
+    );
+
     return () => {
       active = false;
+      unsubscribeWallet();
     };
   }, [profile.uid, recipientIdentifier]);
 
@@ -155,8 +167,6 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
       setSuccess('Transfer completed successfully.');
       setToast('Transfer successful');
       setShowPinPad(false);
-      const refreshed = await supabaseService.getOrCreateWallet(profile.uid);
-      setWallet(refreshed);
       setTimeout(() => navigate(transferSource === 'gig-payment' ? '/manage-gigs' : '/wallets'), 1200);
     } catch (e: any) {
       setError(e.message || 'Transfer failed.');

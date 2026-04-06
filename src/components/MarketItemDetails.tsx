@@ -35,8 +35,15 @@ export default function MarketItemDetails({ profile }: MarketItemDetailsProps) {
       setLoading(false);
     });
 
+    const unsubscribe = supabaseService.subscribeToMarketItemById(itemId, (nextItem) => {
+      if (!active) return;
+      setItem(nextItem);
+      setLoading(false);
+    });
+
     return () => {
       active = false;
+      unsubscribe();
     };
   }, [itemId]);
 

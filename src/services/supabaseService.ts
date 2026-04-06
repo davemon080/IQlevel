@@ -117,6 +117,8 @@ type DbMarketSettings = {
   brand_name: string | null;
   is_registered: boolean | null;
   registered_at: string | null;
+  admin_access_override?: 'inherit' | 'force_unlock' | 'force_lock' | null;
+  admin_override_updated_at?: string | null;
   show_phone_number: boolean | null;
   show_location: boolean | null;
   show_brand_name: boolean | null;
@@ -450,13 +452,27 @@ function mapCompanyFollowFromDb(row: DbCompanyFollow): CompanyFollow {
 }
 
 function mapMarketSettingsFromDb(row: DbMarketSettings): MarketSettings {
+  const accessOverride = row.admin_access_override || 'inherit';
+  const isRegistered =
+    accessOverride === 'force_unlock' ? true : accessOverride === 'force_lock' ? false : !!row.is_registered;
+  const accessSource =
+    accessOverride === 'force_unlock'
+      ? 'admin_override_unlock'
+      : accessOverride === 'force_lock'
+      ? 'admin_override_lock'
+      : row.is_registered
+      ? 'payment'
+      : 'unregistered';
   return {
     userUid: row.user_uid,
     phoneNumber: row.phone_number || '',
     location: row.location || '',
     brandName: row.brand_name || '',
-    isRegistered: !!row.is_registered,
+    isRegistered,
     registeredAt: row.registered_at || undefined,
+    accessOverride,
+    accessSource,
+    adminOverrideUpdatedAt: row.admin_override_updated_at || undefined,
     showPhoneNumber: row.show_phone_number ?? false,
     showLocation: row.show_location ?? false,
     showBrandName: row.show_brand_name ?? true,
@@ -1613,6 +1629,11 @@ export const supabaseService = {
     return mapped;
   },
 
+  subscribeToPostById(postId: string, callback: (post: Post | null) => void, onError?: (error: any) => void) {
+    const fetcher = async () => this.getPostById(postId);
+    return subscribeToTable('posts', fetcher, callback, `id=eq.${postId}`, onError, `post:${postId}`);
+  },
+
   async updatePost(postId: string, updates: { content: string; imageUrl?: string | null }): Promise<Post> {
     const row = await runQuery<DbPost>(
       supabase
@@ -2030,6 +2051,11 @@ export const supabaseService = {
     return mapped;
   },
 
+  subscribeToJobById(jobId: string, callback: (job: Job | null) => void, onError?: (error: any) => void) {
+    const fetcher = async () => this.getJobById(jobId);
+    return subscribeToTable('jobs', fetcher, callback, `id=eq.${jobId}`, onError, `job:${jobId}`);
+  },
+
   subscribeToJobs(callback: (jobs: Job[]) => void) {
     let active = true;
     let fetchVersion = 0;
@@ -2169,6 +2195,11 @@ export const supabaseService = {
     const mapped = mapMarketItemFromDb(row, seller || undefined);
     writeCache(`market:${itemId}`, mapped);
     return mapped;
+  },
+
+  subscribeToMarketItemById(itemId: string, callback: (item: MarketItem | null) => void, onError?: (error: any) => void) {
+    const fetcher = async () => this.getMarketItemById(itemId);
+    return subscribeToTable('market_items', fetcher, callback, `id=eq.${itemId}`, onError, `market:${itemId}`);
   },
 
   subscribeToMarketItems(callback: (items: MarketItem[]) => void, onError?: (error: any) => void) {
@@ -2478,6 +2509,8 @@ export const supabaseService = {
       location: '',
       brandName: '',
       isRegistered: false,
+      accessOverride: 'inherit',
+      accessSource: 'unregistered',
       showPhoneNumber: false,
       showLocation: false,
       showBrandName: true,
@@ -2499,6 +2532,8 @@ export const supabaseService = {
             brand_name: updates.brandName || null,
             is_registered: existing.isRegistered,
             registered_at: existing.registeredAt || null,
+            admin_access_override: existing.accessOverride || 'inherit',
+            admin_override_updated_at: existing.adminOverrideUpdatedAt || null,
             show_phone_number: updates.showPhoneNumber,
             show_location: updates.showLocation,
             show_brand_name: updates.showBrandName,
@@ -2536,6 +2571,8 @@ export const supabaseService = {
             brand_name: existing.brandName || null,
             is_registered: true,
             registered_at: new Date().toISOString(),
+            admin_access_override: existing.accessOverride || 'inherit',
+            admin_override_updated_at: existing.adminOverrideUpdatedAt || null,
             show_phone_number: existing.showPhoneNumber,
             show_location: existing.showLocation,
             show_brand_name: existing.showBrandName,
@@ -2606,6 +2643,8 @@ export const supabaseService = {
             brand_name: settings.brandName || null,
             is_registered: true,
             registered_at: timestamp,
+            admin_access_override: settings.accessOverride || 'inherit',
+            admin_override_updated_at: settings.adminOverrideUpdatedAt || null,
             show_phone_number: settings.showPhoneNumber,
             show_location: settings.showLocation,
             show_brand_name: settings.showBrandName,

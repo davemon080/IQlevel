@@ -45,8 +45,23 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
         if (active) setLoading(false);
       });
 
+    const unsubscribeWallet = supabaseService.subscribeToWallet(
+      profile.uid,
+      (nextWallet) => {
+        if (!active) return;
+        setWallet(nextWallet);
+        setLoading(false);
+      },
+      (nextError) => {
+        if (!active) return;
+        setError(getErrorMessage(nextError, 'Failed to load wallet balance.'));
+        setLoading(false);
+      }
+    );
+
     return () => {
       active = false;
+      unsubscribeWallet();
     };
   }, [profile.uid, searchParams]);
 
@@ -92,8 +107,6 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
     setError(null);
     try {
       await supabaseService.withdrawToBankAccountWithPin(profile.uid, currency, amountNumber, pin, account);
-      const refreshed = await supabaseService.getOrCreateWallet(profile.uid);
-      setWallet(refreshed);
       setShowPinPad(false);
       setSuccess('Withdrawal completed successfully.');
       window.setTimeout(() => navigate('/wallets/history'), 1200);

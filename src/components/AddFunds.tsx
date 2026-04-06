@@ -33,8 +33,24 @@ export default function AddFunds({ profile }: AddFundsProps) {
       .finally(() => {
         if (active) setLoading(false);
       });
+
+    const unsubscribeWallet = supabaseService.subscribeToWallet(
+      profile.uid,
+      (nextWallet) => {
+        if (!active) return;
+        setWallet(nextWallet);
+        setLoading(false);
+      },
+      (nextError) => {
+        if (!active) return;
+        setError(getErrorMessage(nextError, 'Failed to load wallet.'));
+        setLoading(false);
+      }
+    );
+
     return () => {
       active = false;
+      unsubscribeWallet();
     };
   }, [profile.uid]);
 
@@ -71,8 +87,6 @@ export default function AddFunds({ profile }: AddFundsProps) {
       });
 
       await supabaseService.topUpWallet(profile.uid, 'NGN', amountNumber, 'card');
-      const refreshed = await supabaseService.getOrCreateWallet(profile.uid);
-      setWallet(refreshed);
       setAmount('');
       setSuccess(`Funds added successfully. Reference: ${response?.reference || 'Paystack payment confirmed'}`);
     } catch (nextError) {

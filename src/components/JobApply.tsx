@@ -23,13 +23,27 @@ export default function JobApply({ profile }: JobApplyProps) {
 
   useEffect(() => {
     if (!jobId) return;
+    let active = true;
     supabaseService
       .getJobById(jobId)
       .then((item) => {
+        if (!active) return;
         setJob(item);
         if (item) setBudget(Number(convertFromUSD(item.budget, currency).toFixed(2)));
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    const unsubscribe = supabaseService.subscribeToJobById(jobId, (item) => {
+      if (!active) return;
+      setJob(item);
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [currency, jobId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
