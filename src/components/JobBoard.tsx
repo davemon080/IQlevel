@@ -63,6 +63,12 @@ export default function JobBoard({ profile }: JobBoardProps) {
   }, [profile.uid]);
 
   useEffect(() => {
+    if (marketRegistered && showMarketPrompt) {
+      setShowMarketPrompt(false);
+    }
+  }, [marketRegistered, showMarketPrompt]);
+
+  useEffect(() => {
     const jobClientUids = Array.from(new Set(jobs.map((job) => job.clientUid)));
     if (jobClientUids.length === 0) return;
     supabaseService.getApprovedCompanyPartnerRequestsByUserUids(jobClientUids).then(setCompanyByUid).catch(() => undefined);

@@ -607,25 +607,37 @@ function TikTokBrandIcon({ className = '' }: { className?: string }) {
 function MarketAccessGuard({ profile, children }: { profile: UserProfile; children: React.ReactNode }) {
   const [allowed, setAllowed] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
+  const [accessSource, setAccessSource] = React.useState<'payment' | 'admin_override_unlock' | 'admin_override_lock' | 'unregistered'>('unregistered');
 
   React.useEffect(() => {
     let active = true;
+    const applySettings = (settings: Awaited<ReturnType<typeof supabaseService.getMarketSettings>>) => {
+      if (!active) return;
+      setAllowed(settings.isRegistered);
+      setAccessSource(settings.accessSource || 'unregistered');
+      setLoading(false);
+    };
+
     supabaseService
       .getMarketSettings(profile.uid)
-      .then((settings) => {
-        if (!active) return;
-        setAllowed(settings.isRegistered);
-      })
+      .then(applySettings)
       .catch(() => {
         if (!active) return;
         setAllowed(false);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
+        setAccessSource('unregistered');
+        setLoading(false);
       });
+
+    const unsubscribe = supabaseService.subscribeToMarketSettings(profile.uid, applySettings, () => {
+      if (!active) return;
+      setAllowed(false);
+      setAccessSource('unregistered');
+      setLoading(false);
+    });
 
     return () => {
       active = false;
+      unsubscribe();
     };
   }, [profile.uid]);
 
@@ -638,7 +650,9 @@ function MarketAccessGuard({ profile, children }: { profile: UserProfile; childr
       <div className="mx-auto max-w-2xl rounded-[2rem] border border-gray-200 bg-white p-8 shadow-sm">
         <h2 className="text-2xl font-black text-gray-900">Marketplace Locked</h2>
         <p className="mt-3 text-sm leading-7 text-gray-500">
-          Marketplace access stays locked until you complete the one-time N500 registration payment from market settings.
+          {accessSource === 'admin_override_lock'
+            ? 'Marketplace access is currently disabled by the admin for this account.'
+            : 'Marketplace access stays locked until you complete the one-time N500 registration payment or an admin grants access from the admin panel.'}
         </p>
         <Link
           to="/settings/market"
