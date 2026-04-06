@@ -404,6 +404,174 @@ async function fetchMarketSettingsByUid(uid: string): Promise<MarketSettings> {
   return fallback;
 }
 
+async function fetchNotificationsByUid(uid: string, getNotificationSettings: (uid: string) => NotificationSettings, getNotificationLastReadAt: (uid: string) => Promise<string | null>): Promise<AppNotification[]> {
+  const cacheKey = `notifications:${uid}`;
+  const settings = getNotificationSettings(uid);
+  const readThrough = await getNotificationLastReadAt(uid);
+  const readThroughTime = readThrough ? new Date(readThrough).getTime() : 0;
+
+  const [incomingRequests, proposals, myJobs, walletTransactions, feedLikes, feedComments, marketSettingsRow] = await Promise.all([
+    runQuery<DbFriendRequest[]>(
+      supabase.from('friend_requests').select('*').eq('to_uid', uid).order('created_at', { ascending: false }).limit(20),
+      'notifications:friendRequests'
+    ),
+    runQuery<DbProposal[]>(
+      supabase.from('proposals').select('*').order('created_at', { ascending: false }).limit(30),
+      'notifications:proposals'
+    ),
+    runQuery<DbJob[]>(
+      supabase.from('jobs').select('*').eq('client_uid', uid),
+      'notifications:myJobs'
+    ),
+    runQuery<DbWalletTransaction[]>(
+      supabase
+        .from('wallet_transactions')
+        .select('*')
+        .eq('user_uid', uid)
+        .order('created_at', { ascending: false })
+        .limit(20),
+      'notifications:walletTransactions'
+    ),
+    settings.feed
+      ? runQuery<DbPostLikeNotificationRow[]>(
+          supabase
+            .from('post_likes')
+            .select('id,post_id,user_uid,created_at,posts!inner(author_uid)')
+            .eq('posts.author_uid', uid)
+            .neq('user_uid', uid)
+            .order('created_at', { ascending: false })
+            .limit(20),
+          'notifications:feedLikes'
+        )
+      : Promise.resolve([]),
+    settings.feed
+      ? runQuery<DbPostCommentNotificationRow[]>(
+          supabase
+            .from('post_comments')
+            .select('id,post_id,user_uid,author_name,content,created_at,posts!inner(author_uid)')
+            .eq('posts.author_uid', uid)
+            .neq('user_uid', uid)
+            .order('created_at', { ascending: false })
+            .limit(20),
+          'notifications:feedComments'
+        )
+      : Promise.resolve([]),
+    runQuery<DbMarketSettings | null>(
+      supabase.from('market_settings').select('*').eq('user_uid', uid).maybeSingle(),
+      'notifications:marketSettings'
+    ),
+  ]);
+
+  const myJobIds = new Set(myJobs.map((j) => j.id));
+  const gigNotifications = settings.gigs
+    ? proposals
+        .filter((p) => myJobIds.has(p.job_id))
+        .slice(0, 20)
+        .map<AppNotification>((p) => ({
+          id: `proposal-${p.id}`,
+          type: 'gig',
+          title: 'New job application received',
+          body: p.content.slice(0, 110),
+          createdAt: p.created_at,
+          link: '/manage-gigs',
+        }))
+    : [];
+
+  const requestNotifications = settings.friendRequests
+    ? incomingRequests.slice(0, 20).map<AppNotification>((r) => ({
+        id: `friend-${r.id}`,
+        type: 'friend_request',
+        title: `${r.from_name} sent you a request`,
+        body: r.status === 'pending' ? 'Tap to review connection request.' : `Request ${r.status}.`,
+        createdAt: r.created_at,
+        link: '/requests',
+      }))
+    : [];
+
+  const walletNotifications = settings.wallet
+    ? walletTransactions.map<AppNotification>((tx) => {
+        const isTransferOut = tx.reference?.startsWith('transfer_out:');
+        const isTransferIn = tx.reference?.startsWith('transfer_in:');
+        const counterpartyUid = tx.reference?.split(':')[1];
+        const title = isTransferIn
+          ? 'Funds received'
+          : isTransferOut
+          ? 'Transfer sent'
+          : tx.type === 'topup'
+          ? 'Wallet funded'
+          : 'Withdrawal completed';
+        const body = isTransferIn || isTransferOut
+          ? `${tx.amount} ${tx.currency} ${isTransferIn ? 'from' : 'to'} user ${counterpartyUid || ''}`.trim()
+          : `${tx.amount} ${tx.currency} via ${tx.method}`;
+        return {
+          id: `wallet-${tx.id}`,
+          type: 'wallet',
+          title,
+          body,
+          createdAt: tx.created_at,
+          link: '/wallets',
+        };
+      })
+    : [];
+
+  const feedLikeNotifications = feedLikes.map<AppNotification>((like) => ({
+    id: `feed-like-${like.id}`,
+    type: 'feed',
+    title: 'New like on your post',
+    body: 'Someone liked your post.',
+    createdAt: like.created_at,
+    link: `/comments/${like.post_id}`,
+  }));
+
+  const feedCommentNotifications = feedComments.map<AppNotification>((comment) => ({
+    id: `feed-comment-${comment.id}`,
+    type: 'feed',
+    title: 'New comment on your post',
+    body: `${comment.author_name}: ${comment.content.slice(0, 90)}`,
+    createdAt: comment.created_at,
+    link: `/comments/${comment.post_id}`,
+  }));
+
+  const marketSettings = marketSettingsRow ? mapMarketSettingsFromDb(marketSettingsRow) : null;
+  const marketAccessNotifications =
+    marketSettings?.adminOverrideUpdatedAt &&
+    (marketSettings.accessSource === 'admin_override_lock' || marketSettings.accessSource === 'admin_override_unlock')
+      ? [
+          {
+            id: `market-access-${uid}-${marketSettings.adminOverrideUpdatedAt}`,
+            type: 'system' as const,
+            title:
+              marketSettings.accessSource === 'admin_override_lock'
+                ? 'Marketplace access revoked'
+                : 'Marketplace access restored',
+            body:
+              marketSettings.accessSource === 'admin_override_lock'
+                ? 'Your access to the market page has been revoked pending review from the Connect team.'
+                : 'Your marketplace access has been restored. You can now open the market page again.',
+            createdAt: marketSettings.adminOverrideUpdatedAt,
+            link: '/settings/market',
+          },
+        ]
+      : [];
+
+  const mapped = [
+    ...marketAccessNotifications,
+    ...requestNotifications,
+    ...gigNotifications,
+    ...walletNotifications,
+    ...feedLikeNotifications,
+    ...feedCommentNotifications,
+  ]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .map((item) => ({
+      ...item,
+      read: readThroughTime > 0 && new Date(item.createdAt).getTime() <= readThroughTime,
+    }));
+
+  writeCache(cacheKey, mapped);
+  return mapped;
+}
+
 function mapPostLikeFromDb(row: DbPostLike): PostLike {
   return {
     id: row.id,
@@ -4375,152 +4543,22 @@ export const supabaseService = {
     const cacheKey = `notifications:${uid}`;
     const cached = readCache<AppNotification[]>(cacheKey, CACHE_TTL.notifications);
     if (cached) return cached;
-
-    const settings = this.getNotificationSettings(uid);
-    const readThrough = await this.getNotificationLastReadAt(uid);
-    const readThroughTime = readThrough ? new Date(readThrough).getTime() : 0;
-
-    const [incomingRequests, proposals, myJobs, walletTransactions, feedLikes, feedComments] = await Promise.all([
-      runQuery<DbFriendRequest[]>(
-        supabase.from('friend_requests').select('*').eq('to_uid', uid).order('created_at', { ascending: false }).limit(20),
-        'notifications:friendRequests'
-      ),
-      runQuery<DbProposal[]>(
-        supabase.from('proposals').select('*').order('created_at', { ascending: false }).limit(30),
-        'notifications:proposals'
-      ),
-      runQuery<DbJob[]>(
-        supabase.from('jobs').select('*').eq('client_uid', uid),
-        'notifications:myJobs'
-      ),
-      runQuery<DbWalletTransaction[]>(
-        supabase
-          .from('wallet_transactions')
-          .select('*')
-          .eq('user_uid', uid)
-          .order('created_at', { ascending: false })
-          .limit(20),
-        'notifications:walletTransactions'
-      ),
-      settings.feed
-        ? runQuery<DbPostLikeNotificationRow[]>(
-            supabase
-              .from('post_likes')
-              .select('id,post_id,user_uid,created_at,posts!inner(author_uid)')
-              .eq('posts.author_uid', uid)
-              .neq('user_uid', uid)
-              .order('created_at', { ascending: false })
-              .limit(20),
-            'notifications:feedLikes'
-          )
-        : Promise.resolve([]),
-      settings.feed
-        ? runQuery<DbPostCommentNotificationRow[]>(
-            supabase
-              .from('post_comments')
-              .select('id,post_id,user_uid,author_name,content,created_at,posts!inner(author_uid)')
-              .eq('posts.author_uid', uid)
-              .neq('user_uid', uid)
-              .order('created_at', { ascending: false })
-              .limit(20),
-            'notifications:feedComments'
-          )
-        : Promise.resolve([]),
-    ]);
-
-    const myJobIds = new Set(myJobs.map((j) => j.id));
-    const gigNotifications = settings.gigs
-      ? proposals
-      .filter((p) => myJobIds.has(p.job_id))
-      .slice(0, 20)
-      .map<AppNotification>((p) => ({
-        id: `proposal-${p.id}`,
-        type: 'gig',
-        title: 'New job application received',
-        body: p.content.slice(0, 110),
-        createdAt: p.created_at,
-        link: '/manage-gigs',
-      }))
-      : [];
-
-    const requestNotifications = settings.friendRequests
-      ? incomingRequests.slice(0, 20).map<AppNotification>((r) => ({
-          id: `friend-${r.id}`,
-          type: 'friend_request',
-          title: `${r.from_name} sent you a request`,
-          body: r.status === 'pending' ? 'Tap to review connection request.' : `Request ${r.status}.`,
-          createdAt: r.created_at,
-          link: '/requests',
-        }))
-      : [];
-
-    const walletNotifications = settings.wallet
-      ? walletTransactions.map<AppNotification>((tx) => {
-          const isTransferOut = tx.reference?.startsWith('transfer_out:');
-          const isTransferIn = tx.reference?.startsWith('transfer_in:');
-          const counterpartyUid = tx.reference?.split(':')[1];
-          const title = isTransferIn
-            ? 'Funds received'
-            : isTransferOut
-            ? 'Transfer sent'
-            : tx.type === 'topup'
-            ? 'Wallet funded'
-            : 'Withdrawal completed';
-          const body = isTransferIn || isTransferOut
-            ? `${tx.amount} ${tx.currency} ${isTransferIn ? 'from' : 'to'} user ${counterpartyUid || ''}`.trim()
-            : `${tx.amount} ${tx.currency} via ${tx.method}`;
-          return {
-            id: `wallet-${tx.id}`,
-            type: 'wallet',
-            title,
-            body,
-            createdAt: tx.created_at,
-            link: '/wallets',
-          };
-        })
-      : [];
-
-    const feedLikeNotifications = feedLikes.map<AppNotification>((like) => ({
-      id: `feed-like-${like.id}`,
-      type: 'feed',
-      title: 'New like on your post',
-      body: 'Someone liked your post.',
-      createdAt: like.created_at,
-      link: `/comments/${like.post_id}`,
-    }));
-
-    const feedCommentNotifications = feedComments.map<AppNotification>((comment) => ({
-      id: `feed-comment-${comment.id}`,
-      type: 'feed',
-      title: 'New comment on your post',
-      body: `${comment.author_name}: ${comment.content.slice(0, 90)}`,
-      createdAt: comment.created_at,
-      link: `/comments/${comment.post_id}`,
-    }));
-
-    const mapped = [
-      ...requestNotifications,
-      ...gigNotifications,
-      ...walletNotifications,
-      ...feedLikeNotifications,
-      ...feedCommentNotifications,
-    ].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    ).map((item) => ({
-      ...item,
-      read: readThroughTime > 0 && new Date(item.createdAt).getTime() <= readThroughTime,
-    }));
-    writeCache(cacheKey, mapped);
-    return mapped;
+    return fetchNotificationsByUid(uid, this.getNotificationSettings.bind(this), this.getNotificationLastReadAt.bind(this));
   },
 
   subscribeToNotifications(uid: string, callback: (items: AppNotification[]) => void, onError?: (error: any) => void) {
     let active = true;
+    const cacheKey = `notifications:${uid}`;
+    const unsubscribeCache = subscribeToCache<AppNotification[]>(cacheKey, callback);
+    const cached = readCacheAnyAge<AppNotification[]>(cacheKey);
+    if (cached) callback(cached);
 
     const refresh = async () => {
       try {
-        const items = await this.getNotifications(uid);
-        if (active) callback(items);
+        const items = await fetchNotificationsByUid(uid, this.getNotificationSettings.bind(this), this.getNotificationLastReadAt.bind(this));
+        if (active) {
+          publishCache(cacheKey, items);
+        }
       } catch (error) {
         if (onError) onError(error);
       }
@@ -4559,6 +4597,11 @@ export const supabaseService = {
         { event: '*', schema: 'public', table: 'post_comments' },
         refresh
       ),
+      supabase.channel(`realtime:market_settings:${uid}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'market_settings', filter: `user_uid=eq.${uid}` },
+        refresh
+      ),
     ];
 
     channels.forEach((channel) => channel.subscribe());
@@ -4566,6 +4609,7 @@ export const supabaseService = {
 
     return () => {
       active = false;
+      unsubscribeCache();
       clearInterval(interval);
       channels.forEach((channel) => supabase.removeChannel(channel));
     };

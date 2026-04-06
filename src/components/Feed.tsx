@@ -298,7 +298,7 @@ export default function Feed({ profile }: FeedProps) {
             </button>
           )}
         </div>
-        <div className="flex items-start gap-5 sm:gap-6 overflow-x-auto px-1 pb-2">
+        <div className="scrollbar-none flex items-start gap-5 sm:gap-6 overflow-x-auto px-1 pb-2">
           {topStudents.length > 0 ? (
             topStudents.map((student) => (
               <button

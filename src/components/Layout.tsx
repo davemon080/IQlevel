@@ -1,8 +1,8 @@
 import React from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { Home, Users, Briefcase, MessageSquare, LogOut, Search, Settings as SettingsIcon, Link2, Bell } from 'lucide-react';
+import { Home, Users, Briefcase, MessageSquare, LogOut, Search, Settings as SettingsIcon, Link2, Bell, PartyPopper, ShieldAlert, Store } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
-import { UserProfile } from '../types';
+import { MarketSettings, UserProfile } from '../types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { supabaseService } from '../services/supabaseService';
@@ -29,6 +29,8 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
   const [unreadNotifications, setUnreadNotifications] = React.useState(0);
   const [unreadMessages, setUnreadMessages] = React.useState(0);
   const [loggingOut, setLoggingOut] = React.useState(false);
+  const [marketAccessPopup, setMarketAccessPopup] = React.useState<null | { mode: 'granted' | 'revoked'; title: string; body: string }>(null);
+  const previousMarketSettingsRef = React.useRef<MarketSettings | null>(null);
   const { confirm, confirmDialog } = useConfirmDialog();
 
   const navItems = [
@@ -70,6 +72,58 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
       unsubscribeUnreadCounts();
     };
   }, [location.pathname, profile.uid, targetUid]);
+
+  React.useEffect(() => {
+    let active = true;
+
+    const handleSettings = (settings: MarketSettings) => {
+      if (!active) return;
+      const previous = previousMarketSettingsRef.current;
+      previousMarketSettingsRef.current = settings;
+      if (!previous) return;
+
+      const changed =
+        previous.isRegistered !== settings.isRegistered ||
+        previous.accessSource !== settings.accessSource ||
+        previous.adminOverrideUpdatedAt !== settings.adminOverrideUpdatedAt;
+
+      if (!changed) return;
+
+      if (settings.accessSource === 'admin_override_lock') {
+        setMarketAccessPopup({
+          mode: 'revoked',
+          title: 'Marketplace access revoked',
+          body: 'Your access to the market page has been revoked pending review from the Connect team.',
+        });
+        return;
+      }
+
+      if (settings.accessSource === 'admin_override_unlock') {
+        setMarketAccessPopup({
+          mode: 'granted',
+          title: 'Marketplace access restored',
+          body: 'Your market access has been restored. You can open the market page again now.',
+        });
+      }
+    };
+
+    supabaseService.getMarketSettings(profile.uid).then((settings) => {
+      if (!active) return;
+      previousMarketSettingsRef.current = settings;
+    }).catch(() => undefined);
+
+    const unsubscribe = supabaseService.subscribeToMarketSettings(profile.uid, handleSettings);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [profile.uid]);
+
+  React.useEffect(() => {
+    if (!marketAccessPopup) return;
+    const timeoutId = window.setTimeout(() => setMarketAccessPopup(null), 5500);
+    return () => window.clearTimeout(timeoutId);
+  }, [marketAccessPopup]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(124,58,237,0.08),_transparent_18%),linear-gradient(180deg,#faf7ff_0%,#f5f0ff_48%,#efe8ff_100%)] flex flex-col md:flex-row">
@@ -250,6 +304,66 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
         </nav>
       )}
       <GlobalSearch isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+      {marketAccessPopup && (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-[80] flex justify-center px-4">
+          <div
+            className={`pointer-events-auto relative w-full max-w-md overflow-hidden rounded-[1.75rem] border px-5 py-5 shadow-2xl backdrop-blur-sm ${
+              marketAccessPopup.mode === 'granted'
+                ? 'border-emerald-200 bg-white text-emerald-900'
+                : 'border-amber-200 bg-white text-amber-900'
+            }`}
+          >
+            {marketAccessPopup.mode === 'granted' && (
+              <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                {[0, 1, 2, 3, 4, 5].map((index) => (
+                  <span
+                    key={index}
+                    className="absolute h-3 w-3 rounded-full bg-emerald-300/70 animate-ping"
+                    style={{
+                      left: `${10 + index * 15}%`,
+                      top: `${12 + (index % 3) * 22}%`,
+                      animationDelay: `${index * 140}ms`,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            <div className="relative flex items-start gap-3">
+              <div
+                className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
+                  marketAccessPopup.mode === 'granted' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                }`}
+              >
+                {marketAccessPopup.mode === 'granted' ? <PartyPopper size={22} /> : <ShieldAlert size={22} />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-base font-black">{marketAccessPopup.title}</p>
+                <p className="mt-1 text-sm leading-6 text-gray-600">{marketAccessPopup.body}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link
+                    to={marketAccessPopup.mode === 'granted' ? '/market' : '/settings/market'}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold ${
+                      marketAccessPopup.mode === 'granted'
+                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                        : 'bg-amber-500 text-white hover:bg-amber-600'
+                    }`}
+                  >
+                    <Store size={15} />
+                    {marketAccessPopup.mode === 'granted' ? 'Open Market' : 'Review Access'}
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setMarketAccessPopup(null)}
+                    className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {confirmDialog}
     </div>
   );

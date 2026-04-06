@@ -99,17 +99,25 @@ export default function Wallets({ profile }: WalletsProps) {
       <div className="overflow-hidden rounded-[2rem] border border-violet-300/30 bg-[radial-gradient(circle_at_top_left,_rgba(196,181,253,0.18),_transparent_22%),linear-gradient(135deg,#12071f_0%,#241042_52%,#090312_100%)] p-5 text-white shadow-[0_22px_70px_rgba(15,6,33,0.45)] md:p-7">
         <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-violet-200/90">Wallet command</p>
-            <h2 className="mt-3 text-3xl font-black tracking-tight">Your balance is clear, fast, and in sync.</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-200">
-              Switch currency views, track available funds, and jump straight into transfers, funding, withdrawals, or history without losing visibility.
-            </p>
-
             <div className="mt-6 rounded-[1.6rem] border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1">
                   <p className="text-[11px] uppercase tracking-[0.22em] text-violet-200/80">Available Balance</p>
-                  <p className="mt-2 text-3xl font-black md:text-4xl">{formatAmount(availableBalance, currency)}</p>
+                  <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-3xl font-black md:text-4xl">{formatAmount(availableBalance, currency)}</p>
+                    <div className="relative w-full sm:w-44">
+                      <select
+                        value={currency}
+                        onChange={(e) => setCurrency(e.target.value as WalletCurrency)}
+                        className="w-full appearance-none rounded-2xl border border-white/20 bg-black/20 px-4 py-3 pr-10 text-sm font-semibold text-white outline-none backdrop-blur-sm"
+                      >
+                        <option value="USD" className="text-gray-900">USD</option>
+                        <option value="NGN" className="text-gray-900">NGN</option>
+                        <option value="EUR" className="text-gray-900">EUR</option>
+                      </select>
+                      <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-white/70" />
+                    </div>
+                  </div>
                   <button
                     type="button"
                     onClick={() => navigate('/settings?section=security')}
@@ -117,19 +125,6 @@ export default function Wallets({ profile }: WalletsProps) {
                   >
                     Manage transfer PIN in Security
                   </button>
-                </div>
-
-                <div className="relative w-full sm:w-56">
-                  <select
-                    value={currency}
-                    onChange={(e) => setCurrency(e.target.value as WalletCurrency)}
-                    className="w-full appearance-none rounded-2xl border border-white/20 bg-black/20 px-4 py-3 pr-10 text-sm font-semibold text-white outline-none backdrop-blur-sm"
-                  >
-                    <option value="USD" className="text-gray-900">USD</option>
-                    <option value="NGN" className="text-gray-900">NGN</option>
-                    <option value="EUR" className="text-gray-900">EUR</option>
-                  </select>
-                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-white/70" />
                 </div>
               </div>
             </div>

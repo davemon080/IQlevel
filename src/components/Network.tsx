@@ -25,7 +25,6 @@ export default function Network({ profile }: NetworkProps) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'suggested' | 'discover'>('suggested');
   const [profileByUid, setProfileByUid] = useState<Record<string, UserProfile>>({});
-  const [followBusyUid, setFollowBusyUid] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [hasMoreUsers, setHasMoreUsers] = useState(true);
   const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
@@ -364,7 +363,7 @@ export default function Network({ profile }: NetworkProps) {
                 Approved companies on Connect
               </span>
             </div>
-            <div className="flex items-start gap-5 sm:gap-6 overflow-x-auto px-1 pb-2">
+            <div className="scrollbar-none flex items-start gap-5 sm:gap-6 overflow-x-auto px-1 pb-2">
               {partners.length > 0 ? (
                 partners.map((partner) => (
                   <div
@@ -399,16 +398,26 @@ export default function Network({ profile }: NetworkProps) {
                     </span>
                     <button
                       type="button"
-                      disabled={followBusyUid === partner.userUid || partner.userUid === profile.uid}
+                      disabled={partner.userUid === profile.uid}
                       onClick={async () => {
                         const isFollowing = myCompanyFollows.some((item) => item.companyUid === partner.userUid);
-                        setFollowBusyUid(partner.userUid);
+                        const optimisticFollow: CompanyFollow = {
+                          id: `temp-follow-${partner.userUid}-${profile.uid}`,
+                          companyUid: partner.userUid,
+                          followerUid: profile.uid,
+                          createdAt: new Date().toISOString(),
+                        };
+                        const previousFollows = myCompanyFollows;
+                        setMyCompanyFollows((current) =>
+                          isFollowing
+                            ? current.filter((item) => item.companyUid !== partner.userUid)
+                            : [...current.filter((item) => item.companyUid !== partner.userUid), optimisticFollow]
+                        );
                         try {
                           await supabaseService.setCompanyFollow(partner.userUid, profile.uid, !isFollowing);
                         } catch (error) {
+                          setMyCompanyFollows(previousFollows);
                           console.error('Error updating company follow:', error);
-                        } finally {
-                          setFollowBusyUid(null);
                         }
                       }}
                       className={`mt-1 inline-flex min-h-10 w-full items-center justify-center rounded-2xl px-3 py-2 text-[10px] font-bold transition-colors sm:text-xs ${
@@ -419,8 +428,6 @@ export default function Network({ profile }: NetworkProps) {
                     >
                       {partner.userUid === profile.uid
                         ? 'Your company'
-                        : followBusyUid === partner.userUid
-                        ? 'Updating...'
                         : myCompanyFollows.some((item) => item.companyUid === partner.userUid)
                         ? 'Following'
                         : 'Follow company'}

@@ -26,7 +26,6 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
   const [companyFollowers, setCompanyFollowers] = useState<CompanyFollow[]>([]);
   const [myCompanyFollows, setMyCompanyFollows] = useState<CompanyFollow[]>([]);
   const [followedCompanies, setFollowedCompanies] = useState<Record<string, CompanyPartnerRequest>>({});
-  const [followingCompany, setFollowingCompany] = useState(false);
 
   const isOwnProfile = uid === loggedInProfile.uid;
 
@@ -194,8 +193,8 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
           <h1 className="text-2xl font-bold text-gray-900">Company Profile</h1>
         </div>
 
-        <div className="overflow-hidden bg-white shadow-sm md:rounded-[2rem] md:border md:border-gray-200">
-          <div className="bg-gradient-to-r from-teal-700 via-emerald-600 to-lime-500 px-4 py-8 text-white sm:px-6 md:px-8 md:py-10">
+        <div className="overflow-hidden bg-white shadow-sm md:rounded-[2rem] md:border md:border-emerald-100">
+          <div className="bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.2),_transparent_24%),linear-gradient(120deg,#052e2b_0%,#0f766e_45%,#34d399_100%)] px-4 py-8 text-white sm:px-6 md:px-8 md:py-10">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                 <CachedImage
@@ -209,29 +208,40 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                   imgClassName="h-full w-full rounded-[1.25rem] object-cover"
                 />
                 <div className="min-w-0">
-                  <p className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em]">
+                  <p className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/12 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em]">
                     <Building2 size={12} />
                     Approved Partner
                   </p>
                   <h2 className="mt-3 text-3xl font-black leading-tight sm:text-4xl">{companyPartner.companyName}</h2>
-                  <p className="mt-1 text-sm text-white/85">{companyPartner.location}</p>
+                  <p className="mt-1 text-sm text-emerald-50/90">{companyPartner.location}</p>
                   {!isOwnProfile && (
                     <button
                       type="button"
-                      disabled={followingCompany}
                       onClick={async () => {
-                        setFollowingCompany(true);
+                        const optimisticFollow: CompanyFollow = {
+                          id: `temp-follow-${companyPartner.userUid}-${loggedInProfile.uid}`,
+                          companyUid: companyPartner.userUid,
+                          followerUid: loggedInProfile.uid,
+                          createdAt: new Date().toISOString(),
+                        };
+                        const previousFollows = myCompanyFollows;
                         try {
+                          setMyCompanyFollows((current) =>
+                            isFollowingCompany
+                              ? current.filter((item) => item.companyUid !== companyPartner.userUid)
+                              : [...current.filter((item) => item.companyUid !== companyPartner.userUid), optimisticFollow]
+                          );
                           await supabaseService.setCompanyFollow(companyPartner.userUid, loggedInProfile.uid, !isFollowingCompany);
-                        } finally {
-                          setFollowingCompany(false);
+                        } catch (error) {
+                          setMyCompanyFollows(previousFollows);
+                          console.error('Error updating company follow:', error);
                         }
                       }}
                       className={`mt-4 inline-flex min-h-11 items-center justify-center rounded-2xl px-5 py-3 text-sm font-bold transition-colors ${
-                        isFollowingCompany ? 'bg-white text-teal-700' : 'border border-white/30 text-white hover:bg-white/10'
+                        isFollowingCompany ? 'bg-white text-emerald-700' : 'border border-white/30 text-white hover:bg-white/10'
                       }`}
                     >
-                      {followingCompany ? 'Updating...' : isFollowingCompany ? 'Following company' : 'Follow company'}
+                      {isFollowingCompany ? 'Following company' : 'Follow company'}
                     </button>
                   )}
                 </div>
@@ -239,7 +249,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <button
                   onClick={() => navigate(`/messages?uid=${userProfile.uid}`)}
-                  className="rounded-2xl bg-white px-4 py-3 text-sm font-bold text-teal-700 hover:bg-teal-50"
+                  className="rounded-2xl bg-white px-4 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50"
                 >
                   Message Company
                 </button>
@@ -257,21 +267,21 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               </div>
             </div>
             <div className="mt-6 flex flex-wrap gap-4 text-sm text-white/90">
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 font-semibold">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/12 px-4 py-2 font-semibold">
                 <Users size={14} />
                 {companyFollowers.length} follower{companyFollowers.length === 1 ? '' : 's'}
               </span>
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 font-semibold">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/12 px-4 py-2 font-semibold">
                 <Building2 size={14} />
                 Approved company profile
               </span>
             </div>
           </div>
 
-          <div className="grid gap-6 px-4 py-5 sm:px-6 sm:py-6 lg:grid-cols-[1.18fr_0.82fr] lg:px-8">
+          <div className="grid gap-6 bg-[linear-gradient(180deg,#f7fffc_0%,#ffffff_32%,#f8fafc_100%)] px-4 py-5 sm:px-6 sm:py-6 lg:grid-cols-[1.18fr_0.82fr] lg:px-8">
             <div className="space-y-6">
-              <section className="rounded-3xl bg-gray-50 p-5">
-                <p className="text-xs font-bold uppercase tracking-[0.22em] text-gray-400">About this company</p>
+              <section className="rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm">
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-700/70">About this company</p>
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-gray-700">
                   {companyPartner.about || userProfile.companyInfo?.about || 'No company description added yet.'}
                 </p>
@@ -281,7 +291,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 <section className="space-y-3">
                   <p className="text-sm font-bold text-gray-900">Latest Highlights</p>
                   {posts.map((post) => (
-                    <div key={post.id} className="rounded-3xl border border-gray-100 p-4">
+                    <div key={post.id} className="rounded-3xl border border-emerald-100/80 bg-white p-4 shadow-sm">
                       <p className="text-xs text-gray-400 mb-2">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
                       <p className="text-sm text-gray-800 whitespace-pre-wrap">{post.content}</p>
                       {post.imageUrl && (
@@ -302,8 +312,8 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-3xl border border-gray-200 p-5">
-                <p className="text-xs font-bold uppercase tracking-[0.22em] text-gray-400">Company details</p>
+              <div className="rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm">
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-700/70">Company details</p>
                 <div className="mt-4 space-y-3 text-sm text-gray-700">
                   <div className="flex items-start gap-3">
                     <MapPin size={16} className="mt-0.5 text-teal-700" />
@@ -327,8 +337,8 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               </div>
 
               {companyPartner.socialLinks.length > 0 && (
-                <div className="rounded-3xl border border-gray-200 p-5">
-                  <p className="text-xs font-bold uppercase tracking-[0.22em] text-gray-400">Social links</p>
+                <div className="rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-700/70">Social links</p>
                   <div className="mt-4 space-y-2">
                     {companyPartner.socialLinks.map((link) => (
                       <a
