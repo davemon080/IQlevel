@@ -375,6 +375,35 @@ function removePostFromList(current: Post[] | null, postId: string): Post[] {
   return (current || []).filter((item) => item.id !== postId);
 }
 
+async function fetchMarketSettingsByUid(uid: string): Promise<MarketSettings> {
+  const row = await runQuery<DbMarketSettings | null>(
+    supabase.from('market_settings').select('*').eq('user_uid', uid).maybeSingle(),
+    'getMarketSettings'
+  );
+
+  if (row) {
+    const mapped = mapMarketSettingsFromDb(row);
+    writeCache(`market:settings:${uid}`, mapped);
+    return mapped;
+  }
+
+  const fallback: MarketSettings = {
+    userUid: uid,
+    phoneNumber: '',
+    location: '',
+    brandName: '',
+    baseIsRegistered: false,
+    isRegistered: false,
+    accessOverride: 'inherit',
+    accessSource: 'unregistered',
+    showPhoneNumber: false,
+    showLocation: false,
+    showBrandName: true,
+  };
+  writeCache(`market:settings:${uid}`, fallback);
+  return fallback;
+}
+
 function mapPostLikeFromDb(row: DbPostLike): PostLike {
   return {
     id: row.id,
@@ -2598,37 +2627,11 @@ export const supabaseService = {
     const cacheKey = `market:settings:${uid}`;
     const cached = readCache<MarketSettings>(cacheKey, CACHE_TTL.users);
     if (cached) return cached;
-
-    const row = await runQuery<DbMarketSettings | null>(
-      supabase.from('market_settings').select('*').eq('user_uid', uid).maybeSingle(),
-      'getMarketSettings'
-    );
-
-    if (row) {
-      const mapped = mapMarketSettingsFromDb(row);
-      writeCache(cacheKey, mapped);
-      return mapped;
-    }
-
-    const fallback: MarketSettings = {
-      userUid: uid,
-      phoneNumber: '',
-      location: '',
-      brandName: '',
-      baseIsRegistered: false,
-      isRegistered: false,
-      accessOverride: 'inherit',
-      accessSource: 'unregistered',
-      showPhoneNumber: false,
-      showLocation: false,
-      showBrandName: true,
-    };
-    writeCache(cacheKey, fallback);
-    return fallback;
+    return fetchMarketSettingsByUid(uid);
   },
 
   subscribeToMarketSettings(uid: string, callback: (settings: MarketSettings) => void, onError?: (error: any) => void) {
-    const fetcher = async () => this.getMarketSettings(uid);
+    const fetcher = async () => fetchMarketSettingsByUid(uid);
     return subscribeToTable('market_settings', fetcher, callback, `user_uid=eq.${uid}`, onError, `market:settings:${uid}`);
   },
 
