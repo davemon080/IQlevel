@@ -53,6 +53,13 @@ export default function JobBoard({ profile }: JobBoardProps) {
       setMarketRegistered(settings.isRegistered);
       setMarketAccessSource(settings.accessSource || 'unregistered');
     }).catch(() => undefined);
+
+    const unsubscribe = supabaseService.subscribeToMarketSettings(profile.uid, (settings) => {
+      setMarketRegistered(settings.isRegistered);
+      setMarketAccessSource(settings.accessSource || 'unregistered');
+    });
+
+    return () => unsubscribe();
   }, [profile.uid]);
 
   useEffect(() => {

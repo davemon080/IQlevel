@@ -30,13 +30,17 @@ export default function Market({ profile }: MarketProps) {
     supabaseService.getMarketSettings(profile.uid).then((settings) => {
       if (!active) return;
       setAccessSource(settings.accessSource || 'unregistered');
-      if (!settings.isRegistered) {
-        return;
-      }
-      setAccessReady(true);
+      setAccessReady(settings.isRegistered);
+    });
+
+    const unsubscribe = supabaseService.subscribeToMarketSettings(profile.uid, (settings) => {
+      if (!active) return;
+      setAccessSource(settings.accessSource || 'unregistered');
+      setAccessReady(settings.isRegistered);
     });
     return () => {
       active = false;
+      unsubscribe();
     };
   }, [navigate, profile.uid]);
 

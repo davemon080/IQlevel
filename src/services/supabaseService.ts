@@ -453,8 +453,9 @@ function mapCompanyFollowFromDb(row: DbCompanyFollow): CompanyFollow {
 
 function mapMarketSettingsFromDb(row: DbMarketSettings): MarketSettings {
   const accessOverride = row.admin_access_override || 'inherit';
+  const baseIsRegistered = !!row.is_registered;
   const isRegistered =
-    accessOverride === 'force_unlock' ? true : accessOverride === 'force_lock' ? false : !!row.is_registered;
+    accessOverride === 'force_unlock' ? true : accessOverride === 'force_lock' ? false : baseIsRegistered;
   const accessSource =
     accessOverride === 'force_unlock'
       ? 'admin_override_unlock'
@@ -468,6 +469,7 @@ function mapMarketSettingsFromDb(row: DbMarketSettings): MarketSettings {
     phoneNumber: row.phone_number || '',
     location: row.location || '',
     brandName: row.brand_name || '',
+    baseIsRegistered,
     isRegistered,
     registeredAt: row.registered_at || undefined,
     accessOverride,
@@ -2508,6 +2510,7 @@ export const supabaseService = {
       phoneNumber: '',
       location: '',
       brandName: '',
+      baseIsRegistered: false,
       isRegistered: false,
       accessOverride: 'inherit',
       accessSource: 'unregistered',
@@ -2517,6 +2520,11 @@ export const supabaseService = {
     };
     writeCache(cacheKey, fallback);
     return fallback;
+  },
+
+  subscribeToMarketSettings(uid: string, callback: (settings: MarketSettings) => void, onError?: (error: any) => void) {
+    const fetcher = async () => this.getMarketSettings(uid);
+    return subscribeToTable('market_settings', fetcher, callback, `user_uid=eq.${uid}`, onError, `market:settings:${uid}`);
   },
 
   async updateMarketSettings(uid: string, updates: Pick<MarketSettings, 'phoneNumber' | 'location' | 'brandName' | 'showPhoneNumber' | 'showLocation' | 'showBrandName'>): Promise<MarketSettings> {
@@ -2530,7 +2538,7 @@ export const supabaseService = {
             phone_number: updates.phoneNumber || null,
             location: updates.location || null,
             brand_name: updates.brandName || null,
-            is_registered: existing.isRegistered,
+            is_registered: existing.baseIsRegistered,
             registered_at: existing.registeredAt || null,
             admin_access_override: existing.accessOverride || 'inherit',
             admin_override_updated_at: existing.adminOverrideUpdatedAt || null,
@@ -2546,7 +2554,7 @@ export const supabaseService = {
     );
 
     const mapped = mapMarketSettingsFromDb(row);
-    writeCache(`market:settings:${uid}`, mapped);
+    publishCache(`market:settings:${uid}`, mapped);
     await this.updateUserProfile(uid, {
       phoneNumber: mapped.phoneNumber,
       location: mapped.location,
@@ -2585,7 +2593,7 @@ export const supabaseService = {
     );
 
     const mapped = mapMarketSettingsFromDb(row);
-    writeCache(`market:settings:${uid}`, mapped);
+    publishCache(`market:settings:${uid}`, mapped);
     return mapped;
   },
 
@@ -2659,7 +2667,7 @@ export const supabaseService = {
     removeCache(`wallet:${uid}`);
     removeCache(`wallet:transactions:${uid}`);
     const mapped = mapMarketSettingsFromDb(row);
-    writeCache(`market:settings:${uid}`, mapped);
+    publishCache(`market:settings:${uid}`, mapped);
     return mapped;
   },
 

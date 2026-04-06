@@ -36,8 +36,14 @@ export default function EditMarketItem({ profile }: EditMarketItemProps) {
         navigate('/settings?section=market', { replace: true });
       }
     });
+    const unsubscribe = supabaseService.subscribeToMarketSettings(profile.uid, (settings) => {
+      if (active && !settings.isRegistered) {
+        navigate('/settings?section=market', { replace: true });
+      }
+    });
     return () => {
       active = false;
+      unsubscribe();
     };
   }, [navigate, profile.uid]);
 

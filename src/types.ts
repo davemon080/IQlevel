@@ -110,6 +110,7 @@ export interface MarketSettings {
   phoneNumber: string;
   location: string;
   brandName: string;
+  baseIsRegistered: boolean;
   isRegistered: boolean;
   registeredAt?: string;
   accessOverride?: 'inherit' | 'force_unlock' | 'force_lock';

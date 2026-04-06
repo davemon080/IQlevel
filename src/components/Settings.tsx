@@ -45,7 +45,23 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => { setNotificationSettings(supabaseService.getNotificationSettings(profile.uid)); setPreferences(supabaseService.getAppPreferences(profile.uid)); }, [profile.uid]);
-  useEffect(() => { supabaseService.getMarketSettings(profile.uid).then((s) => { setMarketPhone(s.phoneNumber || profile.phoneNumber || ''); setMarketLocation(s.location || profile.location || ''); setMarketBrandName(s.brandName || profile.companyInfo?.name || ''); setMarketRegistered(s.isRegistered); setMarketAccessSource(s.accessSource || 'unregistered'); setShowPhoneNumber(s.showPhoneNumber); setShowLocation(s.showLocation); setShowBrandName(s.showBrandName); }); }, [profile.companyInfo?.name, profile.location, profile.phoneNumber, profile.uid]);
+  useEffect(() => {
+    let active = true;
+    const applySettings = (s: Awaited<ReturnType<typeof supabaseService.getMarketSettings>>) => {
+      if (!active) return;
+      setMarketPhone(s.phoneNumber || profile.phoneNumber || '');
+      setMarketLocation(s.location || profile.location || '');
+      setMarketBrandName(s.brandName || profile.companyInfo?.name || '');
+      setMarketRegistered(s.isRegistered);
+      setMarketAccessSource(s.accessSource || 'unregistered');
+      setShowPhoneNumber(s.showPhoneNumber);
+      setShowLocation(s.showLocation);
+      setShowBrandName(s.showBrandName);
+    };
+    supabaseService.getMarketSettings(profile.uid).then(applySettings);
+    const unsubscribe = supabaseService.subscribeToMarketSettings(profile.uid, applySettings);
+    return () => { active = false; unsubscribe(); };
+  }, [profile.companyInfo?.name, profile.location, profile.phoneNumber, profile.uid]);
   useEffect(() => { document.documentElement.lang = preferences.language; document.documentElement.dataset.connectAppearance = preferences.appearance; }, [preferences]);
   useEffect(() => { supabaseService.getConnectedDeviceSessions(profile.uid).then((devices) => setPreferences((prev) => ({ ...prev, connectedDevices: devices }))).catch(() => undefined); }, [profile.uid]);
 
