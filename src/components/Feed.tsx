@@ -225,8 +225,6 @@ export default function Feed({ profile }: FeedProps) {
 
     try {
       await supabaseService.setPostLike(postId, profile.uid, shouldLike);
-      const refreshed = await supabaseService.listPostLikes();
-      setLikes(refreshed);
     } catch (error) {
       setLikes(previousLikes);
       setFeedMessage(getErrorMessage(error, 'We could not update your like right now.'));
@@ -395,8 +393,15 @@ export default function Feed({ profile }: FeedProps) {
           </div>
         )}
         {backgroundPostingCount > 0 && (
-          <div className="sticky top-20 z-20 bg-amber-50 border border-amber-200 text-amber-800 text-xs sm:text-sm font-semibold rounded-xl px-4 py-2.5">
-            {backgroundPostingCount === 1 ? 'Your post is updating in background...' : `${backgroundPostingCount} posts are updating in background...`}
+          <div className="sticky top-20 z-20 flex items-center gap-3 rounded-xl border border-violet-200 bg-violet-50/95 px-4 py-2.5 text-xs font-semibold text-violet-900 shadow-sm backdrop-blur-sm sm:text-sm">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-violet-300/70 bg-white/90">
+              <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-violet-600 border-t-transparent" />
+            </span>
+            <span>
+              {backgroundPostingCount === 1
+                ? 'Your post is syncing now...'
+                : `${backgroundPostingCount} posts are syncing now...`}
+            </span>
           </div>
         )}
         <AnimatePresence>

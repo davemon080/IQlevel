@@ -219,6 +219,8 @@ const CHAT_READ_KEY_PREFIX = 'connect_chat_read_map_';
 const CHAT_READ_EVENT = 'connect:chat-read-updated';
 const CHAT_CLEAR_KEY_PREFIX = 'connect_chat_cleared_map_';
 const APP_CACHE_PREFIX = 'connect_app_cache_v2:';
+const cacheSubscribers = new Map<string, Set<(data: unknown) => void>>();
+const cacheVersions = new Map<string, number>();
 const LEGACY_APP_CACHE_PREFIXES = ['connect_app_cache_v1:'];
 const PRESENCE_CHANNEL_NAME = 'connect:presence';
 const MESSAGE_DELETED_SENTINEL = '__connect_deleted_message__';
@@ -753,7 +755,52 @@ function writeCache<T>(key: string, data: T): void {
   }
 }
 
+function bumpCacheVersion(key: string): number {
+  const nextVersion = (cacheVersions.get(key) || 0) + 1;
+  cacheVersions.set(key, nextVersion);
+  return nextVersion;
+}
+
+function getCacheVersion(key: string): number {
+  return cacheVersions.get(key) || 0;
+}
+
+function publishCache<T>(key: string, data: T): void {
+  bumpCacheVersion(key);
+  writeCache(key, data);
+  const subscribers = cacheSubscribers.get(key);
+  if (!subscribers) return;
+  subscribers.forEach((callback) => {
+    callback(data);
+  });
+}
+
+function subscribeToCache<T>(key: string, callback: (data: T) => void): () => void {
+  const subscribers = cacheSubscribers.get(key) || new Set<(data: unknown) => void>();
+  subscribers.add(callback as (data: unknown) => void);
+  cacheSubscribers.set(key, subscribers);
+  return () => {
+    const current = cacheSubscribers.get(key);
+    if (!current) return;
+    current.delete(callback as (data: unknown) => void);
+    if (current.size === 0) {
+      cacheSubscribers.delete(key);
+    }
+  };
+}
+
+function updateCachedValue<T>(key: string, updater: (current: T | null) => T | null): T | null {
+  const nextValue = updater(readCacheAnyAge<T>(key));
+  if (nextValue === null) {
+    removeCache(key);
+    return null;
+  }
+  publishCache(key, nextValue);
+  return nextValue;
+}
+
 function removeCache(key: string): void {
+  bumpCacheVersion(key);
   memoryCache.delete(key);
   if (typeof window === 'undefined') return;
   try {
@@ -766,7 +813,10 @@ function removeCache(key: string): void {
 function removeCacheByPrefix(prefix: string): void {
   Array.from(memoryCache.keys())
     .filter((key) => key.startsWith(prefix))
-    .forEach((key) => memoryCache.delete(key));
+    .forEach((key) => {
+      bumpCacheVersion(key);
+      memoryCache.delete(key);
+    });
 
   if (typeof window === 'undefined') return;
   try {
@@ -883,6 +933,7 @@ function subscribeToTable<T>(
 ) {
   let active = true;
   let fetchVersion = 0;
+  const unsubscribeCache = cacheKey ? subscribeToCache(cacheKey, callback) : null;
 
   if (cacheKey) {
     const cached = readCacheAnyAge<T>(cacheKey);
@@ -891,11 +942,17 @@ function subscribeToTable<T>(
 
   const refresh = () => {
     const currentVersion = ++fetchVersion;
+    const cacheVersionAtStart = cacheKey ? getCacheVersion(cacheKey) : 0;
     fetcher()
       .then((data) => {
         // Prevent stale fetch responses from overwriting newer state.
-        if (cacheKey) writeCache(cacheKey, data);
-        if (active && currentVersion === fetchVersion) callback(data);
+        if (!active || currentVersion !== fetchVersion) return;
+        if (cacheKey) {
+          if (cacheVersionAtStart !== getCacheVersion(cacheKey)) return;
+          publishCache(cacheKey, data);
+          return;
+        }
+        callback(data);
       })
       .catch((error) => {
         console.error(`Supabase fetch error (${table}):`, error);
@@ -916,6 +973,7 @@ function subscribeToTable<T>(
 
   return () => {
     active = false;
+    unsubscribeCache?.();
     supabase.removeChannel(channel);
   };
 }
@@ -1514,11 +1572,17 @@ export const supabaseService = {
       'createPost'
     );
     const mapped = mapPostFromDb(row);
-    writeCache(`post:${mapped.id}`, mapped);
+    publishCache(`post:${mapped.id}`, mapped);
+    updateCachedValue<Post[]>('posts:all', (current) => {
+      if (!current) return [mapped];
+      return [mapped, ...current.filter((item) => item.id !== mapped.id)];
+    });
+    updateCachedValue<Post[]>(`posts:user:${mapped.authorUid}`, (current) => {
+      if (!current) return [mapped];
+      return [mapped, ...current.filter((item) => item.id !== mapped.id)];
+    });
     removeCacheByPrefix('posts:list:');
-    removeCacheByPrefix(`posts:user:${mapped.authorUid}`);
     removeCacheByPrefix('posts:highlights:');
-    removeCache('posts:all');
     return mapped;
   },
 
@@ -1680,20 +1744,34 @@ export const supabaseService = {
         supabase.from('post_likes').delete().in('id', existingIds),
         'setPostLike:delete'
       );
-      removeCache('posts:likes');
+      updateCachedValue<PostLike[]>('posts:likes', (current) => {
+        if (!current) return [];
+        return current.filter((item) => !(item.postId === postId && item.userUid === userUid));
+      });
       return;
     }
 
     if (existingRows.length === 0) {
+      const createdAt = new Date().toISOString();
       await runQuery(
         supabase.from('post_likes').insert({
           post_id: postId,
           user_uid: userUid,
-          created_at: new Date().toISOString(),
+          created_at: createdAt,
         }),
         'setPostLike:insert'
       );
-      removeCache('posts:likes');
+      updateCachedValue<PostLike[]>('posts:likes', (current) => {
+        const nextLike: PostLike = {
+          id: `temp-like-${postId}-${userUid}`,
+          postId,
+          userUid,
+          createdAt,
+        };
+        if (!current) return [nextLike];
+        const filtered = current.filter((item) => !(item.postId === postId && item.userUid === userUid));
+        return [...filtered, nextLike];
+      });
       return;
     }
 
@@ -1704,7 +1782,16 @@ export const supabaseService = {
         'setPostLike:dedupe'
       );
     }
-    removeCache('posts:likes');
+    updateCachedValue<PostLike[]>('posts:likes', (current) => {
+      if (!current) return [];
+      const existing = current.find((item) => item.postId === postId && item.userUid === userUid);
+      return existing ? current : [...current, {
+        id: existingRows[0].id,
+        postId,
+        userUid,
+        createdAt: new Date().toISOString(),
+      }];
+    });
   },
 
   async listPostComments(postId: string): Promise<PostComment[]> {
@@ -1980,8 +2067,8 @@ export const supabaseService = {
     };
   },
 
-  async createMarketItem(item: Omit<MarketItem, 'id' | 'createdAt' | 'seller'>): Promise<void> {
-    await runQuery(
+  async createMarketItem(item: Omit<MarketItem, 'id' | 'createdAt' | 'seller'>): Promise<MarketItem> {
+    const row = await runQuery<DbMarketItem>(
       supabase.from('market_items').insert({
         seller_uid: item.sellerUid,
         title: item.title,
@@ -1994,10 +2081,17 @@ export const supabaseService = {
         stock_quantity: item.stockQuantity,
         image_urls: item.imageUrls,
         created_at: new Date().toISOString(),
-      }),
+      }).select('*').single(),
       'createMarketItem'
     );
-    removeCache('market:all');
+    const seller = this.profileCache.get(row.seller_uid) || (await this.getUserProfile(row.seller_uid));
+    const mapped = mapMarketItemFromDb(row, seller || undefined);
+    publishCache(`market:${mapped.id}`, mapped);
+    updateCachedValue<MarketItem[]>('market:all', (current) => {
+      if (!current) return [mapped];
+      return [mapped, ...current.filter((item) => item.id !== mapped.id)];
+    });
+    return mapped;
   },
 
   async updateMarketItem(itemId: string, updates: Omit<MarketItem, 'id' | 'createdAt' | 'seller' | 'sellerUid'> & { sellerUid?: string }): Promise<MarketItem> {
@@ -2023,8 +2117,11 @@ export const supabaseService = {
     const seller =
       this.profileCache.get(row.seller_uid) || (await this.getUserProfile(row.seller_uid));
     const mapped = mapMarketItemFromDb(row, seller || undefined);
-    writeCache(`market:${itemId}`, mapped);
-    removeCache('market:all');
+    publishCache(`market:${itemId}`, mapped);
+    updateCachedValue<MarketItem[]>('market:all', (current) => {
+      if (!current) return [mapped];
+      return current.map((item) => (item.id === itemId ? mapped : item));
+    });
     return mapped;
   },
 
@@ -2034,7 +2131,10 @@ export const supabaseService = {
       'deleteMarketItem'
     );
     removeCache(`market:${itemId}`);
-    removeCache('market:all');
+    updateCachedValue<MarketItem[]>('market:all', (current) => {
+      if (!current) return [];
+      return current.filter((item) => item.id !== itemId);
+    });
   },
 
   async listMarketItems(): Promise<MarketItem[]> {
@@ -2220,18 +2320,37 @@ export const supabaseService = {
   },
 
   async setCompanyFollow(companyUid: string, followerUid: string, shouldFollow: boolean): Promise<void> {
+    const companyCacheKey = `company:follows:${companyUid}`;
+    const followerCacheKey = `company:follows:follower:${followerUid}`;
     if (shouldFollow) {
+      const createdAt = new Date().toISOString();
       await runQuery(
         supabase.from('company_follows').upsert(
           {
             company_uid: companyUid,
             follower_uid: followerUid,
-            created_at: new Date().toISOString(),
+            created_at: createdAt,
           },
           { onConflict: 'company_uid,follower_uid' }
         ),
         'setCompanyFollow:follow'
       );
+      const nextFollow: CompanyFollow = {
+        id: `temp-follow-${companyUid}-${followerUid}`,
+        companyUid,
+        followerUid,
+        createdAt,
+      };
+      updateCachedValue<CompanyFollow[]>(companyCacheKey, (current) => {
+        if (!current) return [nextFollow];
+        const filtered = current.filter((item) => item.followerUid !== followerUid);
+        return [nextFollow, ...filtered];
+      });
+      updateCachedValue<CompanyFollow[]>(followerCacheKey, (current) => {
+        if (!current) return [nextFollow];
+        const filtered = current.filter((item) => item.companyUid !== companyUid);
+        return [nextFollow, ...filtered];
+      });
       return;
     }
 
@@ -2239,6 +2358,14 @@ export const supabaseService = {
       supabase.from('company_follows').delete().eq('company_uid', companyUid).eq('follower_uid', followerUid),
       'setCompanyFollow:unfollow'
     );
+    updateCachedValue<CompanyFollow[]>(companyCacheKey, (current) => {
+      if (!current) return [];
+      return current.filter((item) => item.followerUid !== followerUid);
+    });
+    updateCachedValue<CompanyFollow[]>(followerCacheKey, (current) => {
+      if (!current) return [];
+      return current.filter((item) => item.companyUid !== companyUid);
+    });
   },
 
   async listMarketSellerRatings(): Promise<MarketSellerRating[]> {
@@ -3253,7 +3380,7 @@ export const supabaseService = {
 
     if (existing) {
       const mapped = mapWalletFromDb(existing);
-      writeCache(`wallet:${uid}`, mapped);
+      publishCache(`wallet:${uid}`, mapped);
       return mapped;
     }
 
@@ -3273,7 +3400,7 @@ export const supabaseService = {
     );
 
     const mapped = mapWalletFromDb(created);
-    writeCache(`wallet:${uid}`, mapped);
+    publishCache(`wallet:${uid}`, mapped);
     return mapped;
   },
 
@@ -3378,11 +3505,12 @@ export const supabaseService = {
       ngn_balance: wallet.ngnBalance + (currency === 'NGN' ? amount : 0),
       eur_balance: wallet.eurBalance + (currency === 'EUR' ? amount : 0),
     };
+    const timestamp = new Date().toISOString();
 
     await runQuery(
       supabase
         .from('wallets')
-        .update({ ...nextBalances, updated_at: new Date().toISOString() })
+        .update({ ...nextBalances, updated_at: timestamp })
         .eq('user_uid', uid),
       'topUpWallet:update'
     );
@@ -3395,10 +3523,30 @@ export const supabaseService = {
         method,
         amount,
         status: 'completed',
-        created_at: new Date().toISOString(),
+        created_at: timestamp,
       }),
       'topUpWallet:transaction'
     );
+    publishCache(`wallet:${uid}`, {
+      ...wallet,
+      usdBalance: nextBalances.usd_balance,
+      ngnBalance: nextBalances.ngn_balance,
+      eurBalance: nextBalances.eur_balance,
+      updatedAt: timestamp,
+    });
+    updateCachedValue<WalletTransaction[]>(`wallet:transactions:${uid}`, (current) => [
+      {
+        id: `temp-wallet-topup-${uid}-${Date.now()}`,
+        userUid: uid,
+        currency,
+        type: 'topup',
+        method,
+        amount,
+        status: 'completed',
+        createdAt: timestamp,
+      },
+      ...(current || []),
+    ]);
   },
 
   async withdrawFromWallet(uid: string, currency: WalletCurrency, amount: number, method: 'card' | 'transfer') {
@@ -3413,11 +3561,12 @@ export const supabaseService = {
       ngn_balance: wallet.ngnBalance - (currency === 'NGN' ? amount : 0),
       eur_balance: wallet.eurBalance - (currency === 'EUR' ? amount : 0),
     };
+    const timestamp = new Date().toISOString();
 
     await runQuery(
       supabase
         .from('wallets')
-        .update({ ...nextBalances, updated_at: new Date().toISOString() })
+        .update({ ...nextBalances, updated_at: timestamp })
         .eq('user_uid', uid),
       'withdrawWallet:update'
     );
@@ -3430,10 +3579,30 @@ export const supabaseService = {
         method,
         amount,
         status: 'completed',
-        created_at: new Date().toISOString(),
+        created_at: timestamp,
       }),
       'withdrawWallet:transaction'
     );
+    publishCache(`wallet:${uid}`, {
+      ...wallet,
+      usdBalance: nextBalances.usd_balance,
+      ngnBalance: nextBalances.ngn_balance,
+      eurBalance: nextBalances.eur_balance,
+      updatedAt: timestamp,
+    });
+    updateCachedValue<WalletTransaction[]>(`wallet:transactions:${uid}`, (current) => [
+      {
+        id: `temp-wallet-withdraw-${uid}-${Date.now()}`,
+        userUid: uid,
+        currency,
+        type: 'withdraw',
+        method,
+        amount,
+        status: 'completed',
+        createdAt: timestamp,
+      },
+      ...(current || []),
+    ]);
   },
 
   async withdrawToBankAccountWithPin(
@@ -3482,9 +3651,27 @@ export const supabaseService = {
       }),
       'withdrawToBankAccountWithPin:transaction'
     );
-
-    removeCache(`wallet:${uid}`);
-    removeCache(`wallet:transactions:${uid}`);
+    publishCache(`wallet:${uid}`, {
+      ...wallet,
+      usdBalance: nextBalances.usd_balance,
+      ngnBalance: nextBalances.ngn_balance,
+      eurBalance: nextBalances.eur_balance,
+      updatedAt: timestamp,
+    });
+    updateCachedValue<WalletTransaction[]>(`wallet:transactions:${uid}`, (current) => [
+      {
+        id: `temp-wallet-withdraw-bank-${uid}-${Date.now()}`,
+        userUid: uid,
+        currency,
+        type: 'withdraw',
+        method: 'transfer',
+        amount,
+        status: 'completed',
+        createdAt: timestamp,
+        reference: buildWithdrawalReference(account),
+      },
+      ...(current || []),
+    ]);
   },
 
   async transferByUserId(senderUid: string, recipientIdentifier: string, currency: WalletCurrency, amount: number) {
@@ -3569,6 +3756,48 @@ export const supabaseService = {
       ]),
       'transferWallet:transactions'
     );
+    publishCache(`wallet:${senderUid}`, {
+      ...senderWallet,
+      usdBalance: senderNextBalances.usd_balance,
+      ngnBalance: senderNextBalances.ngn_balance,
+      eurBalance: senderNextBalances.eur_balance,
+      updatedAt: timestamp,
+    });
+    publishCache(`wallet:${recipientUid}`, {
+      ...recipientWallet,
+      usdBalance: recipientNextBalances.usd_balance,
+      ngnBalance: recipientNextBalances.ngn_balance,
+      eurBalance: recipientNextBalances.eur_balance,
+      updatedAt: timestamp,
+    });
+    updateCachedValue<WalletTransaction[]>(`wallet:transactions:${senderUid}`, (current) => [
+      {
+        id: `temp-wallet-transfer-out-${senderUid}-${Date.now()}`,
+        userUid: senderUid,
+        currency,
+        type: 'withdraw',
+        method: 'transfer',
+        amount,
+        status: 'completed',
+        createdAt: timestamp,
+        reference: `transfer_out:${recipientUid}:${transferRef}`,
+      },
+      ...(current || []),
+    ]);
+    updateCachedValue<WalletTransaction[]>(`wallet:transactions:${recipientUid}`, (current) => [
+      {
+        id: `temp-wallet-transfer-in-${recipientUid}-${Date.now()}`,
+        userUid: recipientUid,
+        currency,
+        type: 'topup',
+        method: 'transfer',
+        amount,
+        status: 'completed',
+        createdAt: timestamp,
+        reference: `transfer_in:${senderUid}:${transferRef}`,
+      },
+      ...(current || []),
+    ]);
   },
 
   async transferByUserIdWithPin(
