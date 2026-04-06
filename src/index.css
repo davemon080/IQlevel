@@ -36,6 +36,12 @@ body {
   display: none;
 }
 
+.text-white:hover,
+button.text-white:hover,
+a.text-white:hover {
+  color: #ffffff !important;
+}
+
 [class*="text-teal-"],
 [class*="hover:text-teal-"]:hover,
 [class*="focus:text-teal-"]:focus {

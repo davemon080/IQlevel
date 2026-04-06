@@ -572,6 +572,38 @@ async function fetchNotificationsByUid(uid: string, getNotificationSettings: (ui
   return mapped;
 }
 
+async function fetchWalletByUid(uid: string): Promise<Wallet> {
+  const existing = await runQuery<DbWallet | null>(
+    supabase.from('wallets').select('*').eq('user_uid', uid).maybeSingle(),
+    'getOrCreateWallet'
+  );
+
+  if (existing) {
+    const mapped = mapWalletFromDb(existing);
+    publishCache(`wallet:${uid}`, mapped);
+    return mapped;
+  }
+
+  const created = await runQuery<DbWallet>(
+    supabase
+      .from('wallets')
+      .insert({
+        user_uid: uid,
+        usd_balance: 0,
+        ngn_balance: 0,
+        eur_balance: 0,
+        updated_at: new Date().toISOString(),
+      })
+      .select('*')
+      .single(),
+    'createWallet'
+  );
+
+  const mapped = mapWalletFromDb(created);
+  publishCache(`wallet:${uid}`, mapped);
+  return mapped;
+}
+
 function mapPostLikeFromDb(row: DbPostLike): PostLike {
   return {
     id: row.id,
@@ -3612,13 +3644,25 @@ export const supabaseService = {
       }),
       'sendFriendRequest'
     );
+    removeCache(`requests:outgoing:${myProfile.uid}`);
+    removeCache(`requests:incoming:${targetUser.uid}`);
+    removeCache(`notifications:${targetUser.uid}`);
   },
 
   async deleteFriendRequest(requestId: string): Promise<void> {
+    const existing = await runQuery<DbFriendRequest | null>(
+      supabase.from('friend_requests').select('*').eq('id', requestId).maybeSingle(),
+      'deleteFriendRequest:existing'
+    );
     await runQuery(
       supabase.from('friend_requests').delete().eq('id', requestId),
       'deleteFriendRequest'
     );
+    if (existing) {
+      removeCache(`requests:outgoing:${existing.from_uid}`);
+      removeCache(`requests:incoming:${existing.to_uid}`);
+      removeCache(`notifications:${existing.to_uid}`);
+    }
   },
 
   async acceptFriendRequest(request: FriendRequest, myProfile: UserProfile): Promise<void> {
@@ -3656,13 +3700,34 @@ export const supabaseService = {
       ),
       'acceptFriendRequest:activeChats'
     );
+    removeCache(`requests:incoming:${myProfile.uid}`);
+    removeCache(`requests:outgoing:${request.fromUid}`);
+    removeCache(`connections:${myProfile.uid}`);
+    removeCache(`connections:${request.fromUid}`);
+    removeCache(`friends:${myProfile.uid}`);
+    removeCache(`friends:${request.fromUid}`);
+    removeCache(`chats:active:${myProfile.uid}`);
+    removeCache(`chats:active:${request.fromUid}`);
+    removeCache(`chats:recent:${myProfile.uid}`);
+    removeCache(`chats:recent:${request.fromUid}`);
+    removeCache(`notifications:${myProfile.uid}`);
+    removeCache(`notifications:${request.fromUid}`);
   },
 
   async rejectFriendRequest(requestId: string): Promise<void> {
+    const existing = await runQuery<DbFriendRequest | null>(
+      supabase.from('friend_requests').select('*').eq('id', requestId).maybeSingle(),
+      'rejectFriendRequest:existing'
+    );
     await runQuery(
       supabase.from('friend_requests').update({ status: 'rejected' }).eq('id', requestId),
       'rejectFriendRequest'
     );
+    if (existing) {
+      removeCache(`requests:incoming:${existing.to_uid}`);
+      removeCache(`requests:outgoing:${existing.from_uid}`);
+      removeCache(`notifications:${existing.to_uid}`);
+    }
   },
 
   subscribeToConnections(uid: string, callback: (connections: Connection[]) => void) {
@@ -3695,36 +3760,7 @@ export const supabaseService = {
   async getOrCreateWallet(uid: string): Promise<Wallet> {
     const cached = readCache<Wallet>(`wallet:${uid}`, CACHE_TTL.wallet);
     if (cached) return cached;
-
-    const existing = await runQuery<DbWallet | null>(
-      supabase.from('wallets').select('*').eq('user_uid', uid).maybeSingle(),
-      'getOrCreateWallet'
-    );
-
-    if (existing) {
-      const mapped = mapWalletFromDb(existing);
-      publishCache(`wallet:${uid}`, mapped);
-      return mapped;
-    }
-
-    const created = await runQuery<DbWallet>(
-      supabase
-        .from('wallets')
-        .insert({
-          user_uid: uid,
-          usd_balance: 0,
-          ngn_balance: 0,
-          eur_balance: 0,
-          updated_at: new Date().toISOString(),
-        })
-        .select('*')
-        .single(),
-      'createWallet'
-    );
-
-    const mapped = mapWalletFromDb(created);
-    publishCache(`wallet:${uid}`, mapped);
-    return mapped;
+    return fetchWalletByUid(uid);
   },
 
   async listWalletTransactions(uid: string): Promise<WalletTransaction[]> {
@@ -3747,7 +3783,7 @@ export const supabaseService = {
   },
 
   subscribeToWallet(uid: string, callback: (wallet: Wallet) => void, onError?: (error: any) => void) {
-    const fetcher = async () => this.getOrCreateWallet(uid);
+    const fetcher = async () => fetchWalletByUid(uid);
     return subscribeToTable('wallets', fetcher, callback, `user_uid=eq.${uid}`, onError, `wallet:${uid}`);
   },
 

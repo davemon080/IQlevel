@@ -18,9 +18,10 @@ import {
   PlusSquare,
   Search,
   Send,
+  UserPlus,
   X,
 } from 'lucide-react';
-import type { Attachment, Message, UserProfile } from '../types';
+import type { Attachment, Connection, FriendRequest, Message, UserProfile } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
 
@@ -49,6 +50,7 @@ type PresenceInfo = {
 };
 
 const LONG_PRESS_DELAY_MS = 520;
+const RECOMMENDED_CHAT_BATCH = 20;
 
 function mergeChatSummaries(incoming: ChatSummary[], existing: ChatSummary[] = []) {
   const map = new Map<string, ChatSummary>();
@@ -170,12 +172,18 @@ export default function Chat({ profile }: ChatProps) {
   const [inlineError, setInlineError] = React.useState<string | null>(null);
   const [activeChats, setActiveChats] = React.useState<ChatSummary[]>([]);
   const [messages, setMessages] = React.useState<LocalMessage[]>([]);
-  const [allUsers, setAllUsers] = React.useState<UserProfile[]>([]);
+  const [friendUsers, setFriendUsers] = React.useState<UserProfile[]>([]);
+  const [directoryUsers, setDirectoryUsers] = React.useState<UserProfile[]>([]);
+  const [connections, setConnections] = React.useState<Connection[]>([]);
+  const [incomingRequests, setIncomingRequests] = React.useState<FriendRequest[]>([]);
+  const [outgoingRequests, setOutgoingRequests] = React.useState<FriendRequest[]>([]);
   const [selectedContact, setSelectedContact] = React.useState<UserProfile | null>(null);
   const [showChatOnMobile, setShowChatOnMobile] = React.useState(false);
   const [sidebarSearchQuery, setSidebarSearchQuery] = React.useState('');
   const [newChatSearchQuery, setNewChatSearchQuery] = React.useState('');
   const [isNewChatModalOpen, setIsNewChatModalOpen] = React.useState(false);
+  const [newChatSection, setNewChatSection] = React.useState<'friends' | 'for-you'>('friends');
+  const [recommendedVisibleCount, setRecommendedVisibleCount] = React.useState(RECOMMENDED_CHAT_BATCH);
   const [selectedFiles, setSelectedFiles] = React.useState<File[]>([]);
   const [activeUploads, setActiveUploads] = React.useState(0);
   const [showAttachmentMenu, setShowAttachmentMenu] = React.useState(false);
@@ -202,6 +210,7 @@ export default function Chat({ profile }: ChatProps) {
   const initialLoadRef = React.useRef(true);
   const holdTimeoutRef = React.useRef<number | null>(null);
   const typingTimeoutRef = React.useRef<number | null>(null);
+  const recommendedLoadMoreRef = React.useRef<HTMLDivElement | null>(null);
 
   const uploading = activeUploads > 0;
   const hasComposerValue = newMessage.trim().length > 0 || selectedFiles.length > 0;
@@ -220,27 +229,60 @@ export default function Chat({ profile }: ChatProps) {
     );
   }, [activeChats, sidebarSearchQuery]);
 
-  const filteredNewChatUsers = React.useMemo(() => {
+  const filteredFriendUsers = React.useMemo(() => {
     const query = newChatSearchQuery.trim().toLowerCase();
-    if (!query) return allUsers;
-    return allUsers.filter(
+    if (!query) return friendUsers;
+    return friendUsers.filter(
       (user) =>
         user.displayName.toLowerCase().includes(query) ||
         user.role.toLowerCase().includes(query) ||
         (user.publicId || '').toLowerCase().includes(query)
     );
-  }, [allUsers, newChatSearchQuery]);
+  }, [friendUsers, newChatSearchQuery]);
+
+  const recommendedUsers = React.useMemo(() => {
+    const connectedUids = new Set(connections.flatMap((connection) => connection.uids));
+    connectedUids.add(profile.uid);
+    const query = newChatSearchQuery.trim().toLowerCase();
+
+    return directoryUsers
+      .filter((user) => !connectedUids.has(user.uid))
+      .filter((user) => {
+        if (!query) return true;
+        return (
+          user.displayName.toLowerCase().includes(query) ||
+          user.role.toLowerCase().includes(query) ||
+          (user.publicId || '').toLowerCase().includes(query) ||
+          user.skills?.some((skill) => skill.toLowerCase().includes(query))
+        );
+      })
+      .map((user) => {
+        let score = 0;
+        const commonSkills = user.skills?.filter((skill) => profile.skills?.includes(skill)) || [];
+        score += commonSkills.length * 15;
+        if (user.role !== profile.role) score += 20;
+        if (user.location && user.location === profile.location) score += 12;
+        if (user.education?.university && user.education?.university === profile.education?.university) score += 28;
+        return { ...user, score };
+      })
+      .sort((a, b) => b.score - a.score);
+  }, [connections, directoryUsers, newChatSearchQuery, profile.education?.university, profile.location, profile.role, profile.skills, profile.uid]);
+
+  const visibleRecommendedUsers = React.useMemo(
+    () => recommendedUsers.slice(0, recommendedVisibleCount),
+    [recommendedUsers, recommendedVisibleCount]
+  );
 
   const findKnownUser = React.useCallback(
     (uid: string) => {
       if (selectedContact?.uid === uid) return selectedContact;
       const chatUser = activeChats.find((chat) => chat.otherUid === uid)?.user;
       if (chatUser) return chatUser;
-      const modalUser = allUsers.find((user) => user.uid === uid);
+      const modalUser = friendUsers.find((user) => user.uid === uid) || directoryUsers.find((user) => user.uid === uid);
       if (modalUser) return modalUser;
       return supabaseService.profileCache.get(uid) || null;
     },
-    [activeChats, allUsers, selectedContact]
+    [activeChats, directoryUsers, friendUsers, selectedContact]
   );
 
   const focusInput = React.useCallback(() => {
@@ -315,6 +357,21 @@ export default function Chat({ profile }: ChatProps) {
       supabaseService.markMessagesAsRead(profile.uid, otherUid).catch(() => undefined);
     },
     [clearUnreadForChat, profile.uid, setSearchParams, updateChatRow]
+  );
+
+  const sendConnectionRequest = React.useCallback(
+    async (user: UserProfile) => {
+      const alreadyConnected = connections.some((connection) => connection.uids.includes(user.uid));
+      const alreadyOutgoing = outgoingRequests.some((request) => request.toUid === user.uid && request.status === 'pending');
+      const alreadyIncoming = incomingRequests.some((request) => request.fromUid === user.uid && request.status === 'pending');
+      if (alreadyConnected || alreadyOutgoing || alreadyIncoming) return;
+      try {
+        await supabaseService.sendFriendRequest(user, profile);
+      } catch (error) {
+        console.error('Error sending friend request from chat:', error);
+      }
+    },
+    [connections, incomingRequests, outgoingRequests, profile]
   );
 
   const adjustComposerHeight = React.useCallback(() => {
@@ -565,6 +622,9 @@ export default function Chat({ profile }: ChatProps) {
   React.useEffect(() => supabaseService.subscribeToOnlineUsers((uids) => setOnlineUserIds(new Set(uids))), []);
   React.useEffect(() => supabaseService.subscribeToPresenceState((state) => setPresenceState(state)), []);
   React.useEffect(() => supabaseService.subscribeToUnreadMessageCounts(profile.uid, setUnreadCounts), [profile.uid]);
+  React.useEffect(() => supabaseService.subscribeToIncomingFriendRequests(profile.uid, setIncomingRequests), [profile.uid]);
+  React.useEffect(() => supabaseService.subscribeToOutgoingFriendRequests(profile.uid, setOutgoingRequests), [profile.uid]);
+  React.useEffect(() => supabaseService.subscribeToConnections(profile.uid, setConnections), [profile.uid]);
 
   React.useEffect(() => {
     const unsubscribe = supabaseService.subscribeToActiveChats(
@@ -637,8 +697,30 @@ export default function Chat({ profile }: ChatProps) {
 
   React.useEffect(() => {
     if (!isNewChatModalOpen) return;
-    supabaseService.getFriends(profile.uid).then(setAllUsers).catch(() => undefined);
+    setRecommendedVisibleCount(RECOMMENDED_CHAT_BATCH);
+    const unsubscribeUsers = supabaseService.subscribeToAllUsers((users) => {
+      setDirectoryUsers(users.filter((user) => user.uid !== profile.uid));
+    });
+    return () => unsubscribeUsers();
   }, [isNewChatModalOpen, profile.uid]);
+
+  React.useEffect(() => {
+    if (!isNewChatModalOpen) return;
+    supabaseService.getFriends(profile.uid).then(setFriendUsers).catch(() => undefined);
+  }, [connections, isNewChatModalOpen, profile.uid]);
+
+  React.useEffect(() => {
+    if (!isNewChatModalOpen || newChatSection !== 'for-you' || !recommendedLoadMoreRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0].isIntersecting) return;
+        setRecommendedVisibleCount((current) => Math.min(current + RECOMMENDED_CHAT_BATCH, recommendedUsers.length));
+      },
+      { rootMargin: '120px' }
+    );
+    observer.observe(recommendedLoadMoreRef.current);
+    return () => observer.disconnect();
+  }, [isNewChatModalOpen, newChatSection, recommendedUsers.length]);
 
   React.useEffect(() => {
     return supabaseService.subscribeToMessageEvents(profile.uid, async ({ type, message }) => {
@@ -843,7 +925,11 @@ export default function Chat({ profile }: ChatProps) {
               <p className="text-xs text-gray-500">Realtime chats, unread badges, and quick actions.</p>
             </div>
             <button
-              onClick={() => setIsNewChatModalOpen(true)}
+              onClick={() => {
+                setNewChatSection('friends');
+                setRecommendedVisibleCount(RECOMMENDED_CHAT_BATCH);
+                setIsNewChatModalOpen(true);
+              }}
               className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-50 text-teal-700 transition-all hover:bg-teal-100"
               aria-label="Start new chat"
             >
@@ -871,7 +957,11 @@ export default function Chat({ profile }: ChatProps) {
               <p className="mt-4 text-sm font-semibold text-gray-900">No chats yet</p>
               <p className="mt-1 text-xs text-gray-500">Start a new conversation with one of your connections.</p>
               <button
-                onClick={() => setIsNewChatModalOpen(true)}
+                onClick={() => {
+                  setNewChatSection('friends');
+                  setRecommendedVisibleCount(RECOMMENDED_CHAT_BATCH);
+                  setIsNewChatModalOpen(true);
+                }}
                 className="mt-5 rounded-2xl bg-teal-700 px-4 py-3 text-sm font-bold text-white hover:bg-teal-800"
               >
                 Start New Chat
@@ -1349,7 +1439,7 @@ export default function Chat({ profile }: ChatProps) {
               <div className="flex items-center justify-between bg-teal-700 px-5 py-4 text-white">
                 <div>
                   <h3 className="text-xl font-black">New Chat</h3>
-                  <p className="text-xs text-teal-100">Start a conversation with a connection.</p>
+                  <p className="text-xs text-teal-100">Start with friends or discover recommended people to message.</p>
                 </div>
                 <button
                   onClick={() => setIsNewChatModalOpen(false)}
@@ -1372,38 +1462,109 @@ export default function Chat({ profile }: ChatProps) {
                 </div>
               </div>
 
+              <div className="border-b border-gray-100 px-4 pb-3">
+                <div className="grid grid-cols-2 gap-2 rounded-2xl bg-gray-100 p-1">
+                  <button type="button" onClick={() => setNewChatSection('friends')} className={`rounded-2xl px-3 py-2 text-sm font-bold transition-all ${newChatSection === 'friends' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500'}`}>Friends</button>
+                  <button type="button" onClick={() => setNewChatSection('for-you')} className={`rounded-2xl px-3 py-2 text-sm font-bold transition-all ${newChatSection === 'for-you' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500'}`}>For You</button>
+                </div>
+              </div>
+
               <div className="min-h-0 flex-1 overflow-y-auto p-2">
-                {filteredNewChatUsers.length === 0 ? (
-                  <div className="p-8 text-center text-sm text-gray-500">No users found.</div>
-                ) : (
-                  filteredNewChatUsers.map((user) => (
-                    <button
-                      key={user.uid}
-                      onClick={() => {
-                        setIsNewChatModalOpen(false);
-                        openConversation(user, {
-                          otherUid: user.uid,
-                          lastMessage: '',
-                          updatedAt: new Date().toISOString(),
-                        });
-                      }}
-                      className="flex w-full items-center gap-4 rounded-2xl px-3 py-3 text-left transition-all hover:bg-gray-50"
-                    >
-                      <CachedImage
-                        src={user.photoURL}
-                        alt={user.displayName}
-                        fallbackMode="avatar"
-                        wrapperClassName="h-12 w-12 rounded-2xl border border-gray-200 bg-gray-100"
-                        imgClassName="h-full w-full rounded-2xl object-cover"
-                      />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-gray-900">{user.displayName}</p>
-                        <p className="truncate text-xs text-gray-500">
-                          {user.publicId || user.uid} · {user.role}
-                        </p>
+                {newChatSection === 'friends' ? (
+                  filteredFriendUsers.length === 0 ? (
+                    <div className="p-8 text-center text-sm text-gray-500">No friends available yet. Accepted connections will appear here.</div>
+                  ) : (
+                    filteredFriendUsers.map((user) => (
+                      <div key={user.uid} className="rounded-2xl border border-gray-100 p-3 transition-all hover:border-teal-200 hover:bg-gray-50">
+                        <div className="flex items-center gap-4">
+                          <CachedImage
+                            src={user.photoURL}
+                            alt={user.displayName}
+                            fallbackMode="avatar"
+                            wrapperClassName="h-12 w-12 rounded-2xl border border-gray-200 bg-gray-100"
+                            imgClassName="h-full w-full rounded-2xl object-cover"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-bold text-gray-900">{user.displayName}</p>
+                            <p className="truncate text-xs text-gray-500">{user.publicId || user.uid} · {user.role}</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsNewChatModalOpen(false);
+                              openConversation(user, {
+                                otherUid: user.uid,
+                                lastMessage: '',
+                                updatedAt: new Date().toISOString(),
+                              });
+                            }}
+                            className="flex-1 rounded-2xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-teal-800"
+                          >
+                            Message
+                          </button>
+                        </div>
                       </div>
-                    </button>
-                  ))
+                    ))
+                  )
+                ) : visibleRecommendedUsers.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-gray-500">No recommended users found right now.</div>
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      {visibleRecommendedUsers.map((user) => {
+                        const alreadyConnected = connections.some((connection) => connection.uids.includes(user.uid));
+                        const alreadyOutgoing = outgoingRequests.some((request) => request.toUid === user.uid && request.status === 'pending');
+                        const alreadyIncoming = incomingRequests.some((request) => request.fromUid === user.uid && request.status === 'pending');
+                        const connectLabel = alreadyConnected ? 'Connected' : alreadyOutgoing ? 'Pending' : alreadyIncoming ? 'Respond in requests' : 'Connect';
+                        return (
+                          <div key={user.uid} className="rounded-2xl border border-gray-100 p-3 transition-all hover:border-teal-200 hover:bg-gray-50">
+                            <div className="flex items-center gap-4">
+                              <CachedImage
+                                src={user.photoURL}
+                                alt={user.displayName}
+                                fallbackMode="avatar"
+                                wrapperClassName="h-12 w-12 rounded-2xl border border-gray-200 bg-gray-100"
+                                imgClassName="h-full w-full rounded-2xl object-cover"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-bold text-gray-900">{user.displayName}</p>
+                                <p className="truncate text-xs text-gray-500">{user.publicId || user.uid} · {user.role}</p>
+                              </div>
+                            </div>
+                            <div className="mt-3 flex gap-2">
+                              <button
+                                type="button"
+                                disabled={alreadyConnected || alreadyOutgoing || alreadyIncoming}
+                                onClick={() => void sendConnectionRequest(user)}
+                                className={`flex-1 rounded-2xl px-4 py-2.5 text-sm font-bold transition-all ${alreadyConnected || alreadyOutgoing || alreadyIncoming ? 'bg-gray-100 text-gray-500' : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
+                              >
+                                <span className="inline-flex items-center gap-2"><UserPlus size={15} />{connectLabel}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsNewChatModalOpen(false);
+                                  openConversation(user, {
+                                    otherUid: user.uid,
+                                    lastMessage: '',
+                                    updatedAt: new Date().toISOString(),
+                                  });
+                                }}
+                                className="flex-1 rounded-2xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-teal-800"
+                              >
+                                <span className="inline-flex items-center gap-2"><MessageSquare size={15} />Message</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div ref={recommendedLoadMoreRef} className="flex justify-center py-4 text-xs font-medium text-gray-400">
+                      {visibleRecommendedUsers.length < recommendedUsers.length ? 'Scroll for more recommendations' : 'You have reached the end'}
+                    </div>
+                  </>
                 )}
               </div>
             </motion.div>

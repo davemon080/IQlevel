@@ -15,6 +15,105 @@ interface FeedProps {
   profile: UserProfile;
 }
 
+function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let currentLine = '';
+
+  words.forEach((word) => {
+    const candidate = currentLine ? `${currentLine} ${word}` : word;
+    if (context.measureText(candidate).width <= maxWidth) {
+      currentLine = candidate;
+      return;
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+      return;
+    }
+
+    lines.push(word);
+  });
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines;
+}
+
+async function buildPostShareAsset(post: Post, link: string): Promise<File | null> {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = 1200;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+
+  context.fillStyle = '#f7f4ff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
+  gradient.addColorStop(0, '#12071f');
+  gradient.addColorStop(0.55, '#4c1d95');
+  gradient.addColorStop(1, '#7c3aed');
+  context.fillStyle = gradient;
+  context.fillRect(56, 56, canvas.width - 112, canvas.height - 112);
+
+  context.fillStyle = 'rgba(255,255,255,0.12)';
+  context.beginPath();
+  context.arc(1020, 180, 110, 0, Math.PI * 2);
+  context.fill();
+  context.beginPath();
+  context.arc(180, 1040, 150, 0, Math.PI * 2);
+  context.fill();
+
+  context.fillStyle = '#ffffff';
+  context.font = '700 34px Arial';
+  context.fillText(`@${post.authorName}`, 110, 150);
+
+  context.fillStyle = 'rgba(255,255,255,0.72)';
+  context.font = '500 24px Arial';
+  context.fillText('Shared from Connect', 110, 190);
+
+  context.fillStyle = '#ffffff';
+  context.font = '700 56px Arial';
+  const content = (post.content || 'Check out this post on Connect.').trim();
+  const lines = wrapCanvasText(context, content, 920).slice(0, 8);
+  lines.forEach((line, index) => {
+    context.fillText(line, 110, 310 + index * 78);
+  });
+
+  context.fillStyle = 'rgba(255,255,255,0.16)';
+  context.fillRect(96, 930, canvas.width - 192, 150);
+  context.fillStyle = '#ffffff';
+  context.font = '700 24px Arial';
+  context.fillText('Open post link', 126, 980);
+
+  context.fillStyle = 'rgba(255,255,255,0.9)';
+  context.font = '500 22px Arial';
+  const shortLink = link.length > 72 ? `${link.slice(0, 69)}...` : link;
+  context.fillText(shortLink, 126, 1028);
+
+  context.fillStyle = 'rgba(255,255,255,0.84)';
+  context.font = '500 20px Arial';
+  context.fillText('Content + image preview generated for sharing', 126, 1066);
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) return null;
+  return new File([blob], `connect-post-${post.id}.png`, { type: 'image/png' });
+}
+
+function downloadFile(file: File) {
+  const url = URL.createObjectURL(file);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = file.name;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
 export default function Feed({ profile }: FeedProps) {
   const TOP_ACTIVE_LIMIT = 15;
   const { currency } = useCurrency();
@@ -240,10 +339,33 @@ export default function Feed({ profile }: FeedProps) {
     setSharePost(post);
   };
 
-  const shareTo = (platform: 'whatsapp' | 'facebook' | 'x' | 'linkedin' | 'telegram' | 'email') => {
+  const shareTo = async (platform: 'whatsapp' | 'facebook' | 'x' | 'linkedin' | 'telegram' | 'email') => {
     if (!sharePost) return;
-    const link = encodeURIComponent(getPostShareLink(sharePost));
-    const text = encodeURIComponent(`Check out this post from ${sharePost.authorName} on Connect`);
+    const rawLink = getPostShareLink(sharePost);
+    const shareCaption = `${sharePost.authorName} on Connect: ${sharePost.content || 'Check out this post.'}`;
+    const link = encodeURIComponent(rawLink);
+    const text = encodeURIComponent(shareCaption);
+    const shareFile = await buildPostShareAsset(sharePost, rawLink);
+
+    if (
+      shareFile &&
+      typeof navigator !== 'undefined' &&
+      'share' in navigator &&
+      'canShare' in navigator &&
+      navigator.canShare?.({ files: [shareFile] })
+    ) {
+      try {
+        await navigator.share({
+          title: `Post from ${sharePost.authorName}`,
+          text: shareCaption,
+          url: rawLink,
+          files: [shareFile],
+        });
+        return;
+      } catch {
+        // Fall back to platform-specific sharing below.
+      }
+    }
 
     const urls: Record<typeof platform, string> = {
       whatsapp: `https://wa.me/?text=${text}%20${link}`,
@@ -254,7 +376,11 @@ export default function Feed({ profile }: FeedProps) {
       email: `mailto:?subject=${encodeURIComponent('Connect post')}&body=${text}%0A${link}`,
     };
 
+    if (shareFile) {
+      downloadFile(shareFile);
+    }
     window.open(urls[platform], '_blank', 'noopener,noreferrer');
+    showToast(shareFile ? 'Share image prepared with the post link.' : 'Post link prepared for sharing.');
   };
 
   const sharePlatforms: Array<{

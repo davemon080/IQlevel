@@ -22,6 +22,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
   const [tab, setTab] = useState<'about' | 'portfolio' | 'activity'>('about');
   const [saving, setSaving] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [copiedCompanyLink, setCopiedCompanyLink] = useState<string | null>(null);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
   const [companyFollowers, setCompanyFollowers] = useState<CompanyFollow[]>([]);
   const [myCompanyFollows, setMyCompanyFollows] = useState<CompanyFollow[]>([]);
@@ -341,15 +342,27 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                   <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-700/70">Social links</p>
                   <div className="mt-4 space-y-2">
                     {companyPartner.socialLinks.map((link) => (
-                      <a
-                        key={link}
-                        href={link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block rounded-2xl bg-gray-50 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-teal-50 hover:text-teal-700"
-                      >
-                        {link}
-                      </a>
+                      <div key={link} className="flex items-center gap-2 rounded-2xl bg-gray-50 px-4 py-3">
+                        <a
+                          href={link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="min-w-0 flex-1 truncate text-sm font-medium text-gray-700 hover:text-teal-700"
+                        >
+                          {link}
+                        </a>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(link);
+                            setCopiedCompanyLink(link);
+                            setTimeout(() => setCopiedCompanyLink(null), 1200);
+                          }}
+                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-teal-700 hover:bg-teal-50"
+                        >
+                          {copiedCompanyLink === link ? 'Copied' : 'Copy'}
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>
