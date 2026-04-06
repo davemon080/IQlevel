@@ -362,6 +362,19 @@ function mapPostFromDb(row: DbPost): Post {
   };
 }
 
+function sortPostsNewestFirst(posts: Post[]): Post[] {
+  return [...posts].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+function upsertPostInList(current: Post[] | null, post: Post): Post[] {
+  const existing = current || [];
+  return sortPostsNewestFirst([post, ...existing.filter((item) => item.id !== post.id)]);
+}
+
+function removePostFromList(current: Post[] | null, postId: string): Post[] {
+  return (current || []).filter((item) => item.id !== postId);
+}
+
 function mapPostLikeFromDb(row: DbPostLike): PostLike {
   return {
     id: row.id,
@@ -1591,14 +1604,8 @@ export const supabaseService = {
     );
     const mapped = mapPostFromDb(row);
     publishCache(`post:${mapped.id}`, mapped);
-    updateCachedValue<Post[]>('posts:all', (current) => {
-      if (!current) return [mapped];
-      return [mapped, ...current.filter((item) => item.id !== mapped.id)];
-    });
-    updateCachedValue<Post[]>(`posts:user:${mapped.authorUid}`, (current) => {
-      if (!current) return [mapped];
-      return [mapped, ...current.filter((item) => item.id !== mapped.id)];
-    });
+    updateCachedValue<Post[]>('posts:all', (current) => upsertPostInList(current, mapped));
+    updateCachedValue<Post[]>(`posts:user:${mapped.authorUid}`, (current) => upsertPostInList(current, mapped));
     removeCacheByPrefix('posts:list:');
     removeCacheByPrefix('posts:highlights:');
     return mapped;
@@ -1650,14 +1657,16 @@ export const supabaseService = {
       'updatePost'
     );
     const mapped = mapPostFromDb(row);
-    writeCache(`post:${postId}`, mapped);
-    removeCache('posts:all');
+    publishCache(`post:${postId}`, mapped);
+    updateCachedValue<Post[]>('posts:all', (current) => upsertPostInList(current, mapped));
+    updateCachedValue<Post[]>(`posts:user:${mapped.authorUid}`, (current) => upsertPostInList(current, mapped));
     removeCacheByPrefix('posts:list:');
-    removeCacheByPrefix(`posts:user:${mapped.authorUid}`);
+    removeCacheByPrefix('posts:highlights:');
     return mapped;
   },
 
   async deletePost(postId: string): Promise<void> {
+    const existing = readCacheAnyAge<Post>(`post:${postId}`);
     await runQuery(
       supabase.from('post_likes').delete().eq('post_id', postId),
       'deletePost:likes'
@@ -1671,24 +1680,120 @@ export const supabaseService = {
       'deletePost'
     );
     removeCache(`post:${postId}`);
-    removeCache('posts:all');
+    updateCachedValue<Post[]>('posts:all', (current) => removePostFromList(current, postId));
     removeCache('posts:likes');
     removeCache('posts:comments:all');
     removeCacheByPrefix('posts:list:');
-    removeCacheByPrefix('posts:user:');
+    removeCacheByPrefix('posts:highlights:');
+    if (existing?.authorUid) {
+      updateCachedValue<Post[]>(`posts:user:${existing.authorUid}`, (current) => removePostFromList(current, postId));
+    } else {
+      removeCacheByPrefix('posts:user:');
+    }
     removeCacheByPrefix('posts:comments:');
     removeCacheByPrefix('posts:comment-likes:');
   },
 
-  subscribeToPosts(callback: (posts: Post[]) => void) {
-    const fetcher = async () => {
-      const rows = await runQuery<DbPost[]>(
+  subscribeToPosts(callback: (posts: Post[]) => void, onError?: (error: any) => void) {
+    const cacheKey = 'posts:all';
+    let active = true;
+    let fetchVersion = 0;
+    const unsubscribeCache = subscribeToCache(cacheKey, callback);
+
+    const cached = readCacheAnyAge<Post[]>(cacheKey);
+    if (cached) callback(cached);
+
+    const refresh = () => {
+      const currentVersion = ++fetchVersion;
+      const cacheVersionAtStart = getCacheVersion(cacheKey);
+      runQuery<DbPost[]>(
         supabase.from('posts').select('*').order('created_at', { ascending: false }),
         'subscribeToPosts'
-      );
-      return rows.map(mapPostFromDb);
+      )
+        .then((rows) => {
+          if (!active || currentVersion !== fetchVersion) return;
+          if (cacheVersionAtStart !== getCacheVersion(cacheKey)) return;
+          publishCache(cacheKey, rows.map(mapPostFromDb));
+        })
+        .catch((error) => {
+          console.error('Supabase fetch error (posts):', error);
+          onError?.(error);
+        });
     };
-    return subscribeToTable('posts', fetcher, callback, undefined, undefined, 'posts:all');
+
+    const handleUpsert = (row: DbPost | null) => {
+      if (!active || !row?.id) return;
+      const mapped = mapPostFromDb(row);
+      publishCache(`post:${mapped.id}`, mapped);
+      updateCachedValue<Post[]>(cacheKey, (current) => upsertPostInList(current, mapped));
+      updateCachedValue<Post[]>(`posts:user:${mapped.authorUid}`, (current) => upsertPostInList(current, mapped));
+      removeCacheByPrefix('posts:list:');
+      removeCacheByPrefix('posts:highlights:');
+    };
+
+    const handleDelete = (row: Partial<DbPost> | null) => {
+      if (!active || !row?.id) return;
+      removeCache(`post:${row.id}`);
+      updateCachedValue<Post[]>(cacheKey, (current) => removePostFromList(current, row.id as string));
+      removeCache('posts:likes');
+      removeCache('posts:comments:all');
+      removeCacheByPrefix('posts:comments:');
+      removeCacheByPrefix('posts:comment-likes:');
+      removeCacheByPrefix('posts:list:');
+      removeCacheByPrefix('posts:highlights:');
+      if (row.author_uid) {
+        updateCachedValue<Post[]>(`posts:user:${row.author_uid}`, (current) => removePostFromList(current, row.id as string));
+      } else {
+        removeCacheByPrefix('posts:user:');
+      }
+    };
+
+    refresh();
+
+    const realtimeChannel = supabase
+      .channel(`realtime:posts:live:${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, (payload) => handleUpsert(payload.new as DbPost))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'posts' }, (payload) => handleUpsert(payload.new as DbPost))
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'posts' }, (payload) => handleDelete(payload.old as Partial<DbPost>))
+      .subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') {
+          refresh();
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          refresh();
+        }
+      });
+
+    const pollId =
+      typeof window !== 'undefined'
+        ? window.setInterval(() => {
+            if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+              refresh();
+            }
+          }, 5000)
+        : null;
+
+    const handleVisibilityRefresh = () => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        refresh();
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', refresh);
+      document.addEventListener('visibilitychange', handleVisibilityRefresh);
+    }
+
+    return () => {
+      active = false;
+      unsubscribeCache();
+      if (pollId !== null && typeof window !== 'undefined') {
+        window.clearInterval(pollId);
+        window.removeEventListener('focus', refresh);
+        document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+      }
+      supabase.removeChannel(realtimeChannel);
+    };
   },
 
   async getPostsByUser(uid: string): Promise<Post[]> {
