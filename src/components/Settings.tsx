@@ -69,6 +69,7 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
       await startPaystackTransaction({
         email: profile.email,
         amountKobo: 50000,
+        reference: `connect-market-access-${profile.uid.slice(0, 8)}-${Date.now()}`,
         metadata: {
           custom_fields: [
             { display_name: 'Connect user', variable_name: 'connect_user_id', value: profile.publicId || profile.uid },

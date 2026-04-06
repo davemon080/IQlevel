@@ -9,8 +9,9 @@
   --connect-accent-strong: #6d28d9;
   --connect-accent-soft: #ede9fe;
   --connect-accent-border: #c4b5fd;
-  --connect-success-soft: #ede9fe;
-  --connect-success-text: #7c3aed;
+  --connect-success-soft: #ecfdf5;
+  --connect-success-text: #047857;
+  --connect-success-border: #86efac;
 }
 
 html, body, #root {
@@ -68,23 +69,33 @@ body {
   --tw-gradient-to: #090312 var(--tw-gradient-to-position) !important;
 }
 
-[class*="bg-emerald-50"],
 [class*="bg-teal-50"] {
   background-color: var(--connect-accent-soft) !important;
 }
 
-[class*="text-emerald-600"],
-[class*="text-emerald-700"],
 [class*="text-teal-600"],
 [class*="text-teal-700"],
 [class*="text-teal-800"] {
   color: var(--connect-accent) !important;
 }
 
-[class*="border-emerald-100"],
 [class*="border-teal-100"],
 [class*="border-teal-200"] {
   border-color: var(--connect-accent-border) !important;
+}
+
+[class*="bg-emerald-50"] {
+  background-color: var(--connect-success-soft) !important;
+}
+
+[class*="text-emerald-600"],
+[class*="text-emerald-700"] {
+  color: var(--connect-success-text) !important;
+}
+
+[class*="border-emerald-100"],
+[class*="border-emerald-200"] {
+  border-color: var(--connect-success-border) !important;
 }
 
 html[data-connect-appearance='dark'] body {
@@ -154,7 +165,7 @@ html[data-connect-appearance='dark'] .bg-red-50 {
 }
 
 html[data-connect-appearance='dark'] .bg-emerald-50 {
-  background-color: rgba(91, 33, 182, 0.24) !important;
+  background-color: rgba(5, 150, 105, 0.18) !important;
 }
 
 html[data-connect-appearance='dark'] .bg-amber-50 {
@@ -170,7 +181,12 @@ html[data-connect-appearance='dark'] .text-red-700 {
 }
 
 html[data-connect-appearance='dark'] .text-emerald-700 {
-  color: #c4b5fd !important;
+  color: #6ee7b7 !important;
+}
+
+html[data-connect-appearance='dark'] .border-emerald-100,
+html[data-connect-appearance='dark'] .border-emerald-200 {
+  border-color: rgba(16, 185, 129, 0.35) !important;
 }
 
 html[data-connect-appearance='dark'] .text-amber-700 {
@@ -219,5 +235,18 @@ html[data-connect-appearance='dark'] .text-amber-700 {
     background-color: #0f172a !important;
     color: #f8fafc !important;
     border-color: #334155 !important;
+  }
+
+  html[data-connect-appearance='system'] .bg-emerald-50 {
+    background-color: rgba(5, 150, 105, 0.18) !important;
+  }
+
+  html[data-connect-appearance='system'] .text-emerald-700 {
+    color: #6ee7b7 !important;
+  }
+
+  html[data-connect-appearance='system'] .border-emerald-100,
+  html[data-connect-appearance='system'] .border-emerald-200 {
+    border-color: rgba(16, 185, 129, 0.35) !important;
   }
 }

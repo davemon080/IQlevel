@@ -1,4 +1,4 @@
-const PAYSTACK_PUBLIC_KEY = 'pk_test_e9672a354a3fbf8d3e696c1265b29355181a3e11';
+const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY as string | undefined;
 
 declare global {
   interface Window {
@@ -35,11 +35,25 @@ export async function startPaystackTransaction({
   email,
   amountKobo,
   metadata,
+  reference,
 }: {
   email: string;
   amountKobo: number;
   metadata?: Record<string, unknown>;
+  reference?: string;
 }) {
+  if (!PAYSTACK_PUBLIC_KEY) {
+    throw new Error('Missing Paystack public key. Set VITE_PAYSTACK_PUBLIC_KEY in your environment.');
+  }
+
+  if (!email.trim()) {
+    throw new Error('A valid email is required for Paystack.');
+  }
+
+  if (!Number.isFinite(amountKobo) || amountKobo <= 0) {
+    throw new Error('A valid payment amount is required.');
+  }
+
   await ensurePaystackV2Script();
 
   return await new Promise<{ reference?: string }>((resolve, reject) => {
@@ -51,10 +65,11 @@ export async function startPaystackTransaction({
     const popup = new window.Paystack();
     popup.newTransaction({
       key: PAYSTACK_PUBLIC_KEY,
-      email,
-      amount: amountKobo,
+      email: email.trim(),
+      amount: Math.round(amountKobo),
       currency: 'NGN',
       metadata,
+      reference,
       onSuccess: (transaction: { reference?: string }) => resolve(transaction),
       onCancel: () => reject(new Error('Payment window was closed before completion.')),
     });

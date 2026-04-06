@@ -58,6 +58,7 @@ export default function AddFunds({ profile }: AddFundsProps) {
       const response = await startPaystackTransaction({
         email: profile.email,
         amountKobo: Math.round(amountNumber * 100),
+        reference: `connect-topup-${profile.uid.slice(0, 8)}-${Date.now()}`,
         metadata: {
           custom_fields: [
             {
@@ -104,11 +105,14 @@ export default function AddFunds({ profile }: AddFundsProps) {
       <div className="rounded-3xl bg-gradient-to-br from-teal-700 to-emerald-700 p-6 text-white shadow-lg">
         <p className="text-xs uppercase tracking-wider opacity-80">Current NGN Balance</p>
         <p className="mt-2 text-3xl font-black">{formatAmount(wallet?.ngnBalance || 0, 'NGN')}</p>
+        <p className="mt-3 max-w-xl text-sm leading-6 text-white/82">
+          Wallet funding uses Paystack checkout and credits your NGN balance immediately after a successful payment response.
+        </p>
       </div>
 
       <form onSubmit={handleAddFunds} className="space-y-4 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-800">
-          Paystack funding is configured here for NGN using your public key.
+        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-800">
+          Paystack funding is configured for NGN. If checkout does not open, confirm your `VITE_PAYSTACK_PUBLIC_KEY` is set correctly.
         </div>
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Amount (NGN)</label>

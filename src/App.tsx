@@ -370,13 +370,22 @@ function AuthScreen({
             <div className="absolute right-10 top-10 h-28 w-28 rounded-full bg-white/10" />
             <div className="absolute bottom-16 right-14 h-40 w-40 rounded-full border border-white/20" />
           </div>
+          <div className="pointer-events-none absolute inset-0 opacity-45">
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:42px_42px]" />
+            <div className="absolute inset-y-0 left-[18%] w-px bg-gradient-to-b from-transparent via-violet-300/70 to-transparent" />
+            <div className="absolute inset-y-0 right-[20%] w-px bg-gradient-to-b from-transparent via-fuchsia-300/60 to-transparent" />
+          </div>
 
           <div className="relative z-10 max-w-xl">
-            <div className="inline-flex items-center gap-3 rounded-full bg-white/12 px-4 py-2 text-sm font-bold uppercase tracking-[0.25em]">
+            <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/12 px-4 py-2 text-sm font-bold uppercase tracking-[0.25em] shadow-[0_0_30px_rgba(167,139,250,0.14)]">
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-violet-700">
                 <Link2 size={18} />
               </span>
               Connect
+            </div>
+            <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-violet-300/20 bg-black/20 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-violet-100/85">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.9)]" />
+              Network online
             </div>
             <h1 className="mt-6 text-4xl font-black leading-tight">
               Build your network, land gigs, and grow your student brand in one place.
@@ -420,8 +429,13 @@ function AuthScreen({
           </div>
         </section>
 
-        <section className="flex items-center justify-center px-4 py-6 sm:px-7 lg:px-8">
-          <div className="w-full max-w-sm">
+        <section className="relative flex items-center justify-center overflow-hidden px-4 py-6 sm:px-7 lg:px-8">
+          <div className="pointer-events-none absolute inset-0 opacity-60">
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(124,58,237,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(124,58,237,0.08)_1px,transparent_1px)] bg-[size:28px_28px]" />
+            <div className="absolute left-8 top-10 h-24 w-24 rounded-full bg-violet-200/20 blur-3xl" />
+            <div className="absolute bottom-10 right-6 h-28 w-28 rounded-full bg-fuchsia-200/20 blur-3xl" />
+          </div>
+          <div className="relative z-10 w-full max-w-sm">
             <div className="mb-6 text-center lg:text-left">
               <div className="inline-flex items-center gap-2 text-violet-700 lg:hidden">
                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-violet-700 text-white">
@@ -439,7 +453,8 @@ function AuthScreen({
               </p>
             </div>
 
-            <form onSubmit={onEmailAuth} className="space-y-3">
+            <form onSubmit={onEmailAuth} className="relative space-y-3 rounded-[1.6rem] border border-violet-100/70 bg-white/88 p-4 shadow-[0_18px_50px_rgba(76,29,149,0.08)] backdrop-blur-sm">
+              <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-violet-300 to-transparent" />
               {authMode === 'register' && (
                 <div className="relative">
                   <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -534,7 +549,7 @@ function AuthScreen({
               Continue with Google
             </button>
 
-            <div className="rounded-[1.5rem] border border-gray-200 bg-gray-50 p-3.5">
+            <div className="rounded-[1.5rem] border border-violet-100/70 bg-white/78 p-3.5 shadow-[0_16px_40px_rgba(76,29,149,0.06)]">
               <p className="text-sm text-gray-600">
                 {authMode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
                 <button
