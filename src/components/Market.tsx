@@ -23,11 +23,13 @@ export default function Market({ profile }: MarketProps) {
   const [category, setCategory] = useState('All');
   const [sortBy, setSortBy] = useState<'newest' | 'price-low' | 'price-high'>('newest');
   const [accessReady, setAccessReady] = useState(false);
+  const [accessSource, setAccessSource] = useState<'payment' | 'admin_override_unlock' | 'admin_override_lock' | 'unregistered'>('unregistered');
 
   useEffect(() => {
     let active = true;
     supabaseService.getMarketSettings(profile.uid).then((settings) => {
       if (!active) return;
+      setAccessSource(settings.accessSource || 'unregistered');
       if (!settings.isRegistered) {
         return;
       }
@@ -118,7 +120,9 @@ export default function Market({ profile }: MarketProps) {
       <div className="rounded-[2rem] border border-gray-200 bg-white p-8 shadow-sm">
         <h2 className="text-2xl font-black text-gray-900">Marketplace Access Locked</h2>
         <p className="mt-3 text-sm leading-7 text-gray-500">
-          Complete the one-time N500 marketplace payment from market settings before you can browse or manage market listings.
+          {accessSource === 'admin_override_lock'
+            ? 'Marketplace access is currently disabled by the admin for this account.'
+            : 'Marketplace access is not active for this account yet. You can check market settings for your current access state.'}
         </p>
         <button
           type="button"

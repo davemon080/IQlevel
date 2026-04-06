@@ -28,6 +28,7 @@ export default function JobBoard({ profile }: JobBoardProps) {
   const [myPartnerRequest, setMyPartnerRequest] = useState<CompanyPartnerRequest | null>(null);
   const [companyByUid, setCompanyByUid] = useState<Record<string, CompanyPartnerRequest>>({});
   const [marketRegistered, setMarketRegistered] = useState(false);
+  const [marketAccessSource, setMarketAccessSource] = useState<'payment' | 'admin_override_unlock' | 'admin_override_lock' | 'unregistered'>('unregistered');
   const [showMarketPrompt, setShowMarketPrompt] = useState(false);
   const [newJob, setNewJob] = useState({
     title: '',
@@ -50,6 +51,7 @@ export default function JobBoard({ profile }: JobBoardProps) {
   useEffect(() => {
     supabaseService.getMarketSettings(profile.uid).then((settings) => {
       setMarketRegistered(settings.isRegistered);
+      setMarketAccessSource(settings.accessSource || 'unregistered');
     }).catch(() => undefined);
   }, [profile.uid]);
 
@@ -386,7 +388,9 @@ export default function JobBoard({ profile }: JobBoardProps) {
             </div>
             <h3 className="mt-5 text-2xl font-black text-gray-900">Marketplace Access Locked</h3>
             <p className="mt-3 text-sm leading-7 text-gray-500">
-              New users need to complete the one-time N500 marketplace registration payment before they can open the market page.
+              {marketAccessSource === 'admin_override_lock'
+                ? 'Marketplace access is currently disabled by the admin for this account.'
+                : 'This account does not have marketplace access yet. Open market settings to check whether payment or an admin update is needed.'}
             </p>
             <div className="mt-6 flex gap-3">
               <button type="button" onClick={() => setShowMarketPrompt(false)} className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50">
