@@ -5,7 +5,7 @@ import { UserProfile, Wallet } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { formatAmount } from '../utils/currency';
 import { getErrorMessage } from '../utils/errors';
-import { startPaystackTransaction } from '../utils/paystack';
+import { ensurePaystackV2Script, startPaystackTransaction } from '../utils/paystack';
 import { verifyPaystackTransaction } from '../utils/paystackServer';
 
 interface AddFundsProps {
@@ -54,6 +54,10 @@ export default function AddFunds({ profile }: AddFundsProps) {
       unsubscribeWallet();
     };
   }, [profile.uid]);
+
+  useEffect(() => {
+    void ensurePaystackV2Script().catch(() => undefined);
+  }, []);
 
   const amountNumber = useMemo(() => {
     const parsed = parseFloat(amount);

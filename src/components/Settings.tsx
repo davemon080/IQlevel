@@ -6,7 +6,7 @@ import type { AppPreferences, NotificationSettings, UserProfile } from '../types
 import { User, Lock, Bell, LogOut, ChevronRight, Camera, Check, AlertCircle, Globe, Smartphone, Wallet, Copy, Store, Palette, BriefcaseBusiness, Trash2 } from 'lucide-react';
 import CachedImage from './CachedImage';
 import { getErrorMessage } from '../utils/errors';
-import { startPaystackTransaction } from '../utils/paystack';
+import { ensurePaystackV2Script, startPaystackTransaction } from '../utils/paystack';
 import { verifyPaystackTransaction } from '../utils/paystackServer';
 import { useConfirmDialog } from './ConfirmDialog';
 
@@ -65,6 +65,7 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   }, [profile.companyInfo?.name, profile.location, profile.phoneNumber, profile.uid]);
   useEffect(() => { document.documentElement.lang = preferences.language; document.documentElement.dataset.connectAppearance = preferences.appearance; }, [preferences]);
   useEffect(() => { supabaseService.getConnectedDeviceSessions(profile.uid).then((devices) => setPreferences((prev) => ({ ...prev, connectedDevices: devices }))).catch(() => undefined); }, [profile.uid]);
+  useEffect(() => { void ensurePaystackV2Script().catch(() => undefined); }, []);
 
   const flash = (type: 'success' | 'error', text: string) => setMessage({ type, text });
   const saveProfile = async () => {
