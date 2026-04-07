@@ -24,6 +24,7 @@ import {
 import type { Attachment, Connection, FriendRequest, Message, UserProfile } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import CachedImage from './CachedImage';
+import { showAppToast } from '../utils/appToast';
 
 interface ChatProps {
   profile: UserProfile;
@@ -364,11 +365,39 @@ export default function Chat({ profile }: ChatProps) {
       const alreadyConnected = connections.some((connection) => connection.uids.includes(user.uid));
       const alreadyOutgoing = outgoingRequests.some((request) => request.toUid === user.uid && request.status === 'pending');
       const alreadyIncoming = incomingRequests.some((request) => request.fromUid === user.uid && request.status === 'pending');
-      if (alreadyConnected || alreadyOutgoing || alreadyIncoming) return;
+      if (alreadyConnected) {
+        showAppToast({
+          tone: 'info',
+          title: 'Already connected',
+          message: `${user.displayName} is already in your connections.`,
+        });
+        return;
+      }
+      if (alreadyOutgoing) {
+        showAppToast({
+          tone: 'info',
+          title: 'Request already sent',
+          message: `Your request to ${user.displayName} is still pending.`,
+        });
+        return;
+      }
+      if (alreadyIncoming) {
+        showAppToast({
+          tone: 'info',
+          title: 'Request waiting for you',
+          message: `${user.displayName} already sent you a friend request.`,
+        });
+        return;
+      }
       try {
         await supabaseService.sendFriendRequest(user, profile);
       } catch (error) {
         console.error('Error sending friend request from chat:', error);
+        showAppToast({
+          tone: 'error',
+          title: 'Request failed',
+          message: error instanceof Error ? error.message : 'We could not send that friend request right now.',
+        });
       }
     },
     [connections, incomingRequests, outgoingRequests, profile]
@@ -540,6 +569,11 @@ export default function Chat({ profile }: ChatProps) {
       } catch (nextError) {
         console.error('Error sending message:', nextError);
         setInlineError(files.length > 0 ? 'Failed to send message with attachments.' : 'Failed to send message.');
+        showAppToast({
+          tone: 'error',
+          title: 'Message not sent',
+          message: nextError instanceof Error ? nextError.message : 'We could not send your message right now.',
+        });
         setMessages((prev) =>
           prev.map((message) =>
             message.id === tempId

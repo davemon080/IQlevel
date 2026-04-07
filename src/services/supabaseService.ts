@@ -2,6 +2,7 @@ import { supabase } from '../supabase';
 import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest, ActiveGig, AppPreferences, ConnectedDevice, UserPerformanceSummary, WithdrawalAccount, CompanyFollow } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
+import { showAppToast } from '../utils/appToast';
 
 type DbUserProfile = {
   uid: string;
@@ -2997,6 +2998,12 @@ export const supabaseService = {
   },
 
   async sendMessage(message: Omit<Message, 'id' | 'createdAt'>): Promise<Message> {
+    const normalizedContent = typeof message.content === 'string' ? message.content.trim() : '';
+    const normalizedAttachments = Array.isArray(message.attachments) ? message.attachments.filter(Boolean) : [];
+    if (!normalizedContent && normalizedAttachments.length === 0) {
+      throw new Error('Message cannot be empty.');
+    }
+
     const createdAt = new Date().toISOString();
     const inserted = await runQuery<DbMessage>(
       supabase
@@ -3004,8 +3011,8 @@ export const supabaseService = {
         .insert({
           sender_uid: message.senderUid,
           receiver_uid: message.receiverUid,
-          content: message.content || null,
-          attachments: message.attachments || null,
+          content: normalizedContent,
+          attachments: normalizedAttachments,
           created_at: createdAt,
           read_at: null,
         })
@@ -3015,7 +3022,7 @@ export const supabaseService = {
     );
 
     const lastMessageText =
-      message.content || (message.attachments && message.attachments.length > 0 ? 'Attachment' : '');
+      normalizedContent || (normalizedAttachments.length > 1 ? 'Attachments' : normalizedAttachments.length > 0 ? 'Attachment' : '');
 
     try {
       await runQuery(
@@ -3100,6 +3107,11 @@ export const supabaseService = {
     await this.syncConversationPreview(existing.sender_uid, existing.receiver_uid);
     removeCache(`messages:${existing.sender_uid}:${existing.receiver_uid}`);
     removeCache(`messages:${existing.receiver_uid}:${existing.sender_uid}`);
+    showAppToast({
+      tone: 'success',
+      title: 'Message updated',
+      message: 'Your edited message is live now.',
+    });
     return mapMessageFromDb(row);
   },
 
@@ -3129,6 +3141,11 @@ export const supabaseService = {
     await this.syncConversationPreview(existing.sender_uid, existing.receiver_uid);
     removeCache(`messages:${existing.sender_uid}:${existing.receiver_uid}`);
     removeCache(`messages:${existing.receiver_uid}:${existing.sender_uid}`);
+    showAppToast({
+      tone: 'success',
+      title: 'Message deleted',
+      message: 'The conversation updated immediately.',
+    });
     return mapMessageFromDb(row);
   },
 
@@ -3143,6 +3160,11 @@ export const supabaseService = {
     removeCache(`messages:${otherUid}:${uid}`);
     removeCache(`chats:active:${uid}`);
     removeCache(`chats:recent:${uid}`);
+    showAppToast({
+      tone: 'success',
+      title: 'Conversation cleared',
+      message: 'This chat was removed from your message list.',
+    });
   },
 
   async syncConversationPreview(uid: string, otherUid: string): Promise<void> {
@@ -3633,6 +3655,33 @@ export const supabaseService = {
   },
 
   async sendFriendRequest(targetUser: UserProfile, myProfile: UserProfile): Promise<void> {
+    const [existingRequest, existingConnection] = await Promise.all([
+      runQuery<DbFriendRequest | null>(
+        supabase
+          .from('friend_requests')
+          .select('*')
+          .or(`and(from_uid.eq.${myProfile.uid},to_uid.eq.${targetUser.uid}),and(from_uid.eq.${targetUser.uid},to_uid.eq.${myProfile.uid})`)
+          .eq('status', 'pending')
+          .limit(1)
+          .maybeSingle(),
+        'sendFriendRequest:existing'
+      ),
+      runQuery<DbConnection | null>(
+        supabase.from('connections').select('*').contains('uids', [myProfile.uid, targetUser.uid]).limit(1).maybeSingle(),
+        'sendFriendRequest:connection'
+      ),
+    ]);
+
+    if (existingConnection) {
+      throw new Error('You are already connected to this user.');
+    }
+    if (existingRequest?.from_uid === myProfile.uid) {
+      throw new Error('You already sent a friend request to this user.');
+    }
+    if (existingRequest?.from_uid === targetUser.uid) {
+      throw new Error('This user already sent you a friend request.');
+    }
+
     await runQuery(
       supabase.from('friend_requests').insert({
         from_uid: myProfile.uid,
@@ -3647,6 +3696,11 @@ export const supabaseService = {
     removeCache(`requests:outgoing:${myProfile.uid}`);
     removeCache(`requests:incoming:${targetUser.uid}`);
     removeCache(`notifications:${targetUser.uid}`);
+    showAppToast({
+      tone: 'success',
+      title: 'Friend request sent',
+      message: `Your request was sent to ${targetUser.displayName}.`,
+    });
   },
 
   async deleteFriendRequest(requestId: string): Promise<void> {
@@ -3663,6 +3717,11 @@ export const supabaseService = {
       removeCache(`requests:incoming:${existing.to_uid}`);
       removeCache(`notifications:${existing.to_uid}`);
     }
+    showAppToast({
+      tone: 'info',
+      title: 'Request cancelled',
+      message: 'The friend request was removed immediately.',
+    });
   },
 
   async acceptFriendRequest(request: FriendRequest, myProfile: UserProfile): Promise<void> {
@@ -3712,6 +3771,11 @@ export const supabaseService = {
     removeCache(`chats:recent:${request.fromUid}`);
     removeCache(`notifications:${myProfile.uid}`);
     removeCache(`notifications:${request.fromUid}`);
+    showAppToast({
+      tone: 'success',
+      title: 'Friend request accepted',
+      message: `${request.fromName} is now in your messages and connections.`,
+    });
   },
 
   async rejectFriendRequest(requestId: string): Promise<void> {
@@ -3728,6 +3792,11 @@ export const supabaseService = {
       removeCache(`requests:outgoing:${existing.from_uid}`);
       removeCache(`notifications:${existing.to_uid}`);
     }
+    showAppToast({
+      tone: 'info',
+      title: 'Friend request declined',
+      message: 'The request was updated right away.',
+    });
   },
 
   subscribeToConnections(uid: string, callback: (connections: Connection[]) => void) {

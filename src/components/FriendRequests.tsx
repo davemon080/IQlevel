@@ -6,6 +6,7 @@ import { Check, X, Clock, UserPlus, ArrowLeft, UserCheck, UserX, Send, Copy, Map
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import CachedImage from './CachedImage';
+import { showAppToast } from '../utils/appToast';
 
 interface FriendRequestsProps {
   profile: UserProfile;
@@ -20,6 +21,7 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
   const [activeTab, setActiveTab] = useState<RequestTab>('incoming');
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [processingIds, setProcessingIds] = useState<string[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -79,26 +81,59 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
   );
 
   const handleAccept = async (request: FriendRequest) => {
+    setProcessingIds((prev) => [...prev, request.id]);
+    const previousIncoming = incomingRequests;
+    setIncomingRequests((prev) => prev.filter((item) => item.id !== request.id));
     try {
       await supabaseService.acceptFriendRequest(request, profile);
     } catch (error) {
       console.error('Error accepting request:', error);
+      setIncomingRequests(previousIncoming);
+      showAppToast({
+        tone: 'error',
+        title: 'Accept failed',
+        message: 'We could not accept that request right now.',
+      });
+    } finally {
+      setProcessingIds((prev) => prev.filter((item) => item !== request.id));
     }
   };
 
   const handleReject = async (request: FriendRequest) => {
+    setProcessingIds((prev) => [...prev, request.id]);
+    const previousIncoming = incomingRequests;
+    setIncomingRequests((prev) => prev.filter((item) => item.id !== request.id));
     try {
       await supabaseService.rejectFriendRequest(request.id);
     } catch (error) {
       console.error('Error rejecting request:', error);
+      setIncomingRequests(previousIncoming);
+      showAppToast({
+        tone: 'error',
+        title: 'Decline failed',
+        message: 'We could not update that request right now.',
+      });
+    } finally {
+      setProcessingIds((prev) => prev.filter((item) => item !== request.id));
     }
   };
 
-  const handleCancel = async (requestId: string) => {
+  const handleCancel = async (request: FriendRequest) => {
+    setProcessingIds((prev) => [...prev, request.id]);
+    const previousOutgoing = outgoingRequests;
+    setOutgoingRequests((prev) => prev.filter((item) => item.id !== request.id));
     try {
-      await supabaseService.deleteFriendRequest(requestId);
+      await supabaseService.deleteFriendRequest(request.id);
     } catch (error) {
       console.error('Error canceling request:', error);
+      setOutgoingRequests(previousOutgoing);
+      showAppToast({
+        tone: 'error',
+        title: 'Cancel failed',
+        message: 'We could not cancel that request right now.',
+      });
+    } finally {
+      setProcessingIds((prev) => prev.filter((item) => item !== request.id));
     }
   };
 
@@ -134,6 +169,7 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
       user?.photoURL || (direction === 'incoming' ? request.fromPhoto : undefined),
       name || targetUid
     );
+    const isProcessing = processingIds.includes(request.id);
 
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm">
@@ -194,17 +230,19 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
               <>
                 <button
                   onClick={() => handleReject(request)}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-200 transition-all flex items-center gap-2"
+                  disabled={isProcessing}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-200 transition-all flex items-center gap-2 disabled:opacity-60"
                 >
                   <X size={16} />
-                  Decline
+                  {isProcessing ? 'Updating...' : 'Decline'}
                 </button>
                 <button
                   onClick={() => handleAccept(request)}
-                  className="px-4 py-2 bg-teal-600 text-white text-sm font-bold rounded-xl hover:bg-teal-700 transition-all flex items-center gap-2"
+                  disabled={isProcessing}
+                  className="px-4 py-2 bg-teal-600 text-white text-sm font-bold rounded-xl hover:bg-teal-700 transition-all flex items-center gap-2 disabled:opacity-60"
                 >
                   <Check size={16} />
-                  Accept
+                  {isProcessing ? 'Updating...' : 'Accept'}
                 </button>
               </>
             ) : (
@@ -225,10 +263,11 @@ export default function FriendRequests({ profile }: FriendRequestsProps) {
               </Link>
               {request.status === 'pending' && (
                 <button
-                  onClick={() => handleCancel(request.id)}
-                  className="px-4 py-2 bg-red-50 text-red-700 text-sm font-bold rounded-xl hover:bg-red-100 transition-all"
+                  onClick={() => handleCancel(request)}
+                  disabled={isProcessing}
+                  className="px-4 py-2 bg-red-50 text-red-700 text-sm font-bold rounded-xl hover:bg-red-100 transition-all disabled:opacity-60"
                 >
-                  Cancel
+                  {isProcessing ? 'Updating...' : 'Cancel'}
                 </button>
               )}
             </>

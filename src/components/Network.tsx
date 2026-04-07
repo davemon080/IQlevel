@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Search, Star, MessageSquare, UserPlus, Users, Check, Sparkles, TrendingUp, Building2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import CachedImage from './CachedImage';
+import { showAppToast } from '../utils/appToast';
 
 interface NetworkProps {
   profile: UserProfile;
@@ -179,6 +180,11 @@ export default function Network({ profile }: NetworkProps) {
       navigate('/requests');
     } catch (error) {
       console.error('Error sending friend request:', error);
+      showAppToast({
+        tone: 'error',
+        title: 'Request failed',
+        message: error instanceof Error ? error.message : 'We could not send that friend request right now.',
+      });
     }
   };
 

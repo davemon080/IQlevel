@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { UserProfile, Wallet, WalletCurrency } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { ArrowLeft, ChevronDown, HandCoins, Landmark, PlusCircle, RefreshCw, SendHorizontal } from 'lucide-react';
+import { ArrowLeft, ChevronDown, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatAmount } from '../utils/currency';
 import { useCurrency } from '../context/CurrencyContext';
+import { showAppToast } from '../utils/appToast';
 
 interface WalletsProps {
   profile: UserProfile;
@@ -17,7 +18,6 @@ export default function Wallets({ profile }: WalletsProps) {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const loadWalletData = async () => {
     setLoading(true);
@@ -25,8 +25,18 @@ export default function Wallets({ profile }: WalletsProps) {
     try {
       const walletData = await supabaseService.getOrCreateWallet(profile.uid);
       setWallet(walletData);
+      showAppToast({
+        tone: 'success',
+        title: 'Wallet refreshed',
+        message: 'Your available balance is now up to date.',
+      });
     } catch (e: any) {
       setError(e.message || 'Failed to load wallet.');
+      showAppToast({
+        tone: 'error',
+        title: 'Wallet refresh failed',
+        message: e?.message || 'We could not load your wallet right now.',
+      });
     } finally {
       setLoading(false);
     }
@@ -60,15 +70,6 @@ export default function Wallets({ profile }: WalletsProps) {
     return wallet.eurBalance;
   }, [wallet, currency]);
 
-  const balances = useMemo(
-    () => [
-      { code: 'USD' as WalletCurrency, label: 'US Dollar', value: wallet?.usdBalance || 0 },
-      { code: 'NGN' as WalletCurrency, label: 'Nigerian Naira', value: wallet?.ngnBalance || 0 },
-      { code: 'EUR' as WalletCurrency, label: 'Euro', value: wallet?.eurBalance || 0 },
-    ],
-    [wallet]
-  );
-
   if (loading) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
@@ -85,7 +86,7 @@ export default function Wallets({ profile }: WalletsProps) {
         </button>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Wallet</h1>
-          <p className="text-sm text-gray-500">Manage balances, transfers, withdrawals and receipts.</p>
+          <p className="text-sm text-gray-500">Track your live available balance.</p>
         </div>
         <button
           onClick={loadWalletData}
@@ -97,108 +98,38 @@ export default function Wallets({ profile }: WalletsProps) {
       </div>
 
       <div className="overflow-hidden rounded-[2rem] border border-violet-300/30 bg-[radial-gradient(circle_at_top_left,_rgba(196,181,253,0.18),_transparent_22%),linear-gradient(135deg,#12071f_0%,#241042_52%,#090312_100%)] p-5 text-white shadow-[0_22px_70px_rgba(15,6,33,0.45)] md:p-7">
-        <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <div>
-            <div className="mt-6 rounded-[1.6rem] border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-violet-200/80">Available Balance</p>
-                  <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-3xl font-black md:text-4xl">{formatAmount(availableBalance, currency)}</p>
-                    <div className="relative w-full sm:w-44">
-                      <select
-                        value={currency}
-                        onChange={(e) => setCurrency(e.target.value as WalletCurrency)}
-                        className="w-full appearance-none rounded-2xl border border-white/20 bg-black/20 px-4 py-3 pr-10 text-sm font-semibold text-white outline-none backdrop-blur-sm"
-                      >
-                        <option value="USD" className="text-gray-900">USD</option>
-                        <option value="NGN" className="text-gray-900">NGN</option>
-                        <option value="EUR" className="text-gray-900">EUR</option>
-                      </select>
-                      <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-white/70" />
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/settings?section=security')}
-                    className="mt-3 text-xs font-semibold text-violet-100 underline underline-offset-4 hover:text-white"
+        <div className="rounded-[1.6rem] border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] uppercase tracking-[0.22em] text-violet-200/80">Available Balance</p>
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-3xl font-black md:text-4xl">{formatAmount(availableBalance, currency)}</p>
+                <div className="relative w-full sm:w-44">
+                  <select
+                    value={currency}
+                    onChange={(e) => setCurrency(e.target.value as WalletCurrency)}
+                    className="w-full appearance-none rounded-2xl border border-white/20 bg-black/20 px-4 py-3 pr-10 text-sm font-semibold text-white outline-none backdrop-blur-sm"
                   >
-                    Manage transfer PIN in Security
-                  </button>
+                    <option value="USD" className="text-gray-900">USD</option>
+                    <option value="NGN" className="text-gray-900">NGN</option>
+                    <option value="EUR" className="text-gray-900">EUR</option>
+                  </select>
+                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-white/70" />
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => navigate('/settings?section=security')}
+                className="mt-3 text-xs font-semibold text-violet-100 underline underline-offset-4 hover:text-white"
+              >
+                Manage transfer PIN in Security
+              </button>
             </div>
-          </div>
-
-          <div className="grid gap-3">
-            {balances.map((item) => {
-              const active = item.code === currency;
-              return (
-                <button
-                  key={item.code}
-                  type="button"
-                  onClick={() => setCurrency(item.code)}
-                  className={`rounded-[1.4rem] border p-4 text-left transition-all ${
-                    active
-                      ? 'border-violet-300/60 bg-white/14 shadow-[0_14px_35px_rgba(124,58,237,0.2)]'
-                      : 'border-white/10 bg-white/6 hover:bg-white/10'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-100/80">{item.code}</p>
-                      <p className="mt-1 text-sm text-slate-200">{item.label}</p>
-                    </div>
-                    <p className="text-lg font-black text-white">{formatAmount(item.value, item.code)}</p>
-                  </div>
-                </button>
-              );
-            })}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 rounded-3xl border border-violet-100 bg-white/90 p-4 shadow-sm md:grid-cols-4">
-        <button
-          onClick={() => navigate('/wallets/transfer')}
-          className="flex flex-col items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-4 text-center text-sm font-bold text-violet-700 transition-all hover:bg-violet-100"
-        >
-          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm">
-            <SendHorizontal size={20} />
-          </span>
-          Transfer
-        </button>
-        <button
-          onClick={() => navigate('/wallets/withdraw')}
-          className="flex flex-col items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-center text-sm font-bold text-gray-700 transition-all hover:bg-gray-100"
-        >
-          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm">
-            <Landmark size={20} />
-          </span>
-          Withdraw
-        </button>
-        <button
-          onClick={() => navigate('/wallets/add-funds')}
-          className="flex flex-col items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-center text-sm font-bold text-gray-700 transition-all hover:bg-gray-100"
-        >
-          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm">
-            <PlusCircle size={20} />
-          </span>
-          Add Funds
-        </button>
-        <button
-          onClick={() => navigate('/wallets/history')}
-          className="flex flex-col items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-center text-sm font-bold text-gray-700 transition-all hover:bg-gray-100"
-        >
-          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm">
-            <HandCoins size={20} />
-          </span>
-          History
-        </button>
-      </div>
-
       {error && <div className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
-      {success && <div className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</div>}
     </div>
   );
 }

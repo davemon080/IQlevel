@@ -9,6 +9,7 @@ import { supabaseService } from '../services/supabaseService';
 import GlobalSearch from './GlobalSearch';
 import CachedImage from './CachedImage';
 import { useConfirmDialog } from './ConfirmDialog';
+import { AppToast, subscribeToAppToasts } from '../utils/appToast';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -29,6 +30,7 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
   const [unreadNotifications, setUnreadNotifications] = React.useState(0);
   const [unreadMessages, setUnreadMessages] = React.useState(0);
   const [loggingOut, setLoggingOut] = React.useState(false);
+  const [appToasts, setAppToasts] = React.useState<AppToast[]>([]);
   const [marketAccessPopup, setMarketAccessPopup] = React.useState<null | { mode: 'granted' | 'revoked'; title: string; body: string }>(null);
   const previousMarketSettingsRef = React.useRef<MarketSettings | null>(null);
   const { confirm, confirmDialog } = useConfirmDialog();
@@ -72,6 +74,16 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
       unsubscribeUnreadCounts();
     };
   }, [location.pathname, profile.uid, targetUid]);
+
+  React.useEffect(() => {
+    const unsubscribe = subscribeToAppToasts((toast) => {
+      setAppToasts((prev) => [...prev.slice(-2), toast]);
+      window.setTimeout(() => {
+        setAppToasts((prev) => prev.filter((item) => item.id !== toast.id));
+      }, toast.durationMs ?? 2600);
+    });
+    return () => unsubscribe();
+  }, []);
 
   React.useEffect(() => {
     let active = true;
@@ -304,6 +316,25 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
         </nav>
       )}
       <GlobalSearch isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+      {appToasts.length > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-[90] flex flex-col items-center gap-3 px-4">
+          {appToasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`pointer-events-auto w-full max-w-sm rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-sm ${
+                toast.tone === 'success'
+                  ? 'border-emerald-200 bg-white text-emerald-900'
+                  : toast.tone === 'error'
+                  ? 'border-red-200 bg-white text-red-900'
+                  : 'border-sky-200 bg-white text-sky-900'
+              }`}
+            >
+              <p className="text-sm font-black">{toast.title}</p>
+              {toast.message && <p className="mt-1 text-xs leading-5 text-gray-600">{toast.message}</p>}
+            </div>
+          ))}
+        </div>
+      )}
       {marketAccessPopup && (
         <div className="pointer-events-none fixed inset-x-0 top-4 z-[80] flex justify-center px-4">
           <div
