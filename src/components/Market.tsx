@@ -8,6 +8,7 @@ import { convertAmount, formatAmountInCurrency } from '../utils/currency';
 import { formatDistanceToNow } from 'date-fns';
 import { MARKET_CATEGORIES } from '../constants/market';
 import { useCurrency } from '../context/CurrencyContext';
+import { rankMarketItems } from '../utils/algorithm';
 
 interface MarketProps {
   profile: UserProfile;
@@ -56,6 +57,16 @@ export default function Market({ profile }: MarketProps) {
     return () => unsubscribe();
   }, [accessReady]);
 
+  const sellerRatingMeta = useMemo(() => {
+    return ratings.reduce<Record<string, { avg: number; count: number }>>((acc, rating) => {
+      const current = acc[rating.sellerUid] || { avg: 0, count: 0 };
+      const total = current.avg * current.count + rating.rating;
+      const count = current.count + 1;
+      acc[rating.sellerUid] = { avg: total / count, count };
+      return acc;
+    }, {});
+  }, [ratings]);
+
   const filteredItems = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     let nextItems = items.filter((item) => {
@@ -72,18 +83,25 @@ export default function Market({ profile }: MarketProps) {
       ].some((value) => value.toLowerCase().includes(normalizedQuery));
     });
 
-    nextItems = [...nextItems].sort((a, b) => {
-      if (sortBy === 'price-low') {
-        return convertAmount(a.price, a.priceCurrency, currency) - convertAmount(b.price, b.priceCurrency, currency);
-      }
-      if (sortBy === 'price-high') {
-        return convertAmount(b.price, b.priceCurrency, currency) - convertAmount(a.price, a.priceCurrency, currency);
-      }
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
+    if (sortBy === 'price-low') {
+      nextItems = [...nextItems].sort(
+        (a, b) => convertAmount(a.price, a.priceCurrency, currency) - convertAmount(b.price, b.priceCurrency, currency)
+      );
+    } else if (sortBy === 'price-high') {
+      nextItems = [...nextItems].sort(
+        (a, b) => convertAmount(b.price, b.priceCurrency, currency) - convertAmount(a.price, a.priceCurrency, currency)
+      );
+    } else {
+      nextItems = rankMarketItems(nextItems, {
+        viewer: profile,
+        query: normalizedQuery,
+        selectedCategory: category === 'All' ? undefined : category,
+        sellerRatingMeta,
+      }).map((entry) => entry.item);
+    }
 
     return nextItems;
-  }, [category, currency, items, negotiableOnly, searchQuery, sortBy]);
+  }, [category, currency, items, negotiableOnly, profile, searchQuery, sellerRatingMeta, sortBy]);
 
   const categoryCounts = useMemo(() => {
     return items.reduce<Record<string, number>>((acc, item) => {
@@ -91,16 +109,6 @@ export default function Market({ profile }: MarketProps) {
       return acc;
     }, {});
   }, [items]);
-
-  const sellerRatingMeta = useMemo(() => {
-    return ratings.reduce<Record<string, { avg: number; count: number }>>((acc, rating) => {
-      const current = acc[rating.sellerUid] || { avg: 0, count: 0 };
-      const total = current.avg * current.count + rating.rating;
-      const count = current.count + 1;
-      acc[rating.sellerUid] = { avg: total / count, count };
-      return acc;
-    }, {});
-  }, [ratings]);
 
   const suggestions = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase();

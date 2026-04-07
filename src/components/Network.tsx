@@ -6,6 +6,7 @@ import { Search, Star, MessageSquare, UserPlus, Users, Check, Sparkles, Trending
 import { motion } from 'motion/react';
 import CachedImage from './CachedImage';
 import { showAppToast } from '../utils/appToast';
+import { rankSuggestedUsers } from '../utils/algorithm';
 
 interface NetworkProps {
   profile: UserProfile;
@@ -188,20 +189,16 @@ export default function Network({ profile }: NetworkProps) {
     }
   };
 
-  const suggestedUsers = users
-    .filter((u) => !connections.some((c) => c.uids.includes(u.uid)))
-    .map((u) => {
-      let score = 0;
-      const commonSkills = u.skills?.filter((s) => profile.skills?.includes(s)) || [];
-      score += commonSkills.length * 15;
-      if (u.role !== profile.role) score += 25;
-      if (u.education?.university && u.education?.university === profile.education?.university) {
-        score += 30;
-      }
-      if (u.location && u.location === profile.location) score += 10;
-      return { ...u, score };
-    })
-    .sort((a, b) => b.score - a.score);
+  const connectedUids = Array.from(
+    new Set(connections.flatMap((connection) => connection.uids.filter((uid) => uid !== profile.uid)))
+  );
+  const suggestedUsers = rankSuggestedUsers(
+    users.filter((u) => !connections.some((c) => c.uids.includes(u.uid))),
+    {
+      viewer: profile,
+      connectedUids,
+    }
+  ).map((entry) => ({ ...entry.item, score: entry.score }));
 
   const filteredUsers = suggestedUsers.filter(
     (u) =>

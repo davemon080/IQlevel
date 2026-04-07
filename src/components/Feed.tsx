@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatMoneyFromUSD } from '../utils/currency';
 import { getErrorMessage } from '../utils/errors';
+import { rankFeedPosts, rankJobs, rankSuggestedUsers } from '../utils/algorithm';
 import CachedImage from './CachedImage';
 import { useConfirmDialog } from './ConfirmDialog';
 
@@ -255,35 +256,6 @@ export default function Feed({ profile }: FeedProps) {
     setProfileByUid((prev) => ({ ...prev, [profile.uid]: profile }));
   }, [profile]);
 
-  const topStudentsPreview = useMemo(() => topStudents.slice(0, 3), [topStudents]);
-  const ownPerformance = performanceByUid[profile.uid] || { gigsCompleted: 0, ratingAverage: 0, ratingCount: 0 };
-
-  useEffect(() => {
-    const relevantUids = Array.from(new Set([profile.uid, ...topStudents.map((student) => student.uid)]));
-    let active = true;
-
-    const loadPerformance = () => {
-      supabaseService
-        .getUserPerformanceSummaries(relevantUids)
-        .then((summary) => {
-          if (active) setPerformanceByUid(summary);
-        })
-        .catch(() => {
-          if (active) setPerformanceByUid({});
-        });
-    };
-
-    loadPerformance();
-    const unsubscribeRatings = supabaseService.subscribeToMarketSellerRatings(loadPerformance);
-    const statsInterval = window.setInterval(loadPerformance, 30000);
-
-    return () => {
-      active = false;
-      unsubscribeRatings();
-      window.clearInterval(statsInterval);
-    };
-  }, [profile.uid, topStudents]);
-
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPostContent.trim() && !postImageFile) return;
@@ -346,6 +318,59 @@ export default function Feed({ profile }: FeedProps) {
   }, {});
 
   const likedPostIds = new Set(likes.filter((item) => item.userUid === profile.uid).map((item) => item.postId));
+  const rankedPosts = useMemo(
+    () =>
+      rankFeedPosts(posts, {
+        viewer: profile,
+        likesByPostId: likeCountMap,
+        commentsByPostId: commentCountMap,
+        profileByUid,
+      }).map((entry) => entry.item),
+    [commentCountMap, likeCountMap, posts, profile, profileByUid]
+  );
+  const rankedTopStudents = useMemo(
+    () =>
+      rankSuggestedUsers(topStudents, {
+        viewer: profile,
+        performanceByUid,
+      }).map((entry) => entry.item),
+    [performanceByUid, profile, topStudents]
+  );
+  const rankedJobs = useMemo(
+    () =>
+      rankJobs(jobs, {
+        viewer: profile,
+      }).map((entry) => entry.item),
+    [jobs, profile]
+  );
+  const topStudentsPreview = useMemo(() => rankedTopStudents.slice(0, 3), [rankedTopStudents]);
+  const ownPerformance = performanceByUid[profile.uid] || { gigsCompleted: 0, ratingAverage: 0, ratingCount: 0 };
+
+  useEffect(() => {
+    const relevantUids = Array.from(new Set([profile.uid, ...rankedTopStudents.map((student) => student.uid)]));
+    let active = true;
+
+    const loadPerformance = () => {
+      supabaseService
+        .getUserPerformanceSummaries(relevantUids)
+        .then((summary) => {
+          if (active) setPerformanceByUid(summary);
+        })
+        .catch(() => {
+          if (active) setPerformanceByUid({});
+        });
+    };
+
+    loadPerformance();
+    const unsubscribeRatings = supabaseService.subscribeToMarketSellerRatings(loadPerformance);
+    const statsInterval = window.setInterval(loadPerformance, 30000);
+
+    return () => {
+      active = false;
+      unsubscribeRatings();
+      window.clearInterval(statsInterval);
+    };
+  }, [profile.uid, rankedTopStudents]);
 
   const handleToggleLike = async (postId: string) => {
     if (postId.startsWith('temp-')) return;
@@ -471,8 +496,8 @@ export default function Feed({ profile }: FeedProps) {
           )}
         </div>
         <div className="scrollbar-none flex items-start gap-5 sm:gap-6 overflow-x-auto px-1 pb-2">
-          {topStudents.length > 0 ? (
-            topStudents.map((student) => (
+          {rankedTopStudents.length > 0 ? (
+            rankedTopStudents.map((student) => (
               <button
                 key={student.uid}
                 onClick={() => navigate(`/profile/${student.uid}`)}
@@ -577,7 +602,7 @@ export default function Feed({ profile }: FeedProps) {
           </div>
         )}
         <AnimatePresence>
-          {posts.map((post) => (
+          {rankedPosts.map((post) => (
             <motion.div
               key={post.id}
               initial={{ opacity: 0, y: 20 }}
@@ -832,7 +857,7 @@ export default function Feed({ profile }: FeedProps) {
             Recommended Gigs
           </h4>
           <div className="space-y-4">
-            {jobs.map((job) => (
+            {rankedJobs.map((job) => (
               <div key={job.id} className="p-3 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer border border-transparent hover:border-gray-100">
                 <p className="text-sm font-bold text-gray-900 mb-1">{job.title}</p>
                 <div className="flex items-center gap-3 text-[10px] text-gray-500 font-medium">
@@ -874,7 +899,7 @@ export default function Feed({ profile }: FeedProps) {
                 </div>
               </div>
             ))}
-            {topStudents.length === 0 && <p className="text-xs text-gray-400 italic text-center">No students found.</p>}
+            {rankedTopStudents.length === 0 && <p className="text-xs text-gray-400 italic text-center">No students found.</p>}
           </div>
         </div>
       </div>
