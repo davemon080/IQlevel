@@ -238,6 +238,8 @@ const CACHE_TTL = {
   notifications: 1000 * 30,
 } as const;
 
+const NGN_TRANSACTION_FEE = 50;
+
 type CacheEntry<T> = {
   data: T;
   updatedAt: number;
@@ -304,10 +306,14 @@ function mapUserProfileFromDb(row: DbUserProfile): UserProfile {
     !row.photo_url || isLegacyLetterAvatar
       ? getCartoonAvatar(row.display_name || row.uid)
       : row.photo_url;
+  const normalizedPublicId =
+    row.public_id && row.public_id.startsWith('SL-')
+      ? row.public_id.replace(/^SL-/, 'NXT-')
+      : row.public_id || undefined;
 
   return {
     uid: row.uid,
-    publicId: row.public_id || undefined,
+    publicId: normalizedPublicId,
     email: row.email,
     displayName: row.display_name,
     photoURL: resolvedPhoto,
@@ -831,7 +837,7 @@ function isUuid(value: string) {
 }
 
 function buildPublicId(uid: string) {
-  return `SL-${uid.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
+  return `NXT-${uid.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
 }
 
 async function hashSecret(value: string) {
@@ -3003,6 +3009,13 @@ export const supabaseService = {
     if (!normalizedContent && normalizedAttachments.length === 0) {
       throw new Error('Message cannot be empty.');
     }
+    if (message.senderUid === message.receiverUid) {
+      throw new Error('You cannot message yourself.');
+    }
+    const canMessage = await this.canUsersMessage(message.senderUid, message.receiverUid);
+    if (!canMessage) {
+      throw new Error('You can only message friends, or a client who already approved you for a gig.');
+    }
 
     const createdAt = new Date().toISOString();
     const inserted = await runQuery<DbMessage>(
@@ -3825,6 +3838,63 @@ export const supabaseService = {
     return friends;
   },
 
+  async areUsersConnected(uid: string, otherUid: string): Promise<boolean> {
+    if (!uid || !otherUid || uid === otherUid) return false;
+    const friends = await this.getFriends(uid);
+    return friends.some((friend) => friend.uid === otherUid);
+  },
+
+  async canUsersMessage(senderUid: string, receiverUid: string): Promise<boolean> {
+    if (!senderUid || !receiverUid || senderUid === receiverUid) return false;
+
+    if (await this.areUsersConnected(senderUid, receiverUid)) {
+      return true;
+    }
+
+    const acceptedProposals = await runQuery<DbProposal[]>(
+      supabase
+        .from('proposals')
+        .select('*')
+        .eq('status', 'accepted')
+        .in('freelancer_uid', [senderUid, receiverUid]),
+      'canUsersMessage:acceptedProposals'
+    );
+
+    if (acceptedProposals.length === 0) {
+      return false;
+    }
+
+    const jobIds = Array.from(new Set(acceptedProposals.map((proposal) => proposal.job_id)));
+    const jobs = await runQuery<DbJob[]>(
+      supabase.from('jobs').select('*').in('id', jobIds),
+      'canUsersMessage:jobs'
+    );
+
+    return acceptedProposals.some((proposal) => {
+      const job = jobs.find((candidate) => candidate.id === proposal.job_id);
+      if (!job) return false;
+      return (
+        (proposal.freelancer_uid === senderUid && job.client_uid === receiverUid) ||
+        (proposal.freelancer_uid === receiverUid && job.client_uid === senderUid)
+      );
+    });
+  },
+
+  async canFreelancerMessageClientForJob(jobId: string, freelancerUid: string): Promise<boolean> {
+    const proposal = await runQuery<DbProposal | null>(
+      supabase
+        .from('proposals')
+        .select('*')
+        .eq('job_id', jobId)
+        .eq('freelancer_uid', freelancerUid)
+        .eq('status', 'accepted')
+        .maybeSingle(),
+      'canFreelancerMessageClientForJob'
+    );
+
+    return !!proposal;
+  },
+
   // Wallets
   async getOrCreateWallet(uid: string): Promise<Wallet> {
     const cached = readCache<Wallet>(`wallet:${uid}`, CACHE_TTL.wallet);
@@ -3927,11 +3997,15 @@ export const supabaseService = {
   },
 
   async topUpWallet(uid: string, currency: WalletCurrency, amount: number, method: 'card' | 'transfer') {
+    const creditedAmount = currency === 'NGN' ? amount - NGN_TRANSACTION_FEE : amount;
+    if (creditedAmount <= 0) {
+      throw new Error(`Top-up amount must be more than N${NGN_TRANSACTION_FEE} to cover the funding fee.`);
+    }
     const wallet = await this.getOrCreateWallet(uid);
     const nextBalances = {
-      usd_balance: wallet.usdBalance + (currency === 'USD' ? amount : 0),
-      ngn_balance: wallet.ngnBalance + (currency === 'NGN' ? amount : 0),
-      eur_balance: wallet.eurBalance + (currency === 'EUR' ? amount : 0),
+      usd_balance: wallet.usdBalance + (currency === 'USD' ? creditedAmount : 0),
+      ngn_balance: wallet.ngnBalance + (currency === 'NGN' ? creditedAmount : 0),
+      eur_balance: wallet.eurBalance + (currency === 'EUR' ? creditedAmount : 0),
     };
     const timestamp = new Date().toISOString();
 
@@ -3949,8 +4023,9 @@ export const supabaseService = {
         currency,
         type: 'topup',
         method,
-        amount,
+        amount: creditedAmount,
         status: 'completed',
+        reference: currency === 'NGN' ? `fee_applied:${NGN_TRANSACTION_FEE}` : null,
         created_at: timestamp,
       }),
       'topUpWallet:transaction'
@@ -3969,9 +4044,10 @@ export const supabaseService = {
         currency,
         type: 'topup',
         method,
-        amount,
+        amount: creditedAmount,
         status: 'completed',
         createdAt: timestamp,
+        reference: currency === 'NGN' ? `fee_applied:${NGN_TRANSACTION_FEE}` : undefined,
       },
       ...(current || []),
     ]);
@@ -4047,13 +4123,14 @@ export const supabaseService = {
 
     const wallet = await this.getOrCreateWallet(uid);
     const current = currency === 'USD' ? wallet.usdBalance : currency === 'NGN' ? wallet.ngnBalance : wallet.eurBalance;
-    if (amount > current) {
+    const totalDebit = currency === 'NGN' ? amount + NGN_TRANSACTION_FEE : amount;
+    if (totalDebit > current) {
       throw new Error('Insufficient balance.');
     }
 
     const nextBalances = {
       usd_balance: wallet.usdBalance - (currency === 'USD' ? amount : 0),
-      ngn_balance: wallet.ngnBalance - (currency === 'NGN' ? amount : 0),
+      ngn_balance: wallet.ngnBalance - (currency === 'NGN' ? totalDebit : 0),
       eur_balance: wallet.eurBalance - (currency === 'EUR' ? amount : 0),
     };
     const timestamp = new Date().toISOString();
@@ -4074,7 +4151,7 @@ export const supabaseService = {
         method: 'transfer',
         amount,
         status: 'completed',
-        reference: buildWithdrawalReference(account),
+        reference: `${buildWithdrawalReference(account)}${currency === 'NGN' ? `|fee:${NGN_TRANSACTION_FEE}` : ''}`,
         created_at: timestamp,
       }),
       'withdrawToBankAccountWithPin:transaction'
@@ -4096,7 +4173,7 @@ export const supabaseService = {
         amount,
         status: 'completed',
         createdAt: timestamp,
-        reference: buildWithdrawalReference(account),
+        reference: `${buildWithdrawalReference(account)}${currency === 'NGN' ? `|fee:${NGN_TRANSACTION_FEE}` : ''}`,
       },
       ...(current || []),
     ]);

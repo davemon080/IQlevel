@@ -19,7 +19,9 @@ export default function JobDetails({ profile }: JobDetailsProps) {
   const [job, setJob] = useState<Job | null>(null);
   const [client, setClient] = useState<UserProfile | null>(null);
   const [hasApplied, setHasApplied] = useState(false);
+  const [canMessageClient, setCanMessageClient] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showFullDescription, setShowFullDescription] = useState(false);
 
   useEffect(() => {
     if (!jobId) return;
@@ -31,8 +33,14 @@ export default function JobDetails({ profile }: JobDetailsProps) {
         setJob(jobItem);
         setHasApplied(alreadyApplied);
         if (jobItem) {
-          const clientProfile = await supabaseService.getUserProfile(jobItem.clientUid);
-          if (active) setClient(clientProfile);
+          const [clientProfile, messagingAccess] = await Promise.all([
+            supabaseService.getUserProfile(jobItem.clientUid),
+            supabaseService.canFreelancerMessageClientForJob(jobItem.id, profile.uid),
+          ]);
+          if (active) {
+            setClient(clientProfile);
+            setCanMessageClient(messagingAccess);
+          }
         }
       })
       .finally(() => {
@@ -97,7 +105,16 @@ export default function JobDetails({ profile }: JobDetailsProps) {
         </div>
       </div>
 
-      <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">{job.description}</p>
+      <div className="space-y-2">
+        <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
+          {showFullDescription || job.description.length <= 280 ? job.description : `${job.description.slice(0, 280).trimEnd()}...`}
+        </p>
+        {job.description.length > 280 && (
+          <button type="button" onClick={() => setShowFullDescription((prev) => !prev)} className="text-sm font-semibold text-teal-700 hover:text-teal-800">
+            {showFullDescription ? 'View less' : 'View more'}
+          </button>
+        )}
+      </div>
 
       {client && (
         <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60">
@@ -128,12 +145,18 @@ export default function JobDetails({ profile }: JobDetailsProps) {
           >
             {hasApplied ? 'Application Submitted' : 'Apply for Gig'}
           </Link>
-          <Link
-            to={`/messages?uid=${job.clientUid}`}
-            className="px-6 py-3 rounded-xl font-bold text-sm bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
-          >
-            Message Client
-          </Link>
+          {canMessageClient ? (
+            <Link
+              to={`/messages?uid=${job.clientUid}`}
+              className="px-6 py-3 rounded-xl font-bold text-sm bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
+            >
+              Message Client
+            </Link>
+          ) : (
+            <div className="px-6 py-3 rounded-xl font-bold text-sm bg-amber-50 border border-amber-200 text-amber-800">
+              Client messaging unlocks after your proposal is approved.
+            </div>
+          )}
         </div>
       )}
 

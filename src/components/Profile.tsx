@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { UserProfile, Post, CompanyPartnerRequest, CompanyFollow } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { ArrowLeft, Building2, Camera, ExternalLink, Globe, MapPin, MessageSquare, Save, Share2, Plus, Trash2, Copy, Users } from 'lucide-react';
+import { ArrowLeft, Building2, Camera, ExternalLink, Globe, Heart, MapPin, MessageCircle, MessageSquare, Save, Share2, Plus, Trash2, Copy, Users } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import CachedImage from './CachedImage';
+import { PostComment, PostLike } from '../types';
 
 interface ProfileProps {
   profile: UserProfile;
@@ -27,8 +28,19 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
   const [companyFollowers, setCompanyFollowers] = useState<CompanyFollow[]>([]);
   const [myCompanyFollows, setMyCompanyFollows] = useState<CompanyFollow[]>([]);
   const [followedCompanies, setFollowedCompanies] = useState<Record<string, CompanyPartnerRequest>>({});
+  const [likes, setLikes] = useState<PostLike[]>([]);
+  const [comments, setComments] = useState<PostComment[]>([]);
+  const [canMessageUser, setCanMessageUser] = useState(false);
 
   const isOwnProfile = uid === loggedInProfile.uid;
+
+  useEffect(() => {
+    if (!uid || uid === loggedInProfile.uid) {
+      setCanMessageUser(true);
+      return;
+    }
+    supabaseService.areUsersConnected(loggedInProfile.uid, uid).then(setCanMessageUser).catch(() => setCanMessageUser(false));
+  }, [loggedInProfile.uid, uid]);
 
   useEffect(() => {
     if (!uid) return;
@@ -68,6 +80,15 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
   }, [editing, loggedInProfile.uid, uid]);
 
   useEffect(() => {
+    const unsubscribeLikes = supabaseService.subscribeToPostLikes(setLikes);
+    const unsubscribeComments = supabaseService.subscribeToAllPostComments(setComments);
+    return () => {
+      unsubscribeLikes();
+      unsubscribeComments();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!companyPartner) {
       setCompanyFollowers([]);
       return;
@@ -102,6 +123,42 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
     const filled = checks.filter((v) => (Array.isArray(v) ? v.length > 0 : Boolean(v))).length;
     return Math.round((filled / checks.length) * 100);
   }, [userProfile]);
+  const likeCountMap = useMemo(
+    () =>
+      likes.reduce<Record<string, number>>((acc, like) => {
+        acc[like.postId] = (acc[like.postId] || 0) + 1;
+        return acc;
+      }, {}),
+    [likes]
+  );
+  const commentCountMap = useMemo(
+    () =>
+      comments.reduce<Record<string, number>>((acc, comment) => {
+        acc[comment.postId] = (acc[comment.postId] || 0) + 1;
+        return acc;
+      }, {}),
+    [comments]
+  );
+  const likedPostIds = useMemo(
+    () => new Set(likes.filter((like) => like.userUid === loggedInProfile.uid).map((like) => like.postId)),
+    [likes, loggedInProfile.uid]
+  );
+  const togglePostLike = async (postId: string) => {
+    const shouldLike = !likedPostIds.has(postId);
+    await supabaseService.setPostLike(postId, loggedInProfile.uid, shouldLike);
+  };
+  const sharePost = async (postId: string) => {
+    const url = `${window.location.origin}/#/comments/${postId}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Connect post', url });
+        return;
+      } catch {
+        // fall through to clipboard
+      }
+    }
+    await navigator.clipboard.writeText(url);
+  };
 
   const handleSave = async () => {
     if (!uid) return;
@@ -471,10 +528,17 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               </div>
             ) : (
               <div className="flex gap-2">
-                <button onClick={() => navigate(`/messages?uid=${userProfile.uid}`)} className="px-4 py-2 rounded-xl bg-teal-700 text-white hover:bg-teal-800 text-sm font-semibold inline-flex items-center gap-2">
-                  <MessageSquare size={14} />
-                  Message
-                </button>
+                {canMessageUser ? (
+                  <button onClick={() => navigate(`/messages?uid=${userProfile.uid}`)} className="px-4 py-2 rounded-xl bg-teal-700 text-white hover:bg-teal-800 text-sm font-semibold inline-flex items-center gap-2">
+                    <MessageSquare size={14} />
+                    Message
+                  </button>
+                ) : (
+                  <button onClick={() => navigate('/network')} className="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 text-sm font-semibold inline-flex items-center gap-2">
+                    <Users size={14} />
+                    Connect First
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -701,8 +765,8 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             </div>
           )}
 
-          <section className="rounded-[2rem] border border-gray-200 bg-white p-5 shadow-sm md:p-6">
-            <div className="flex flex-col gap-2 border-b border-gray-100 pb-4 md:flex-row md:items-end md:justify-between">
+          <section className="-mx-4 bg-transparent md:mx-0">
+            <div className="flex flex-col gap-2 px-4 pb-4 md:px-0 md:flex-row md:items-end md:justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.24em] text-gray-400">Bottom Section</p>
                 <h3 className="mt-2 text-lg font-bold text-gray-900">All Posts</h3>
@@ -719,16 +783,18 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             ) : (
               <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
                 {posts.map((post) => (
-                  <article key={post.id} className="flex h-full flex-col rounded-3xl border border-gray-100 bg-gray-50/60 p-4">
+                  <article key={post.id} className="flex h-full flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
                     <div className="mb-3 flex items-center justify-between gap-3">
-                      <span className="rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700 shadow-sm">
+                      <span className="ml-4 mt-4 rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700 shadow-sm">
                         {post.type}
                       </span>
-                      <span className="text-xs text-gray-400">
+                      <span className="mr-4 mt-4 text-xs text-gray-400">
                         {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
                       </span>
                     </div>
-                    <p className="text-sm leading-7 text-gray-800 whitespace-pre-wrap">{post.content}</p>
+                    <div className="px-4 pb-4">
+                      <p className="text-sm leading-7 text-gray-800 whitespace-pre-wrap">{post.content}</p>
+                    </div>
                     {post.imageUrl && (
                       <CachedImage
                         src={post.imageUrl}
@@ -736,10 +802,24 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                         fallbackMode="post"
                         loading="lazy"
                         decoding="async"
-                        wrapperClassName="mt-4 w-full overflow-hidden rounded-2xl"
-                        imgClassName="h-full w-full rounded-2xl object-cover"
+                        wrapperClassName="w-full overflow-hidden"
+                        imgClassName="h-full w-full object-cover"
                       />
                     )}
+                    <div className="flex items-center gap-5 border-t border-gray-100 px-4 py-3">
+                      <button onClick={() => void togglePostLike(post.id)} className={`inline-flex items-center gap-1 text-xs font-bold ${likedPostIds.has(post.id) ? 'text-rose-600' : 'text-gray-500 hover:text-teal-700'}`}>
+                        <Heart size={14} className={likedPostIds.has(post.id) ? 'fill-current' : ''} />
+                        Like ({likeCountMap[post.id] || 0})
+                      </button>
+                      <button onClick={() => navigate(`/comments/${post.id}`)} className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-teal-700">
+                        <MessageCircle size={14} />
+                        Comment ({commentCountMap[post.id] || 0})
+                      </button>
+                      <button onClick={() => void sharePost(post.id)} className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-teal-700">
+                        <Share2 size={14} />
+                        Share
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>

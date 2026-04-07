@@ -179,6 +179,7 @@ export default function Chat({ profile }: ChatProps) {
   const [incomingRequests, setIncomingRequests] = React.useState<FriendRequest[]>([]);
   const [outgoingRequests, setOutgoingRequests] = React.useState<FriendRequest[]>([]);
   const [selectedContact, setSelectedContact] = React.useState<UserProfile | null>(null);
+  const [canMessageSelectedContact, setCanMessageSelectedContact] = React.useState(true);
   const [showChatOnMobile, setShowChatOnMobile] = React.useState(false);
   const [sidebarSearchQuery, setSidebarSearchQuery] = React.useState('');
   const [newChatSearchQuery, setNewChatSearchQuery] = React.useState('');
@@ -218,6 +219,10 @@ export default function Chat({ profile }: ChatProps) {
   const selectedContactPresence = selectedContact ? presenceState[selectedContact.uid] : undefined;
   const selectedContactOnline = selectedContact ? onlineUserIds.has(selectedContact.uid) : false;
   const selectedContactTyping = selectedContactPresence?.typingTo === profile.uid;
+  const composerLockedReason =
+    selectedContact && !canMessageSelectedContact
+      ? 'You can only message friends, or a client who already approved you for a gig.'
+      : null;
   const conversationBottomPadding = 24;
 
   const filteredActiveChats = React.useMemo(() => {
@@ -605,6 +610,27 @@ export default function Chat({ profile }: ChatProps) {
       uploading,
     ]
   );
+
+  React.useEffect(() => {
+    let active = true;
+    if (!selectedContact) {
+      setCanMessageSelectedContact(true);
+      return;
+    }
+
+    supabaseService
+      .canUsersMessage(profile.uid, selectedContact.uid)
+      .then((allowed) => {
+        if (active) setCanMessageSelectedContact(allowed);
+      })
+      .catch(() => {
+        if (active) setCanMessageSelectedContact(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [profile.uid, selectedContact]);
 
   React.useEffect(() => {
     const handleResize = () => {
@@ -1383,11 +1409,12 @@ export default function Chat({ profile }: ChatProps) {
                     onBlur={() => {
                       window.setTimeout(() => setInputFocused(false), 120);
                     }}
-                    placeholder={editingMessageId ? 'Edit your message' : 'Type a message'}
+                    placeholder={composerLockedReason || (editingMessageId ? 'Edit your message' : 'Type a message')}
                     autoComplete="off"
                     autoCorrect="on"
                     spellCheck
                     enterKeyHint="send"
+                    disabled={!canMessageSelectedContact}
                     className="max-h-32 min-h-[40px] w-full resize-none overflow-y-auto rounded-[1.75rem] border-transparent bg-transparent px-3 py-2.5 text-[15px] leading-5 text-gray-900 caret-teal-600 focus:outline-none focus:ring-0"
                   />
 
@@ -1419,13 +1446,19 @@ export default function Chat({ profile }: ChatProps) {
                 {hasComposerValue && (
                   <button
                     type="submit"
-                    disabled={uploading}
+                    disabled={uploading || !canMessageSelectedContact}
                     className="inline-flex h-11 w-11 items-center justify-center self-end rounded-full bg-teal-600 text-white shadow-md transition-all hover:bg-teal-700 disabled:bg-gray-400"
                   >
                     {uploading ? <Loader2 size={19} className="animate-spin" /> : <Send size={19} />}
                   </button>
                 )}
               </form>
+
+              {composerLockedReason && (
+                <div className="mt-2 rounded-2xl bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-800">
+                  {composerLockedReason}
+                </div>
+              )}
 
               {editingMessageId && (
                 <div className="mt-2 flex items-center justify-between rounded-2xl bg-white px-4 py-2 text-xs text-gray-600 shadow-sm">
@@ -1575,20 +1608,6 @@ export default function Chat({ profile }: ChatProps) {
                                 className={`flex-1 rounded-2xl px-4 py-2.5 text-sm font-bold transition-all ${alreadyConnected || alreadyOutgoing || alreadyIncoming ? 'bg-gray-100 text-gray-500' : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
                               >
                                 <span className="inline-flex items-center gap-2"><UserPlus size={15} />{connectLabel}</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setIsNewChatModalOpen(false);
-                                  openConversation(user, {
-                                    otherUid: user.uid,
-                                    lastMessage: '',
-                                    updatedAt: new Date().toISOString(),
-                                  });
-                                }}
-                                className="flex-1 rounded-2xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-teal-800"
-                              >
-                                <span className="inline-flex items-center gap-2"><MessageSquare size={15} />Message</span>
                               </button>
                             </div>
                           </div>

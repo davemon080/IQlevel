@@ -90,6 +90,10 @@ export default function JobBoard({ profile }: JobBoardProps) {
 
   const handleCreateJob = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (newJob.description.trim().length < 40) {
+      window.alert('Please add a detailed job description of at least 40 characters so freelancers can deliver accurately.');
+      return;
+    }
     await supabaseService.createJob({
       clientUid: profile.uid,
       ...newJob,
@@ -322,6 +326,7 @@ export default function JobBoard({ profile }: JobBoardProps) {
                   placeholder="Describe the project requirements, scope, and deliverables..."
                   className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-teal-500 rounded-xl text-sm transition-all min-h-[150px]"
                 />
+                <p className="text-xs text-gray-500">Add enough detail for freelancers to understand your expectations clearly. Minimum 40 characters.</p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">

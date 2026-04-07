@@ -6,6 +6,7 @@ import { supabaseService } from '../services/supabaseService';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatAmount } from '../utils/currency';
 import { AnimatePresence, motion } from 'motion/react';
+import CachedImage from './CachedImage';
 
 interface ProcessTransferDetailsProps {
   profile: UserProfile;
@@ -201,7 +202,13 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
       {recipientProfile && (
         <form onSubmit={openPinPad} className="rounded-2xl border border-violet-100 bg-white/95 p-5 space-y-4">
           <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-100">
-            <UserCheck size={20} className="text-emerald-600" />
+            <CachedImage
+              src={recipientProfile.photoURL}
+              alt={recipientProfile.displayName}
+              fallbackMode="avatar"
+              wrapperClassName="h-12 w-12 rounded-2xl border border-emerald-200 bg-white"
+              imgClassName="h-full w-full rounded-2xl object-cover"
+            />
             <div className="min-w-0">
               <p className="text-sm font-bold text-emerald-900 truncate">
                 {recipientProfile.displayName || decodeURIComponent(recipientNameFromQuery)}
@@ -325,6 +332,19 @@ export default function ProcessTransferDetails({ profile }: ProcessTransferDetai
                   className="w-full rounded-xl bg-violet-700 py-3 text-white font-bold disabled:opacity-70"
                 >
                   {processing ? 'Processing Transfer...' : 'Complete Transfer'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (processing) return;
+                    setPin('');
+                    setShowPinPad(false);
+                  }}
+                  disabled={processing}
+                  className="w-full rounded-xl border border-gray-200 py-3 font-bold text-gray-700 disabled:opacity-60"
+                >
+                  Cancel Transfer
                 </button>
               </div>
             </motion.div>

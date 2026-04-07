@@ -105,7 +105,7 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
 
       const profile: UserProfile = {
         uid: user.id,
-        publicId: `SL-${user.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`,
+        publicId: `NXT-${user.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`,
         email: user.email || '',
         displayName: draft.displayName.trim() || user.user_metadata?.full_name || 'Anonymous',
         photoURL: user.user_metadata?.avatar_url || getCartoonAvatar(draft.displayName || user.id),

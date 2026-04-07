@@ -79,6 +79,10 @@ export function buildReceiptSvg(profile: UserProfile, tx: WalletTransaction) {
   </svg>`;
 }
 
+export function getReceiptImageDataUrl(profile: UserProfile, tx: WalletTransaction) {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(buildReceiptSvg(profile, tx))}`;
+}
+
 export function downloadReceiptImage(profile: UserProfile, tx: WalletTransaction) {
   const svg = buildReceiptSvg(profile, tx);
   const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });

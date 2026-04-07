@@ -147,7 +147,7 @@ export default function AddFunds({ profile }: AddFundsProps) {
 
       <form onSubmit={handleAddFunds} className="space-y-4 rounded-3xl border border-violet-100 bg-white/95 p-6 shadow-sm">
         <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-800">
-          Paystack funding is configured for NGN. Checkout uses your public key in the app, while payment verification runs through the secure server function.
+          Paystack funding is configured for NGN. Checkout uses your public key in the app, while payment verification runs through the secure server function. A N50 system fee is deducted from each NGN top-up before crediting your wallet.
         </div>
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Amount (NGN)</label>

@@ -43,6 +43,16 @@ function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidt
   return lines;
 }
 
+async function loadImageForCanvas(src: string) {
+  return await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new window.Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Unable to load image for sharing.'));
+    image.src = src;
+  });
+}
+
 async function buildPostShareAsset(post: Post, link: string): Promise<File | null> {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
@@ -77,12 +87,48 @@ async function buildPostShareAsset(post: Post, link: string): Promise<File | nul
   context.font = '500 24px Arial';
   context.fillText('Shared from Connect', 110, 190);
 
+  const hasImage = Boolean(post.imageUrl);
+  const contentTop = hasImage ? 760 : 310;
+
+  if (post.imageUrl) {
+    try {
+      const image = await loadImageForCanvas(post.imageUrl);
+      const imageBoxX = 110;
+      const imageBoxY = 240;
+      const imageBoxWidth = 980;
+      const imageBoxHeight = 450;
+      context.save();
+      context.beginPath();
+      context.roundRect(imageBoxX, imageBoxY, imageBoxWidth, imageBoxHeight, 32);
+      context.clip();
+      const imageRatio = image.width / image.height;
+      const boxRatio = imageBoxWidth / imageBoxHeight;
+      let drawWidth = imageBoxWidth;
+      let drawHeight = imageBoxHeight;
+      let drawX = imageBoxX;
+      let drawY = imageBoxY;
+      if (imageRatio > boxRatio) {
+        drawWidth = imageBoxHeight * imageRatio;
+        drawX = imageBoxX - (drawWidth - imageBoxWidth) / 2;
+      } else {
+        drawHeight = imageBoxWidth / imageRatio;
+        drawY = imageBoxY - (drawHeight - imageBoxHeight) / 2;
+      }
+      context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+      context.restore();
+      context.fillStyle = 'rgba(15,23,42,0.22)';
+      context.fillRect(imageBoxX, imageBoxY + imageBoxHeight - 120, imageBoxWidth, 120);
+    } catch {
+      // Fall back to text-only share card if the remote image cannot be painted safely.
+    }
+  }
+
   context.fillStyle = '#ffffff';
   context.font = '700 56px Arial';
   const content = (post.content || 'Check out this post on Connect.').trim();
-  const lines = wrapCanvasText(context, content, 920).slice(0, 8);
+  const lines = wrapCanvasText(context, content, 920).slice(0, hasImage ? 4 : 8);
   lines.forEach((line, index) => {
-    context.fillText(line, 110, 310 + index * 78);
+    context.fillText(line, 110, contentTop + index * 78);
   });
 
   context.fillStyle = 'rgba(255,255,255,0.16)';

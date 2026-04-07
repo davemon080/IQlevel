@@ -183,6 +183,10 @@ export default function ManageGigs({ profile }: ManageGigsProps) {
   const submitJobEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingJob) return;
+    if (jobDraft.description.trim().length < 40) {
+      window.alert('Please keep the gig description detailed enough for freelancers. Minimum 40 characters.');
+      return;
+    }
     setSavingJob(true);
     try {
       await supabaseService.updateJob(editingJob.id, {

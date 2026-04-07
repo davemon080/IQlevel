@@ -22,6 +22,7 @@ export default function MarketItemDetails({ profile }: MarketItemDetailsProps) {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [ratings, setRatings] = useState<MarketSellerRating[]>([]);
   const [sellerSettings, setSellerSettings] = useState<MarketSettings | null>(null);
+  const [showFullDescription, setShowFullDescription] = useState(false);
   const isOwnItem = item?.sellerUid === profile.uid;
   const { confirm, confirmDialog } = useConfirmDialog();
 
@@ -221,7 +222,14 @@ export default function MarketItemDetails({ profile }: MarketItemDetailsProps) {
             {item.description && (
               <div>
                 <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">Details</h3>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-600">{item.description}</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-600">
+                  {showFullDescription || item.description.length <= 220 ? item.description : `${item.description.slice(0, 220).trimEnd()}...`}
+                </p>
+                {item.description.length > 220 && (
+                  <button type="button" onClick={() => setShowFullDescription((prev) => !prev)} className="mt-2 text-sm font-semibold text-teal-700 hover:text-teal-800">
+                    {showFullDescription ? 'View less' : 'View more'}
+                  </button>
+                )}
               </div>
             )}
 
@@ -255,14 +263,34 @@ export default function MarketItemDetails({ profile }: MarketItemDetailsProps) {
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => navigate(`/messages?uid=${item.sellerUid}`)}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-teal-700 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-teal-800"
-              >
-                <MessageCircle size={18} />
-                Message Seller
-              </button>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/messages?uid=${item.sellerUid}`)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-teal-700 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-teal-800"
+                >
+                  <MessageCircle size={18} />
+                  Message Seller
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const params = new URLSearchParams({
+                      recipient: encodeURIComponent(item.seller?.publicId || item.sellerUid),
+                      name: encodeURIComponent(item.seller?.displayName || 'Seller'),
+                      amount: item.price.toString(),
+                      currency: item.priceCurrency,
+                      autoPin: '1',
+                      source: 'market-payment',
+                    });
+                    navigate(`/wallets/transfer/details?${params.toString()}`);
+                  }}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
+                >
+                  <Star size={18} />
+                  Pay Seller
+                </button>
+              </div>
             )}
           </div>
         </div>

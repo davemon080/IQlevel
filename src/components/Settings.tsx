@@ -32,6 +32,10 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [hasTransactionPin, setHasTransactionPin] = useState(false);
+  const [currentTransactionPin, setCurrentTransactionPin] = useState('');
+  const [newTransactionPin, setNewTransactionPin] = useState('');
+  const [confirmTransactionPin, setConfirmTransactionPin] = useState('');
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(supabaseService.getNotificationSettings(profile.uid));
   const [preferences, setPreferences] = useState<AppPreferences>(supabaseService.getAppPreferences(profile.uid));
   const [copiedId, setCopiedId] = useState(false);
@@ -46,6 +50,9 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => { setNotificationSettings(supabaseService.getNotificationSettings(profile.uid)); setPreferences(supabaseService.getAppPreferences(profile.uid)); }, [profile.uid]);
+  useEffect(() => {
+    supabaseService.hasTransactionPin(profile.uid).then(setHasTransactionPin).catch(() => undefined);
+  }, [profile.uid]);
   useEffect(() => {
     let active = true;
     const applySettings = (s: Awaited<ReturnType<typeof supabaseService.getMarketSettings>>) => {
@@ -76,6 +83,20 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
     if (newPassword !== confirmPassword) return flash('error', 'Passwords do not match.');
     try { const { error: signInError } = await supabase.auth.signInWithPassword({ email: profile.email, password: currentPassword }); if (signInError) throw signInError; const { error } = await supabase.auth.updateUser({ password: newPassword }); if (error) throw error; flash('success', 'Password updated.'); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); }
     catch (e) { flash('error', getErrorMessage(e, 'Unable to change password.')); }
+  };
+  const saveTransactionPin = async () => {
+    if (!/^\d{4}$/.test(newTransactionPin)) return flash('error', 'Transaction PIN must be exactly 4 digits.');
+    if (newTransactionPin !== confirmTransactionPin) return flash('error', 'Transaction PIN confirmation does not match.');
+    try {
+      await supabaseService.setTransactionPin(profile.uid, newTransactionPin, hasTransactionPin ? currentTransactionPin : undefined);
+      setHasTransactionPin(true);
+      setCurrentTransactionPin('');
+      setNewTransactionPin('');
+      setConfirmTransactionPin('');
+      flash('success', hasTransactionPin ? 'Transaction PIN updated.' : 'Transaction PIN created.');
+    } catch (e) {
+      flash('error', getErrorMessage(e, 'Unable to save transaction PIN.'));
+    }
   };
   const saveNotifications = () => { try { setNotificationSettings(supabaseService.updateNotificationSettings(profile.uid, notificationSettings)); flash('success', 'Notification preferences saved.'); } catch (e) { flash('error', getErrorMessage(e, 'Unable to save notifications.')); } };
   const savePreference = (key: 'language' | 'appearance') => { try { setPreferences(supabaseService.updateAppPreferences(profile.uid, { [key]: preferences[key] })); flash('success', `${key === 'language' ? 'Language' : 'Appearance'} saved.`); } catch (e) { flash('error', getErrorMessage(e, 'Unable to save preference.')); } };
@@ -162,7 +183,7 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
         {message && <div className={`mb-6 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm ${message.type === 'success' ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-red-200 bg-red-50 text-red-700'}`}>{message.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}{message.text}</div>}
         <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
         {section === 'profile' && <div className="space-y-6"><div className="flex flex-col items-center gap-4 rounded-3xl border border-gray-200 bg-gray-50 p-6"><div className="relative"><CachedImage src={photoURL} alt="Profile" fallbackMode="avatar" wrapperClassName="h-28 w-28 rounded-3xl shadow-lg" imgClassName="h-full w-full rounded-3xl object-cover" /><label className="absolute bottom-2 right-2 cursor-pointer rounded-xl bg-teal-600 p-2 text-white"><Camera size={16} /><input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadPhoto(e.target.files[0])} /></label></div><p className="text-xs text-gray-500">{uploadingPhoto ? 'Uploading...' : 'Upload a new profile photo.'}</p></div><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className={INPUT} placeholder="Display name" /><textarea value={bio} onChange={(e) => setBio(e.target.value)} className={`${INPUT} min-h-[120px]`} placeholder="Bio" /><button onClick={saveProfile} className={BTN}>Save Profile</button></div>}
-        {section === 'security' && <div className="space-y-4"><input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className={INPUT} placeholder="Current password" /><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={INPUT} placeholder="New password" /><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={INPUT} placeholder="Confirm password" /><button onClick={changePassword} className={BTN}>Change Password</button></div>}
+        {section === 'security' && <div className="space-y-6"><div className="space-y-4 rounded-3xl border border-gray-200 bg-gray-50 p-4"><p className="text-sm font-bold text-gray-900">Password</p><input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className={INPUT} placeholder="Current password" /><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={INPUT} placeholder="New password" /><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={INPUT} placeholder="Confirm password" /><button onClick={changePassword} className={BTN}>Change Password</button></div><div className="space-y-4 rounded-3xl border border-gray-200 bg-gray-50 p-4"><p className="text-sm font-bold text-gray-900">{hasTransactionPin ? 'Change Transaction PIN' : 'Create Transaction PIN'}</p><p className="text-xs text-gray-500">This 4-digit PIN protects transfers and withdrawals.</p>{hasTransactionPin && <input type="password" inputMode="numeric" maxLength={4} value={currentTransactionPin} onChange={(e) => setCurrentTransactionPin(e.target.value.replace(/\D/g, '').slice(0, 4))} className={INPUT} placeholder="Current transaction PIN" />}<input type="password" inputMode="numeric" maxLength={4} value={newTransactionPin} onChange={(e) => setNewTransactionPin(e.target.value.replace(/\D/g, '').slice(0, 4))} className={INPUT} placeholder="New transaction PIN" /><input type="password" inputMode="numeric" maxLength={4} value={confirmTransactionPin} onChange={(e) => setConfirmTransactionPin(e.target.value.replace(/\D/g, '').slice(0, 4))} className={INPUT} placeholder="Confirm transaction PIN" /><button onClick={saveTransactionPin} className={BTN}>{hasTransactionPin ? 'Update Transaction PIN' : 'Create Transaction PIN'}</button></div></div>}
         {section === 'notifications' && <div className="space-y-4">{([{ key: 'wallet', label: 'Wallet activity' }, { key: 'gigs', label: 'Gig activity' }, { key: 'feed', label: 'Feed activity' }, { key: 'friendRequests', label: 'Friend requests' }] as const).map((item) => <label key={item.key} className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">{item.label}</span><input type="checkbox" checked={notificationSettings[item.key]} onChange={(e) => setNotificationSettings((prev) => ({ ...prev, [item.key]: e.target.checked }))} className="h-5 w-5" /></label>)}<button onClick={saveNotifications} className={BTN}>Save Preferences</button></div>}
         {section === 'language' && <div className="space-y-4">{['en-US','en-GB','fr-FR'].map((item) => <label key={item} className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900">{item}</span><input type="radio" checked={preferences.language === item} onChange={() => setPreferences((prev) => ({ ...prev, language: item as any }))} /></label>)}<button onClick={() => savePreference('language')} className={BTN}>Save Language</button></div>}
         {section === 'appearance' && <div className="space-y-4">{['system','light','dark'].map((item) => <label key={item} className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4"><span className="text-sm font-bold text-gray-900 capitalize">{item}</span><input type="radio" checked={preferences.appearance === item} onChange={() => setPreferences((prev) => ({ ...prev, appearance: item as any }))} /></label>)}<button onClick={() => savePreference('appearance')} className={BTN}>Save Appearance</button></div>}

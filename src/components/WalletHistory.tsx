@@ -13,7 +13,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { formatAmount } from '../utils/currency';
-import { downloadReceiptImage, getWalletTransactionMeta, shareReceiptImage } from '../utils/walletReceipt';
+import { downloadReceiptImage, getReceiptImageDataUrl, getWalletTransactionMeta, shareReceiptImage } from '../utils/walletReceipt';
+import CachedImage from './CachedImage';
 
 interface WalletHistoryProps {
   profile: UserProfile;
@@ -24,6 +25,7 @@ export default function WalletHistory({ profile }: WalletHistoryProps) {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [previewTransaction, setPreviewTransaction] = useState<WalletTransaction | null>(null);
 
   const loadTransactions = async () => {
     setLoading(true);
@@ -122,6 +124,13 @@ export default function WalletHistory({ profile }: WalletHistoryProps) {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
+                    onClick={() => setPreviewTransaction(tx)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                  >
+                    View Receipt
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => downloadReceiptImage(profile, tx)}
                     className="inline-flex items-center gap-1.5 rounded-xl bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-200"
                   >
@@ -140,6 +149,31 @@ export default function WalletHistory({ profile }: WalletHistoryProps) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {previewTransaction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Receipt Preview</h2>
+                <p className="text-xs text-gray-500">{format(new Date(previewTransaction.createdAt), 'MMM d, yyyy, h:mm a')}</p>
+              </div>
+              <button onClick={() => setPreviewTransaction(null)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                Close
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-auto bg-gray-100 p-4">
+              <CachedImage
+                src={getReceiptImageDataUrl(profile, previewTransaction)}
+                alt="Receipt preview"
+                fallbackMode="media"
+                wrapperClassName="mx-auto w-full rounded-2xl bg-white"
+                imgClassName="w-full rounded-2xl object-contain"
+              />
+            </div>
+          </div>
         </div>
       )}
     </div>

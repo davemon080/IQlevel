@@ -157,6 +157,9 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
       </div>
 
       <form onSubmit={openPinPad} className="space-y-4 rounded-3xl border border-violet-100 bg-white/95 p-6 shadow-sm">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          A N50 fee is deducted automatically from each NGN withdrawal.
+        </div>
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Currency</label>
           <select value={currency} onChange={(e) => setCurrency(e.target.value as WalletCurrency)} className="w-full rounded-2xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-violet-500">
