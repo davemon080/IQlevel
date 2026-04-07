@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { UserProfile, Wallet, WalletCurrency } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { ArrowLeft, ChevronDown, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ChevronDown, HandCoins, Landmark, PlusCircle, RefreshCw, SendHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatAmount } from '../utils/currency';
 import { useCurrency } from '../context/CurrencyContext';
@@ -126,6 +126,37 @@ export default function Wallets({ profile }: WalletsProps) {
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <button
+            onClick={() => navigate('/wallets/transfer')}
+            className="flex items-center justify-center gap-2 rounded-2xl border border-violet-200/30 bg-white/10 px-4 py-3 text-center text-sm font-bold text-white transition-all hover:bg-white/16"
+          >
+            <SendHorizontal size={18} />
+            Transfer
+          </button>
+          <button
+            onClick={() => navigate('/wallets/withdraw')}
+            className="flex items-center justify-center gap-2 rounded-2xl border border-violet-200/30 bg-white/10 px-4 py-3 text-center text-sm font-bold text-white transition-all hover:bg-white/16"
+          >
+            <Landmark size={18} />
+            Withdraw
+          </button>
+          <button
+            onClick={() => navigate('/wallets/add-funds')}
+            className="flex items-center justify-center gap-2 rounded-2xl border border-violet-200/30 bg-white/10 px-4 py-3 text-center text-sm font-bold text-white transition-all hover:bg-white/16"
+          >
+            <PlusCircle size={18} />
+            Add Funds
+          </button>
+          <button
+            onClick={() => navigate('/wallets/history')}
+            className="flex items-center justify-center gap-2 rounded-2xl border border-violet-200/30 bg-white/10 px-4 py-3 text-center text-sm font-bold text-white transition-all hover:bg-white/16"
+          >
+            <HandCoins size={18} />
+            History
+          </button>
         </div>
       </div>
 
