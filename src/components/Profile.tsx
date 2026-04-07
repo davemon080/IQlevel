@@ -243,18 +243,18 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
     const isFollowingCompany = myCompanyFollows.some((item) => item.companyUid === companyPartner.userUid);
 
     return (
-      <div className="-mx-4 -mt-4 space-y-0 pb-8 md:mx-0 md:mt-0 md:space-y-6">
-        <div className="flex items-center gap-3 px-4 pt-6 md:px-0 md:pt-0">
+      <div className="-mx-4 -mt-4 space-y-4 bg-[linear-gradient(180deg,#f5fffb_0%,#ffffff_24%,#f8fafc_100%)] pb-8 md:mx-0 md:mt-0 md:space-y-6 md:bg-none">
+        <div className="flex items-center gap-3 px-4 pt-6 sm:px-6 md:px-0 md:pt-0">
           <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100">
             <ArrowLeft size={20} className="text-gray-600" />
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">Company Profile</h1>
+          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Company Profile</h1>
         </div>
 
         <div className="overflow-hidden bg-white shadow-sm md:rounded-[2rem] md:border md:border-emerald-100">
           <div className="bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.2),_transparent_24%),linear-gradient(120deg,#052e2b_0%,#0f766e_45%,#34d399_100%)] px-4 py-8 text-white sm:px-6 md:px-8 md:py-10">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
                 <CachedImage
                   src={companyPartner.companyLogoUrl}
                   alt={companyPartner.companyName}
@@ -262,16 +262,16 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"
-                  wrapperClassName="h-24 w-24 rounded-3xl border border-white/30 bg-white/15 p-2 shadow-lg shadow-black/10"
+                  wrapperClassName="h-20 w-20 rounded-3xl border border-white/30 bg-white/15 p-2 shadow-lg shadow-black/10 sm:h-24 sm:w-24"
                   imgClassName="h-full w-full rounded-[1.25rem] object-cover"
                 />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/12 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em]">
                     <Building2 size={12} />
                     Approved Partner
                   </p>
-                  <h2 className="mt-3 text-3xl font-black leading-tight sm:text-4xl">{companyPartner.companyName}</h2>
-                  <p className="mt-1 text-sm text-emerald-50/90">{companyPartner.location}</p>
+                  <h2 className="mt-3 break-words text-2xl font-black leading-tight sm:text-4xl">{companyPartner.companyName}</h2>
+                  <p className="mt-1 break-words text-sm text-emerald-50/90">{companyPartner.location}</p>
                   {!isOwnProfile && (
                     <button
                       type="button"
@@ -295,7 +295,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                           console.error('Error updating company follow:', error);
                         }
                       }}
-                      className={`mt-4 inline-flex min-h-11 items-center justify-center rounded-2xl px-5 py-3 text-sm font-bold transition-colors ${
+                      className={`mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-2xl px-5 py-3 text-sm font-bold transition-colors sm:w-auto ${
                         isFollowingCompany ? 'bg-white text-emerald-700' : 'border border-white/30 text-white hover:bg-white/10'
                       }`}
                     >
@@ -304,10 +304,10 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                   )}
                 </div>
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap lg:w-auto lg:max-w-sm lg:justify-end">
                 <button
                   onClick={() => navigate(`/messages?uid=${userProfile.uid}`)}
-                  className="rounded-2xl bg-white px-4 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50"
+                  className="min-h-11 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50"
                 >
                   Message Company
                 </button>
@@ -316,7 +316,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                     href={companyPartner.websiteUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-2xl border border-white/30 px-4 py-3 text-sm font-bold text-white hover:bg-white/10 inline-flex items-center gap-2"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/30 px-4 py-3 text-sm font-bold text-white hover:bg-white/10"
                   >
                     <ExternalLink size={14} />
                     Visit Website
@@ -324,21 +324,21 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 )}
               </div>
             </div>
-            <div className="mt-6 flex flex-wrap gap-4 text-sm text-white/90">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/12 px-4 py-2 font-semibold">
+            <div className="mt-6 grid grid-cols-1 gap-3 text-sm text-white/90 sm:grid-cols-2">
+              <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/15 bg-white/12 px-4 py-2 font-semibold">
                 <Users size={14} />
                 {companyFollowers.length} follower{companyFollowers.length === 1 ? '' : 's'}
               </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/12 px-4 py-2 font-semibold">
+              <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/15 bg-white/12 px-4 py-2 font-semibold">
                 <Building2 size={14} />
                 Approved company profile
               </span>
             </div>
           </div>
 
-          <div className="grid gap-6 bg-[linear-gradient(180deg,#f7fffc_0%,#ffffff_32%,#f8fafc_100%)] px-4 py-5 sm:px-6 sm:py-6 lg:grid-cols-[1.18fr_0.82fr] lg:px-8">
+          <div className="grid gap-5 bg-[linear-gradient(180deg,#f7fffc_0%,#ffffff_32%,#f8fafc_100%)] px-4 py-5 sm:gap-6 sm:px-6 sm:py-6 lg:grid-cols-[minmax(0,1.18fr)_minmax(280px,0.82fr)] lg:px-8">
             <div className="space-y-6">
-              <section className="rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm">
+              <section className="rounded-[1.75rem] border border-emerald-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-700/70">About this company</p>
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-gray-700">
                   {companyPartner.about || userProfile.companyInfo?.about || 'No company description added yet.'}
@@ -346,7 +346,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               </section>
 
               {posts.length > 0 && (
-                <section className="-mx-4 space-y-4 sm:-mx-6 lg:-mx-8">
+                <section className="-mx-4 space-y-3 sm:-mx-6 sm:space-y-4 lg:-mx-8">
                   <div className="px-4 sm:px-6 lg:px-8">
                     <p className="text-sm font-bold text-gray-900">Latest Highlights</p>
                     <p className="mt-1 text-xs text-gray-500">Company posts now stretch edge to edge so every detail stays visible on mobile and desktop.</p>
@@ -354,13 +354,13 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                   {posts.map((post) => (
                     <article key={post.id} className="overflow-hidden border-y border-emerald-100/80 bg-white shadow-sm">
                       <div className="px-4 py-4 sm:px-6 lg:px-8">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <span className="inline-flex w-fit rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
                             company update
                           </span>
                           <p className="text-xs text-gray-400">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
                         </div>
-                        <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-gray-800">{post.content}</p>
+                        <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-gray-800">{post.content}</p>
                       </div>
                       {post.imageUrl && (
                         <CachedImage
@@ -370,7 +370,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                           loading="lazy"
                           decoding="async"
                           wrapperClassName="w-full"
-                          imgClassName="w-full object-cover"
+                          imgClassName="max-h-[26rem] w-full object-cover"
                         />
                       )}
                     </article>
@@ -380,7 +380,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm">
+              <div className="rounded-[1.75rem] border border-emerald-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-700/70">Company details</p>
                 <div className="mt-4 space-y-3 text-sm text-gray-700">
                   <div className="flex items-start gap-3">
@@ -405,11 +405,11 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               </div>
 
               {companyPartner.socialLinks.length > 0 && (
-                <div className="rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm">
+                <div className="rounded-[1.75rem] border border-emerald-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
                   <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-700/70">Social links</p>
                   <div className="mt-4 space-y-2">
                     {companyPartner.socialLinks.map((link) => (
-                      <div key={link} className="flex items-center gap-2 rounded-2xl bg-gray-50 px-4 py-3">
+                      <div key={link} className="flex flex-col gap-2 rounded-2xl bg-gray-50 px-4 py-3 sm:flex-row sm:items-center">
                         <a
                           href={link}
                           target="_blank"
@@ -425,7 +425,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                             setCopiedCompanyLink(link);
                             setTimeout(() => setCopiedCompanyLink(null), 1200);
                           }}
-                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-teal-700 hover:bg-teal-50"
+                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-teal-700 hover:bg-teal-50 sm:self-auto self-start"
                         >
                           {copiedCompanyLink === link ? 'Copied' : 'Copy'}
                         </button>
