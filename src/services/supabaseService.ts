@@ -3390,15 +3390,46 @@ export const supabaseService = {
 
     refresh();
 
+    const applyRealtimeUnreadUpdate = (payload: any) => {
+      const nextRow = payload?.new as DbMessage | undefined;
+      const prevRow = payload?.old as DbMessage | undefined;
+      const current = readCacheAnyAge<Record<string, number>>(cacheKey) || {};
+      const nextCounts = { ...current };
+
+      if (payload?.eventType === 'INSERT' && nextRow?.receiver_uid === uid && !nextRow?.read_at) {
+        nextCounts[nextRow.sender_uid] = (nextCounts[nextRow.sender_uid] || 0) + 1;
+      }
+
+      if (payload?.eventType === 'UPDATE') {
+        if (prevRow?.receiver_uid === uid && !prevRow?.read_at && nextRow?.read_at) {
+          nextCounts[prevRow.sender_uid] = Math.max(0, (nextCounts[prevRow.sender_uid] || 1) - 1);
+          if (nextCounts[prevRow.sender_uid] === 0) {
+            delete nextCounts[prevRow.sender_uid];
+          }
+        }
+        if (nextRow?.receiver_uid === uid && !nextRow?.read_at && prevRow?.read_at) {
+          nextCounts[nextRow.sender_uid] = (nextCounts[nextRow.sender_uid] || 0) + 1;
+        }
+      }
+
+      writeCache(cacheKey, nextCounts);
+      callback(nextCounts);
+    };
+
     const receiverChannel = supabase.channel(`realtime:unread:receiver:${uid}:${Math.random().toString(36).slice(2)}`).on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'messages', filter: `receiver_uid=eq.${uid}` },
-      refresh
+      (payload: any) => {
+        applyRealtimeUnreadUpdate(payload);
+        void refresh();
+      }
     );
     const senderChannel = supabase.channel(`realtime:unread:sender:${uid}:${Math.random().toString(36).slice(2)}`).on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'messages', filter: `sender_uid=eq.${uid}` },
-      refresh
+      () => {
+        void refresh();
+      }
     );
 
     receiverChannel.subscribe();

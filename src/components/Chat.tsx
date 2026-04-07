@@ -855,6 +855,21 @@ export default function Chat({ profile }: ChatProps) {
   }, [clearUnreadForChat, messages.length, profile.uid, selectedContact]);
 
   React.useEffect(() => {
+    if (!selectedContact) return;
+    setActiveChats((prev) =>
+      prev.map((chat) =>
+        chat.otherUid === selectedContact.uid
+          ? {
+              ...chat,
+              lastMessageReadAt:
+                chat.lastMessageSenderUid === profile.uid && selectedContactOnline ? new Date().toISOString() : chat.lastMessageReadAt,
+            }
+          : chat
+      )
+    );
+  }, [profile.uid, selectedContact, selectedContactOnline]);
+
+  React.useEffect(() => {
     if (!selectedContact || (isMobileLayout && !showChatOnMobile)) {
       supabaseService.setPresenceViewingChat(null);
       return;

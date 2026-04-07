@@ -346,12 +346,22 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               </section>
 
               {posts.length > 0 && (
-                <section className="space-y-3">
-                  <p className="text-sm font-bold text-gray-900">Latest Highlights</p>
+                <section className="-mx-4 space-y-4 sm:-mx-6 lg:-mx-8">
+                  <div className="px-4 sm:px-6 lg:px-8">
+                    <p className="text-sm font-bold text-gray-900">Latest Highlights</p>
+                    <p className="mt-1 text-xs text-gray-500">Company posts now stretch edge to edge so every detail stays visible on mobile and desktop.</p>
+                  </div>
                   {posts.map((post) => (
-                    <div key={post.id} className="rounded-3xl border border-emerald-100/80 bg-white p-4 shadow-sm">
-                      <p className="text-xs text-gray-400 mb-2">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap">{post.content}</p>
+                    <article key={post.id} className="overflow-hidden border-y border-emerald-100/80 bg-white shadow-sm">
+                      <div className="px-4 py-4 sm:px-6 lg:px-8">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+                            company update
+                          </span>
+                          <p className="text-xs text-gray-400">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
+                        </div>
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-gray-800">{post.content}</p>
+                      </div>
                       {post.imageUrl && (
                         <CachedImage
                           src={post.imageUrl}
@@ -359,11 +369,11 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                           fallbackMode="post"
                           loading="lazy"
                           decoding="async"
-                          wrapperClassName="w-full mt-3 rounded-2xl"
-                          imgClassName="w-full h-full rounded-2xl object-cover"
+                          wrapperClassName="w-full"
+                          imgClassName="w-full object-cover"
                         />
                       )}
-                    </div>
+                    </article>
                   ))}
                 </section>
               )}
