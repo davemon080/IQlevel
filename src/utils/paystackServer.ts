@@ -15,7 +15,37 @@ type PaystackVerifyTransactionResponse = {
   paidAt?: string | null;
 };
 
-function getPaystackEdgeFunctionErrorMessage(error: { message?: string; name?: string } | null) {
+async function getFunctionsHttpErrorMessage(error: { context?: Response | null } | null) {
+  const response = error?.context;
+  if (!response) {
+    return null;
+  }
+
+  try {
+    const cloned = response.clone();
+    const contentType = cloned.headers.get('Content-Type') || '';
+    if (contentType.includes('application/json')) {
+      const body = await cloned.json();
+      if (typeof body?.error === 'string' && body.error.trim()) {
+        return body.error;
+      }
+      if (typeof body?.message === 'string' && body.message.trim()) {
+        return body.message;
+      }
+    } else {
+      const text = await cloned.text();
+      if (text.trim()) {
+        return text.trim();
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+async function getPaystackEdgeFunctionErrorMessage(error: { message?: string; name?: string; context?: Response | null } | null) {
   if (!error) {
     return 'Unable to reach Paystack right now.';
   }
@@ -29,7 +59,8 @@ function getPaystackEdgeFunctionErrorMessage(error: { message?: string; name?: s
   }
 
   if (error.name === 'FunctionsHttpError') {
-    return 'The "paystack-proxy" function returned an error. Check that PAYSTACK_SECRET_KEY is set in Supabase and that the function code is deployed.';
+    const functionMessage = await getFunctionsHttpErrorMessage(error);
+    return functionMessage || 'The "paystack-proxy" function returned an error. Check that PAYSTACK_SECRET_KEY is set in Supabase and that the function code is deployed.';
   }
 
   return error.message || 'Unable to reach Paystack right now.';
@@ -41,7 +72,7 @@ async function invokePaystack<T>(body: Record<string, unknown>): Promise<T> {
   });
 
   if (error) {
-    throw new Error(getPaystackEdgeFunctionErrorMessage(error));
+    throw new Error(await getPaystackEdgeFunctionErrorMessage(error));
   }
 
   if (!data?.ok) {
