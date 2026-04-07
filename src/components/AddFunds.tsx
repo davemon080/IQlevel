@@ -72,9 +72,10 @@ export default function AddFunds({ profile }: AddFundsProps) {
 
     setProcessing(true);
     try {
+      const requestedAmountKobo = Math.round(amountNumber * 100);
       const response = await startPaystackTransaction({
         email: profile.email,
-        amountKobo: Math.round(amountNumber * 100),
+        amountKobo: requestedAmountKobo,
         reference: `connect-topup-${profile.uid.slice(0, 8)}-${Date.now()}`,
         metadata: {
           custom_fields: [
@@ -98,7 +99,7 @@ export default function AddFunds({ profile }: AddFundsProps) {
       if (verifiedTransaction.currency !== 'NGN') {
         throw new Error('Only NGN wallet funding is supported.');
       }
-      if (verifiedTransaction.amountKobo !== Math.round(amountNumber * 100)) {
+      if (verifiedTransaction.amountKobo !== requestedAmountKobo) {
         throw new Error('The verified payment amount does not match the requested funding amount.');
       }
 

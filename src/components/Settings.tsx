@@ -7,6 +7,7 @@ import { User, Lock, Bell, LogOut, ChevronRight, Camera, Check, AlertCircle, Glo
 import CachedImage from './CachedImage';
 import { getErrorMessage } from '../utils/errors';
 import { startPaystackTransaction } from '../utils/paystack';
+import { verifyPaystackTransaction } from '../utils/paystackServer';
 import { useConfirmDialog } from './ConfirmDialog';
 
 interface SettingsProps { profile: UserProfile; onLogout: () => Promise<void>; onProfileUpdate: (profile: UserProfile) => void; }
@@ -83,9 +84,10 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
   };
   const payForMarketAccess = async () => {
     try {
-      await startPaystackTransaction({
+      const requiredAmountKobo = 50000;
+      const response = await startPaystackTransaction({
         email: profile.email,
-        amountKobo: 50000,
+        amountKobo: requiredAmountKobo,
         reference: `connect-market-access-${profile.uid.slice(0, 8)}-${Date.now()}`,
         metadata: {
           custom_fields: [
@@ -94,6 +96,22 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
           ],
         },
       });
+
+      if (!response?.reference) {
+        throw new Error('Paystack did not return a transaction reference.');
+      }
+
+      const verifiedTransaction = await verifyPaystackTransaction(response.reference);
+      if (verifiedTransaction.status !== 'success') {
+        throw new Error('Payment was not confirmed by Paystack.');
+      }
+      if (verifiedTransaction.currency !== 'NGN') {
+        throw new Error('Marketplace access payments must be completed in NGN.');
+      }
+      if (verifiedTransaction.amountKobo !== requiredAmountKobo) {
+        throw new Error('The verified payment amount does not match the marketplace access fee.');
+      }
+
       await supabaseService.completeMarketplaceRegistration(profile.uid);
       setMarketRegistered(true);
       flash('success', 'Marketplace access payment completed. You can now use the market feature.');

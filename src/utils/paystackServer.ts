@@ -15,13 +15,33 @@ type PaystackVerifyTransactionResponse = {
   paidAt?: string | null;
 };
 
+function getPaystackEdgeFunctionErrorMessage(error: { message?: string; name?: string } | null) {
+  if (!error) {
+    return 'Unable to reach Paystack right now.';
+  }
+
+  if (error.name === 'FunctionsFetchError') {
+    return 'Unable to reach the Supabase Edge Function "paystack-proxy". Deploy the function and add PAYSTACK_SECRET_KEY to your Supabase Edge Function secrets.';
+  }
+
+  if (error.name === 'FunctionsRelayError') {
+    return 'Supabase could not relay the request to "paystack-proxy". Confirm the function is deployed and healthy.';
+  }
+
+  if (error.name === 'FunctionsHttpError') {
+    return 'The "paystack-proxy" function returned an error. Check that PAYSTACK_SECRET_KEY is set in Supabase and that the function code is deployed.';
+  }
+
+  return error.message || 'Unable to reach Paystack right now.';
+}
+
 async function invokePaystack<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('paystack-proxy', {
     body,
   });
 
   if (error) {
-    throw new Error(error.message || 'Unable to reach Paystack right now.');
+    throw new Error(getPaystackEdgeFunctionErrorMessage(error));
   }
 
   if (!data?.ok) {
