@@ -1674,8 +1674,15 @@ export const supabaseService = {
   async getUserProfileByPublicId(publicId: string): Promise<UserProfile | null> {
     const normalized = publicId.trim();
     if (!normalized) return null;
+    const candidateIds = Array.from(
+      new Set([
+        normalized,
+        normalized.startsWith('NXT-') ? normalized.replace(/^NXT-/, 'SL-') : normalized,
+        normalized.startsWith('SL-') ? normalized.replace(/^SL-/, 'NXT-') : normalized,
+      ])
+    );
     const row = await runQuery<DbUserProfile | null>(
-      supabase.from('users').select('*').eq('public_id', normalized).maybeSingle(),
+      supabase.from('users').select('*').in('public_id', candidateIds).maybeSingle(),
       `getUserProfileByPublicId:${normalized}`
     );
     const mapped = row ? mapUserProfileFromDb(row) : null;
