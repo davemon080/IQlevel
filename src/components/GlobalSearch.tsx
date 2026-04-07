@@ -6,6 +6,7 @@ import { CompanyPartnerRequest, Job, MarketItem, Post, UserProfile } from '../ty
 import { useCurrency } from '../context/CurrencyContext';
 import { formatAmountInCurrency, formatMoneyFromUSD } from '../utils/currency';
 import CachedImage from './CachedImage';
+import { scoreSearchMatch } from '../utils/algorithm';
 
 interface GlobalSearchProps {
   isOpen: boolean;
@@ -80,6 +81,10 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
           (u.publicId || '').toLowerCase().includes(normalizedQuery) ||
           u.skills?.some((skill) => skill.toLowerCase().includes(normalizedQuery))
       )
+      .sort((a, b) =>
+        scoreSearchMatch(normalizedQuery, [b.displayName, b.email, b.publicId || '', ...(b.skills || [])], [2, 1.2, 1.6]) -
+        scoreSearchMatch(normalizedQuery, [a.displayName, a.email, a.publicId || '', ...(a.skills || [])], [2, 1.2, 1.6])
+      )
       .slice(0, 6)
       .map((u) => ({
         id: `user-${u.uid}`,
@@ -97,6 +102,10 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
           partner.companyName.toLowerCase().includes(normalizedQuery) ||
           partner.location.toLowerCase().includes(normalizedQuery) ||
           partner.about.toLowerCase().includes(normalizedQuery)
+      )
+      .sort((a, b) =>
+        scoreSearchMatch(normalizedQuery, [b.companyName, b.location, b.about], [2.2, 1.1, 1]) -
+        scoreSearchMatch(normalizedQuery, [a.companyName, a.location, a.about], [2.2, 1.1, 1])
       )
       .slice(0, 5)
       .map((partner) => ({
@@ -116,6 +125,10 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
           j.description.toLowerCase().includes(normalizedQuery) ||
           j.category.toLowerCase().includes(normalizedQuery)
       )
+      .sort((a, b) =>
+        scoreSearchMatch(normalizedQuery, [b.title, b.category, b.description], [2.2, 1.2, 1]) -
+        scoreSearchMatch(normalizedQuery, [a.title, a.category, a.description], [2.2, 1.2, 1])
+      )
       .slice(0, 6)
       .map((j) => ({
         id: `job-${j.id}`,
@@ -131,6 +144,10 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
           item.title.toLowerCase().includes(normalizedQuery) ||
           item.category.toLowerCase().includes(normalizedQuery) ||
           (item.description || '').toLowerCase().includes(normalizedQuery)
+      )
+      .sort((a, b) =>
+        scoreSearchMatch(normalizedQuery, [b.title, b.category, b.description || ''], [2.1, 1.2, 1]) -
+        scoreSearchMatch(normalizedQuery, [a.title, a.category, a.description || ''], [2.1, 1.2, 1])
       )
       .slice(0, 6)
       .map((item) => ({
@@ -149,6 +166,10 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
           p.content.toLowerCase().includes(normalizedQuery) ||
           p.authorName.toLowerCase().includes(normalizedQuery)
       )
+      .sort((a, b) =>
+        scoreSearchMatch(normalizedQuery, [b.authorName, b.content], [1.5, 1.2]) -
+        scoreSearchMatch(normalizedQuery, [a.authorName, a.content], [1.5, 1.2])
+      )
       .slice(0, 5)
       .map((p) => ({
         id: `post-${p.id}`,
@@ -163,6 +184,10 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
     const pageResults = staticPages
       .filter((page) =>
         [page.title, page.subtitle, ...page.keywords].some((value) => value.toLowerCase().includes(normalizedQuery))
+      )
+      .sort((a, b) =>
+        scoreSearchMatch(normalizedQuery, [b.title, b.subtitle, ...b.keywords], [2, 1.1, ...b.keywords.map(() => 0.8)]) -
+        scoreSearchMatch(normalizedQuery, [a.title, a.subtitle, ...a.keywords], [2, 1.1, ...a.keywords.map(() => 0.8)])
       )
       .slice(0, 6)
       .map((page) => ({

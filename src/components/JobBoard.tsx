@@ -8,6 +8,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useCurrency } from '../context/CurrencyContext';
 import { convertToUSD, formatMoneyFromUSD } from '../utils/currency';
 import CachedImage from './CachedImage';
+import { rankJobs } from '../utils/algorithm';
 
 interface JobBoardProps {
   profile: UserProfile;
@@ -17,7 +18,6 @@ export default function JobBoard({ profile }: JobBoardProps) {
   const navigate = useNavigate();
   const { currency } = useCurrency();
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState({
     studentFriendly: false,
@@ -74,19 +74,24 @@ export default function JobBoard({ profile }: JobBoardProps) {
     supabaseService.getApprovedCompanyPartnerRequestsByUserUids(jobClientUids).then(setCompanyByUid).catch(() => undefined);
   }, [jobs]);
 
-  useEffect(() => {
+  const filteredJobs = React.useMemo(() => {
     let result = jobs;
-    if (searchQuery) {
-      result = result.filter(j => 
-        j.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        j.description.toLowerCase().includes(searchQuery.toLowerCase())
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    if (normalizedQuery) {
+      result = result.filter((job) =>
+        [job.title, job.description, job.category].some((value) => value.toLowerCase().includes(normalizedQuery))
       );
     }
-    if (filters.studentFriendly) result = result.filter(j => j.isStudentFriendly);
-    if (filters.remote) result = result.filter(j => j.isRemote);
-    if (filters.category !== 'All') result = result.filter(j => j.category === filters.category);
-    setFilteredJobs(result);
-  }, [jobs, searchQuery, filters]);
+    if (filters.studentFriendly) result = result.filter((job) => job.isStudentFriendly);
+    if (filters.remote) result = result.filter((job) => job.isRemote);
+    if (filters.category !== 'All') result = result.filter((job) => job.category === filters.category);
+
+    return rankJobs(result, {
+      viewer: profile,
+      query: normalizedQuery,
+    }).map((entry) => entry.item);
+  }, [filters, jobs, profile, searchQuery]);
 
   const handleCreateJob = async (e: React.FormEvent) => {
     e.preventDefault();
