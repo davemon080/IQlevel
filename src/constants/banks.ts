@@ -18,8 +18,3 @@ export const NIGERIAN_BANKS = [
   { code: '035', name: 'Wema Bank' },
   { code: '057', name: 'Zenith Bank' },
 ] as const;
-
-export function buildMockAccountName(accountNumber: string, bankName: string) {
-  const suffix = accountNumber.slice(-4);
-  return `${bankName} Customer ${suffix}`;
-}

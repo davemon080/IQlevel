@@ -6,6 +6,7 @@ import { supabaseService } from '../services/supabaseService';
 import { formatAmount } from '../utils/currency';
 import { getErrorMessage } from '../utils/errors';
 import { startPaystackTransaction } from '../utils/paystack';
+import { verifyPaystackTransaction } from '../utils/paystackServer';
 
 interface AddFundsProps {
   profile: UserProfile;
@@ -86,9 +87,24 @@ export default function AddFunds({ profile }: AddFundsProps) {
         },
       });
 
+      if (!response?.reference) {
+        throw new Error('Paystack did not return a transaction reference.');
+      }
+
+      const verifiedTransaction = await verifyPaystackTransaction(response.reference);
+      if (verifiedTransaction.status !== 'success') {
+        throw new Error('Payment was not confirmed by Paystack.');
+      }
+      if (verifiedTransaction.currency !== 'NGN') {
+        throw new Error('Only NGN wallet funding is supported.');
+      }
+      if (verifiedTransaction.amountKobo !== Math.round(amountNumber * 100)) {
+        throw new Error('The verified payment amount does not match the requested funding amount.');
+      }
+
       await supabaseService.topUpWallet(profile.uid, 'NGN', amountNumber, 'card');
       setAmount('');
-      setSuccess(`Funds added successfully. Reference: ${response?.reference || 'Paystack payment confirmed'}`);
+      setSuccess(`Funds added successfully. Reference: ${verifiedTransaction.reference}`);
     } catch (nextError) {
       setError(getErrorMessage(nextError, 'Unable to start Paystack right now.'));
     } finally {
@@ -126,7 +142,7 @@ export default function AddFunds({ profile }: AddFundsProps) {
 
       <form onSubmit={handleAddFunds} className="space-y-4 rounded-3xl border border-violet-100 bg-white/95 p-6 shadow-sm">
         <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-800">
-          Paystack funding is configured for NGN. If checkout does not open, confirm your `VITE_PAYSTACK_PUBLIC_KEY` is set correctly.
+          Paystack funding is configured for NGN. Checkout uses your public key in the app, while payment verification runs through the secure server function.
         </div>
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Amount (NGN)</label>

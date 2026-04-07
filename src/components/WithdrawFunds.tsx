@@ -3,8 +3,9 @@ import { ArrowLeft, BadgeCheck, Building2, Landmark, PlusCircle } from 'lucide-r
 import { useNavigate } from 'react-router-dom';
 import { UserProfile, WithdrawalAccount } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { NIGERIAN_BANKS, buildMockAccountName } from '../constants/banks';
+import { NIGERIAN_BANKS } from '../constants/banks';
 import { getErrorMessage } from '../utils/errors';
+import { resolvePaystackAccountName } from '../utils/paystackServer';
 
 interface WithdrawFundsProps {
   profile: UserProfile;
@@ -36,13 +37,13 @@ export default function WithdrawFunds({ profile }: WithdrawFundsProps) {
 
     setVerifying(true);
     try {
-      await new Promise((resolve) => window.setTimeout(resolve, 600));
+      const resolved = await resolvePaystackAccountName(accountNumber, selectedBank.code, selectedBank.name);
       setVerifiedAccount({
         id: 'verified-preview',
-        accountNumber,
-        bankCode: selectedBank.code,
-        bankName: selectedBank.name,
-        accountName: buildMockAccountName(accountNumber, selectedBank.name),
+        accountNumber: resolved.accountNumber,
+        bankCode: resolved.bankCode,
+        bankName: resolved.bankName || selectedBank.name,
+        accountName: resolved.accountName,
         createdAt: new Date().toISOString(),
       });
       setSuccess('Account verified. You can save it or continue with this account.');
@@ -173,7 +174,7 @@ export default function WithdrawFunds({ profile }: WithdrawFundsProps) {
           )}
 
           <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs text-sky-800">
-            This project currently verifies and saves withdrawal accounts inside the app flow so you can test the full experience.
+            Account-name verification now uses Paystack account resolution before the account can be saved or used for withdrawal.
           </div>
         </div>
       </div>

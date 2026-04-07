@@ -1,4 +1,4 @@
-const PAYSTACK_PUBLIC_KEY = 'pk_live_1bc5a10e4f9ed8ca685c5a699e85f22741cc3759';
+const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
 
 declare global {
   interface Window {
@@ -42,6 +42,10 @@ export async function startPaystackTransaction({
   metadata?: Record<string, unknown>;
   reference?: string;
 }) {
+  if (!PAYSTACK_PUBLIC_KEY) {
+    throw new Error('Missing Paystack public key. Set VITE_PAYSTACK_PUBLIC_KEY.');
+  }
+
   await ensurePaystackV2Script();
 
   return await new Promise<{ reference?: string }>((resolve, reject) => {
