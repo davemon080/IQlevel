@@ -252,7 +252,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
           <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Company Profile</h1>
         </div>
 
-        <section className="overflow-hidden rounded-[2rem] border border-emerald-100 bg-white shadow-sm">
+        <section className="overflow-hidden">
           <div className="bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.2),_transparent_24%),linear-gradient(120deg,#052e2b_0%,#0f766e_45%,#34d399_100%)] px-4 py-7 text-white sm:px-6 lg:px-8 lg:py-10">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
@@ -339,7 +339,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
 
           <div className="grid gap-5 bg-[linear-gradient(180deg,#f7fffc_0%,#ffffff_32%,#f8fafc_100%)] px-4 py-5 sm:gap-6 sm:px-6 sm:py-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8">
             <div className="min-w-0 space-y-6">
-              <section className="rounded-[1.75rem] border border-emerald-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+              <section className="px-1 py-1 sm:px-0">
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-700/70">About this company</p>
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-gray-700">
                   {companyPartner.about || userProfile.companyInfo?.about || 'No company description added yet.'}
@@ -348,12 +348,12 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
 
               {posts.length > 0 && (
                 <section className="space-y-3 sm:space-y-4">
-                  <div className="rounded-[1.75rem] border border-emerald-100 bg-white px-4 py-4 shadow-sm sm:rounded-3xl sm:px-5">
+                  <div className="px-1 py-1 sm:px-0">
                     <p className="text-sm font-bold text-gray-900">Latest Highlights</p>
                     <p className="mt-1 text-xs text-gray-500">Company posts stay aligned inside the profile page so every detail remains visible on mobile and desktop.</p>
                   </div>
                   {posts.map((post) => (
-                    <article key={post.id} className="overflow-hidden rounded-[1.75rem] border border-emerald-100 bg-white shadow-sm sm:rounded-3xl">
+                    <article key={post.id} className="overflow-hidden">
                       <div className="px-4 py-4 sm:px-5">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <span className="inline-flex w-fit rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
@@ -381,7 +381,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             </div>
 
             <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-              <div className="rounded-[1.75rem] border border-emerald-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+              <div className="px-1 py-1 sm:px-0">
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-700/70">Company details</p>
                 <div className="mt-4 space-y-3 text-sm text-gray-700">
                   <div className="flex items-start gap-3">
@@ -406,7 +406,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               </div>
 
               {companyPartner.socialLinks.length > 0 && (
-                <div className="rounded-[1.75rem] border border-emerald-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+                <div className="px-1 py-1 sm:px-0">
                   <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-700/70">Social links</p>
                   <div className="mt-4 space-y-2">
                     {companyPartner.socialLinks.map((link) => (
@@ -453,7 +453,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
       </div>
 
       <div className="space-y-6">
-        <section className="overflow-hidden rounded-[2rem] border border-teal-100 bg-white shadow-sm">
+        <section className="overflow-hidden">
         <div className="relative h-44 bg-gradient-to-r from-teal-600 to-emerald-600 sm:h-52 lg:h-60">
           {(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) && (
             <CachedImage
@@ -574,7 +574,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
 
           {tab === 'about' && (
             <div className="mt-6 space-y-7">
-              <section className="space-y-4 rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+              <section className="space-y-4">
                 <p className="text-sm font-bold text-gray-900">Personal Details</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <EditableField label="Display Name" value={editing ? draft.displayName : userProfile.displayName} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, displayName: v }))} />
@@ -584,7 +584,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 </div>
               </section>
 
-              <section className="space-y-4 rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+              <section className="space-y-4">
                 <p className="text-sm font-bold text-gray-900">Location & Date Of Birth</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <EditableField label="Location" value={editing ? draft.location : userProfile.location} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, location: v }))} />
@@ -592,7 +592,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 </div>
               </section>
 
-              <section className="rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+              <section>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-bold text-gray-900">Skills</p>
                   {editing && (
@@ -618,7 +618,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 </div>
               </section>
 
-              <section className="space-y-4 rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+              <section className="space-y-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-bold text-gray-900">More details</p>
@@ -692,7 +692,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               </section>
 
               {myCompanyFollows.length > 0 && (
-                <section className="space-y-4 rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+                <section className="space-y-4">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-bold text-gray-900">Following</p>
                     <span className="text-xs font-semibold text-gray-400">{myCompanyFollows.length} compan{myCompanyFollows.length === 1 ? 'y' : 'ies'}</span>
@@ -738,7 +738,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               )}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {(editing ? draft.portfolio : userProfile.portfolio || []).map((item, index) => (
-                  <div key={index} className="space-y-3 rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm">
+                  <div key={index} className="space-y-3">
                     <CachedImage
                       src={item.imageUrl || 'https://via.placeholder.com/600x400?text=Project'}
                       alt={item.title}
@@ -767,9 +767,9 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
 
           {tab === 'activity' && (
             <div className="space-y-3">
-              {posts.length === 0 && <div className="rounded-3xl bg-gray-50 px-4 py-10 text-center text-sm text-gray-500">No activity yet.</div>}
+              {posts.length === 0 && <div className="px-4 py-10 text-center text-sm text-gray-500">No activity yet.</div>}
               {posts.map((post) => (
-                <div key={post.id} className="rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm">
+                <div key={post.id} className="p-1">
                   <p className="text-xs text-gray-400 mb-2">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
                   <p className="text-sm text-gray-800 whitespace-pre-wrap">{post.content}</p>
                   {post.imageUrl && (
@@ -788,7 +788,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             </div>
           )}
 
-          <section className="space-y-4 rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+          <section className="space-y-4">
             <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.24em] text-gray-400">Posts</p>
@@ -800,13 +800,13 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             </div>
 
             {posts.length === 0 ? (
-              <div className="rounded-3xl bg-gray-50 px-4 py-10 text-center text-sm text-gray-500">
+              <div className="px-4 py-10 text-center text-sm text-gray-500">
                 This profile has not shared any posts yet.
               </div>
             ) : (
               <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
                 {posts.map((post) => (
-                  <article key={post.id} className="flex h-full flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
+                  <article key={post.id} className="flex h-full flex-col overflow-hidden">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <span className="ml-4 mt-4 rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700 shadow-sm">
                         {post.type}
