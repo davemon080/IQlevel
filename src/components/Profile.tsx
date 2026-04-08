@@ -243,16 +243,17 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
     const isFollowingCompany = myCompanyFollows.some((item) => item.companyUid === companyPartner.userUid);
 
     return (
-      <div className="-mx-4 -mt-4 space-y-4 bg-[linear-gradient(180deg,#f5fffb_0%,#ffffff_24%,#f8fafc_100%)] pb-8 md:mx-0 md:mt-0 md:space-y-6 md:bg-none">
-        <div className="flex items-center gap-3 px-4 pt-6 sm:px-6 md:px-0 md:pt-0">
+      <div className="-mx-4 -mt-4 bg-[linear-gradient(180deg,#f5fffb_0%,#ffffff_24%,#f8fafc_100%)] pb-8 md:mx-0 md:mt-0 md:bg-none">
+        <div className="mx-auto max-w-6xl space-y-4 px-4 pt-6 sm:px-6 lg:space-y-6 lg:px-8 lg:pt-8">
+        <div className="flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100">
             <ArrowLeft size={20} className="text-gray-600" />
           </button>
           <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Company Profile</h1>
         </div>
 
-        <div className="overflow-hidden bg-white shadow-sm md:rounded-[2rem] md:border md:border-emerald-100">
-          <div className="bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.2),_transparent_24%),linear-gradient(120deg,#052e2b_0%,#0f766e_45%,#34d399_100%)] px-4 py-8 text-white sm:px-6 md:px-8 md:py-10">
+        <div className="overflow-hidden rounded-[2rem] border border-emerald-100 bg-white shadow-sm">
+          <div className="bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.2),_transparent_24%),linear-gradient(120deg,#052e2b_0%,#0f766e_45%,#34d399_100%)] px-4 py-7 text-white sm:px-6 lg:px-8 lg:py-10">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
                 <CachedImage
@@ -307,7 +308,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap lg:w-auto lg:max-w-sm lg:justify-end">
                 <button
                   onClick={() => navigate(`/messages?uid=${userProfile.uid}`)}
-                  className="min-h-11 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50"
+                  className="min-h-11 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50 sm:min-w-[170px]"
                 >
                   Message Company
                 </button>
@@ -316,7 +317,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                     href={companyPartner.websiteUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/30 px-4 py-3 text-sm font-bold text-white hover:bg-white/10"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/30 px-4 py-3 text-sm font-bold text-white hover:bg-white/10 sm:min-w-[170px]"
                   >
                     <ExternalLink size={14} />
                     Visit Website
@@ -324,7 +325,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 )}
               </div>
             </div>
-            <div className="mt-6 grid grid-cols-1 gap-3 text-sm text-white/90 sm:grid-cols-2">
+            <div className="mt-6 grid grid-cols-1 gap-3 text-sm text-white/90 sm:grid-cols-2 xl:max-w-xl">
               <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/15 bg-white/12 px-4 py-2 font-semibold">
                 <Users size={14} />
                 {companyFollowers.length} follower{companyFollowers.length === 1 ? '' : 's'}
@@ -336,8 +337,8 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             </div>
           </div>
 
-          <div className="grid gap-5 bg-[linear-gradient(180deg,#f7fffc_0%,#ffffff_32%,#f8fafc_100%)] px-4 py-5 sm:gap-6 sm:px-6 sm:py-6 lg:grid-cols-[minmax(0,1.18fr)_minmax(280px,0.82fr)] lg:px-8">
-            <div className="space-y-6">
+          <div className="grid gap-5 bg-[linear-gradient(180deg,#f7fffc_0%,#ffffff_32%,#f8fafc_100%)] px-4 py-5 sm:gap-6 sm:px-6 sm:py-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8">
+            <div className="min-w-0 space-y-6">
               <section className="rounded-[1.75rem] border border-emerald-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-700/70">About this company</p>
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-gray-700">
@@ -346,14 +347,14 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               </section>
 
               {posts.length > 0 && (
-                <section className="-mx-4 space-y-3 sm:-mx-6 sm:space-y-4 lg:-mx-8">
-                  <div className="px-4 sm:px-6 lg:px-8">
+                <section className="space-y-3 sm:space-y-4">
+                  <div className="rounded-[1.75rem] border border-emerald-100 bg-white px-4 py-4 shadow-sm sm:rounded-3xl sm:px-5">
                     <p className="text-sm font-bold text-gray-900">Latest Highlights</p>
-                    <p className="mt-1 text-xs text-gray-500">Company posts now stretch edge to edge so every detail stays visible on mobile and desktop.</p>
+                    <p className="mt-1 text-xs text-gray-500">Company posts stay aligned inside the profile page so every detail remains visible on mobile and desktop.</p>
                   </div>
                   {posts.map((post) => (
-                    <article key={post.id} className="overflow-hidden border-y border-emerald-100/80 bg-white shadow-sm">
-                      <div className="px-4 py-4 sm:px-6 lg:px-8">
+                    <article key={post.id} className="overflow-hidden rounded-[1.75rem] border border-emerald-100 bg-white shadow-sm sm:rounded-3xl">
+                      <div className="px-4 py-4 sm:px-5">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <span className="inline-flex w-fit rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
                             company update
@@ -379,7 +380,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               )}
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
               <div className="rounded-[1.75rem] border border-emerald-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-700/70">Company details</p>
                 <div className="mt-4 space-y-3 text-sm text-gray-700">
@@ -437,12 +438,13 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             </div>
           </div>
         </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100">
           <ArrowLeft size={20} className="text-gray-600" />
@@ -451,7 +453,8 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
       </div>
 
       <div className="space-y-6">
-        <div className="relative h-48 bg-gradient-to-r from-teal-600 to-emerald-600">
+        <div className="overflow-hidden rounded-[2rem] border border-teal-100 bg-white shadow-sm">
+        <div className="relative h-44 bg-gradient-to-r from-teal-600 to-emerald-600 sm:h-52 lg:h-60">
           {(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) && (
             <CachedImage
               src={(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) || ''}
@@ -475,9 +478,10 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
           )}
         </div>
 
-        <div className="space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center gap-4">
-            <div className="relative -mt-16">
+        <div className="space-y-6 px-4 pb-5 sm:px-6 lg:px-8 lg:pb-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end">
+            <div className="relative -mt-14 sm:-mt-16">
               <CachedImage
                 src={(editing ? draft.photoURL : userProfile.photoURL) || ''}
                 alt={userProfile.displayName}
@@ -500,21 +504,24 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 </label>
               )}
             </div>
-            <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-900">{editing ? draft.displayName : userProfile.displayName}</h2>
-              <p className="text-sm text-gray-500 mt-1 capitalize">{userProfile.role}</p>
-              <p className="text-xs text-gray-400 mt-1">Profile completion: {completion}%</p>
+            <div className="min-w-0 flex-1">
+              <h2 className="break-words text-2xl font-bold text-gray-900 sm:text-[1.9rem]">{editing ? draft.displayName : userProfile.displayName}</h2>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-500">
+                <span className="rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700">{userProfile.role}</span>
+                <span className="text-xs text-gray-400">Profile completion: {completion}%</span>
+              </div>
               <button
                 onClick={handleCopyUserId}
                 type="button"
-                className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-lg"
+                className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-left text-xs font-semibold text-gray-600 hover:bg-gray-200"
               >
                 <Copy size={12} />
                 {copiedId ? 'Copied' : `User ID: ${(editing ? draft.publicId : userProfile.publicId) || userProfile.uid}`}
               </button>
             </div>
+            </div>
             {isOwnProfile ? (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 sm:justify-end">
                 {!editing ? (
                   <button onClick={() => setEditing(true)} className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 font-semibold text-sm">
                     Edit
@@ -537,7 +544,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 </button>
               </div>
             ) : (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 sm:justify-end">
                 {canMessageUser ? (
                   <button onClick={() => navigate(`/messages?uid=${userProfile.uid}`)} className="px-4 py-2 rounded-xl bg-teal-700 text-white hover:bg-teal-800 text-sm font-semibold inline-flex items-center gap-2">
                     <MessageSquare size={14} />
@@ -553,12 +560,12 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             )}
           </div>
 
-          <div className="flex gap-4 border-b border-gray-100">
+          <div className="-mx-1 flex gap-2 overflow-x-auto border-b border-gray-100 px-1 pb-1">
             {(['about', 'portfolio', 'activity'] as const).map((value) => (
               <button
                 key={value}
                 onClick={() => setTab(value)}
-                className={`pb-3 text-sm font-bold capitalize ${tab === value ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-400'}`}
+                className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold capitalize transition ${tab === value ? 'bg-teal-50 text-teal-700' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'}`}
               >
                 {value}
               </button>
@@ -567,7 +574,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
 
           {tab === 'about' && (
             <div className="mt-6 space-y-7">
-              <section className="space-y-4">
+              <section className="space-y-4 rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
                 <p className="text-sm font-bold text-gray-900">Personal Details</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <EditableField label="Display Name" value={editing ? draft.displayName : userProfile.displayName} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, displayName: v }))} />
@@ -577,7 +584,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 </div>
               </section>
 
-              <section className="space-y-4">
+              <section className="space-y-4 rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
                 <p className="text-sm font-bold text-gray-900">Location & Date Of Birth</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <EditableField label="Location" value={editing ? draft.location : userProfile.location} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, location: v }))} />
@@ -585,9 +592,9 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 </div>
               </section>
 
-              <section>
+              <section className="rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-bold text-gray-900">Skill</p>
+                  <p className="text-sm font-bold text-gray-900">Skills</p>
                   {editing && (
                     <button onClick={handleAddSkill} className="px-2 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200">
                       <Plus size={12} />
@@ -611,14 +618,20 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                 </div>
               </section>
 
-              <section className="space-y-4">
-                <button
-                  type="button"
-                  onClick={() => setShowMoreDetails((prev) => !prev)}
-                  className="text-sm font-semibold text-teal-700 hover:text-teal-800"
-                >
-                  {showMoreDetails ? 'Hide details' : 'See more details'}
-                </button>
+              <section className="space-y-4 rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">More details</p>
+                    <p className="text-xs text-gray-500">Experience, education, social links, and extended bio.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowMoreDetails((prev) => !prev)}
+                    className="text-sm font-semibold text-teal-700 hover:text-teal-800"
+                  >
+                    {showMoreDetails ? 'Hide details' : 'See more details'}
+                  </button>
+                </div>
 
                 {showMoreDetails && (
                   <div className="space-y-6">
@@ -679,7 +692,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               </section>
 
               {myCompanyFollows.length > 0 && (
-                <section className="space-y-4">
+                <section className="space-y-4 rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-bold text-gray-900">Following</p>
                     <span className="text-xs font-semibold text-gray-400">{myCompanyFollows.length} compan{myCompanyFollows.length === 1 ? 'y' : 'ies'}</span>
@@ -723,9 +736,9 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                   Add Portfolio Item
                 </button>
               )}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {(editing ? draft.portfolio : userProfile.portfolio || []).map((item, index) => (
-                  <div key={index} className="p-4 border border-gray-100 rounded-2xl space-y-3">
+                  <div key={index} className="space-y-3 rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm">
                     <CachedImage
                       src={item.imageUrl || 'https://via.placeholder.com/600x400?text=Project'}
                       alt={item.title}
@@ -754,9 +767,9 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
 
           {tab === 'activity' && (
             <div className="space-y-3">
-              {posts.length === 0 && <p className="text-sm text-gray-500">No activity yet.</p>}
+              {posts.length === 0 && <div className="rounded-3xl bg-gray-50 px-4 py-10 text-center text-sm text-gray-500">No activity yet.</div>}
               {posts.map((post) => (
-                <div key={post.id} className="p-4 border border-gray-100 rounded-2xl">
+                <div key={post.id} className="rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm">
                   <p className="text-xs text-gray-400 mb-2">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
                   <p className="text-sm text-gray-800 whitespace-pre-wrap">{post.content}</p>
                   {post.imageUrl && (
@@ -775,10 +788,10 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             </div>
           )}
 
-          <section className="-mx-4 bg-transparent md:mx-0">
-            <div className="flex flex-col gap-2 px-4 pb-4 md:px-0 md:flex-row md:items-end md:justify-between">
+          <section className="space-y-4 rounded-[1.75rem] border border-gray-100 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
+            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-gray-400">Bottom Section</p>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-gray-400">Posts</p>
                 <h3 className="mt-2 text-lg font-bold text-gray-900">All Posts</h3>
               </div>
               <p className="text-sm text-gray-500">
@@ -835,6 +848,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               </div>
             )}
           </section>
+        </div>
         </div>
       </div>
     </div>
