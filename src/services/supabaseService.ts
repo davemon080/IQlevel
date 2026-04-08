@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest, ActiveGig, AppPreferences, ConnectedDevice, UserPerformanceSummary, WithdrawalAccount, CompanyFollow } from '../types';
+import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, Connection, Wallet, WalletTransaction, WalletCurrency, AppNotification, PostLike, PostComment, NotificationSettings, PostCommentLike, MarketItem, MarketSettings, MarketSellerRating, CompanyPartnerRequest, ActiveGig, AppPreferences, ConnectedDevice, UserPerformanceSummary, WithdrawalAccount, CompanyFollow, AdminAnnouncement, UserReport } from '../types';
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 import { showAppToast } from '../utils/appToast';
@@ -215,9 +215,34 @@ type DbPostCommentNotificationRow = {
   posts: { author_uid: string } | { author_uid: string }[] | null;
 };
 
+type DbAdminAnnouncement = {
+  id: string;
+  created_by: string;
+  target_uid?: string | null;
+  title: string;
+  body: string;
+  link?: string | null;
+  delivery_mode: 'notification' | 'popup' | 'both';
+  is_active: boolean;
+  created_at: string;
+};
+
+type DbUserReport = {
+  id: string;
+  reporter_uid: string;
+  reported_uid: string;
+  reason: string;
+  details?: string | null;
+  status: 'pending' | 'reviewing' | 'resolved' | 'dismissed';
+  admin_note?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+};
+
 const NOTIFICATION_SETTINGS_KEY_PREFIX = 'connect_notification_settings_';
 const APP_PREFERENCES_KEY_PREFIX = 'connect_app_preferences_';
 const WITHDRAWAL_ACCOUNTS_KEY_PREFIX = 'connect_withdrawal_accounts_';
+const ADMIN_POPUP_DISMISSALS_KEY_PREFIX = 'connect_admin_popup_dismissals_';
 const CHAT_READ_KEY_PREFIX = 'connect_chat_read_map_';
 const CHAT_READ_EVENT = 'connect:chat-read-updated';
 const CHAT_CLEAR_KEY_PREFIX = 'connect_chat_cleared_map_';
@@ -292,6 +317,31 @@ function clearLegacyAppCaches() {
     keysToDelete.forEach((key) => window.localStorage.removeItem(key));
   } catch {
     // Ignore localStorage cleanup failures.
+  }
+}
+
+function getAdminPopupDismissalKey(uid: string) {
+  return `${ADMIN_POPUP_DISMISSALS_KEY_PREFIX}${uid}`;
+}
+
+function getDismissedAdminPopupIds(uid: string): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(getAdminPopupDismissalKey(uid));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function setDismissedAdminPopupIds(uid: string, ids: string[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(getAdminPopupDismissalKey(uid), JSON.stringify(Array.from(new Set(ids))));
+  } catch {
+    // Ignore localStorage write failures.
   }
 }
 
@@ -417,7 +467,7 @@ async function fetchNotificationsByUid(uid: string, getNotificationSettings: (ui
   const readThrough = await getNotificationLastReadAt(uid);
   const readThroughTime = readThrough ? new Date(readThrough).getTime() : 0;
 
-  const [incomingRequests, proposals, myJobs, walletTransactions, feedLikes, feedComments, marketSettingsRow] = await Promise.all([
+  const [incomingRequests, proposals, myJobs, walletTransactions, feedLikes, feedComments, marketSettingsRow, adminAnnouncements] = await Promise.all([
     runQuery<DbFriendRequest[]>(
       supabase.from('friend_requests').select('*').eq('to_uid', uid).order('created_at', { ascending: false }).limit(20),
       'notifications:friendRequests'
@@ -467,6 +517,7 @@ async function fetchNotificationsByUid(uid: string, getNotificationSettings: (ui
       supabase.from('market_settings').select('*').eq('user_uid', uid).maybeSingle(),
       'notifications:marketSettings'
     ),
+    fetchAdminAnnouncementsForUser(uid),
   ]);
 
   const myJobIds = new Set(myJobs.map((j) => j.id));
@@ -561,7 +612,22 @@ async function fetchNotificationsByUid(uid: string, getNotificationSettings: (ui
         ]
       : [];
 
+  const adminSystemNotifications = adminAnnouncements
+    .filter((announcement) => announcement.deliveryMode === 'notification' || announcement.deliveryMode === 'both')
+    .map<AppNotification>((announcement) => ({
+      id: `admin-${announcement.id}`,
+      type: 'system',
+      title: announcement.title,
+      body: announcement.body,
+      createdAt: announcement.createdAt,
+      link: announcement.link,
+      deliveryMode: announcement.deliveryMode,
+      audience: announcement.targetUid ? 'individual' : 'general',
+      targetUid: announcement.targetUid,
+    }));
+
   const mapped = [
+    ...adminSystemNotifications,
     ...marketAccessNotifications,
     ...requestNotifications,
     ...gigNotifications,
@@ -631,6 +697,48 @@ function mapPostCommentFromDb(row: DbPostComment): PostComment {
     createdAt: row.created_at,
     parentCommentId: row.parent_comment_id || undefined,
   };
+}
+
+function mapAdminAnnouncementFromDb(row: DbAdminAnnouncement): AdminAnnouncement {
+  return {
+    id: row.id,
+    createdBy: row.created_by,
+    targetUid: row.target_uid || undefined,
+    title: row.title,
+    body: row.body,
+    link: row.link || undefined,
+    deliveryMode: row.delivery_mode,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+  };
+}
+
+function mapUserReportFromDb(row: DbUserReport): UserReport {
+  return {
+    id: row.id,
+    reporterUid: row.reporter_uid,
+    reportedUid: row.reported_uid,
+    reason: row.reason,
+    details: row.details || undefined,
+    status: row.status,
+    adminNote: row.admin_note || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at || undefined,
+  };
+}
+
+async function fetchAdminAnnouncementsForUser(uid: string): Promise<AdminAnnouncement[]> {
+  const rows = await runQuery<DbAdminAnnouncement[]>(
+    supabase
+      .from('admin_notifications')
+      .select('*')
+      .eq('is_active', true)
+      .or(`target_uid.is.null,target_uid.eq.${uid}`)
+      .order('created_at', { ascending: false })
+      .limit(40),
+    'getAdminAnnouncementsForUser'
+  );
+  return rows.map(mapAdminAnnouncementFromDb);
 }
 
 function mapPostCommentLikeFromDb(row: DbPostCommentLike): PostCommentLike {
@@ -4759,6 +4867,116 @@ export const supabaseService = {
     };
   },
 
+  async getAdminPopupAnnouncements(uid: string): Promise<AdminAnnouncement[]> {
+    const announcements = await fetchAdminAnnouncementsForUser(uid);
+    const dismissed = new Set(getDismissedAdminPopupIds(uid));
+    return announcements.filter((announcement) => {
+      if (!announcement.isActive) return false;
+      if (announcement.deliveryMode !== 'popup' && announcement.deliveryMode !== 'both') return false;
+      return !dismissed.has(announcement.id);
+    });
+  },
+
+  dismissAdminPopup(uid: string, announcementId: string) {
+    const dismissed = getDismissedAdminPopupIds(uid);
+    dismissed.push(announcementId);
+    setDismissedAdminPopupIds(uid, dismissed);
+  },
+
+  subscribeToAdminPopups(uid: string, callback: (items: AdminAnnouncement[]) => void, onError?: (error: any) => void) {
+    let active = true;
+
+    const refresh = async () => {
+      try {
+        const items = await this.getAdminPopupAnnouncements(uid);
+        if (active) callback(items);
+      } catch (error) {
+        onError?.(error);
+      }
+    };
+
+    refresh();
+
+    const channel = supabase
+      .channel(`realtime:admin_notifications:popup:${uid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_notifications' }, refresh)
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  },
+
+  async createUserReport(reporterUid: string, reportedUid: string, reason: string, details?: string): Promise<void> {
+    if (!reportedUid || reporterUid === reportedUid) {
+      throw new Error('Choose a valid user to report.');
+    }
+    if (!reason.trim()) {
+      throw new Error('Select a reason for this report.');
+    }
+
+    await runQuery(
+      supabase.from('user_reports').insert({
+        reporter_uid: reporterUid,
+        reported_uid: reportedUid,
+        reason: reason.trim(),
+        details: details?.trim() || null,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }),
+      'createUserReport'
+    );
+  },
+
+  async getSubmittedUserReports(reporterUid: string): Promise<UserReport[]> {
+    const rows = await runQuery<DbUserReport[]>(
+      supabase
+        .from('user_reports')
+        .select('*')
+        .eq('reporter_uid', reporterUid)
+        .order('created_at', { ascending: false }),
+      'getSubmittedUserReports'
+    );
+
+    const reports = rows.map(mapUserReportFromDb);
+    const relatedUsers = await this.getUsersByUids(
+      Array.from(new Set(reports.flatMap((report) => [report.reportedUid, report.reporterUid])))
+    );
+    const relatedByUid = new Map<string, UserProfile>(relatedUsers.map((user) => [user.uid, user] as const));
+
+    return reports.map((report) => ({
+      ...report,
+      reportedUser: relatedByUid.get(report.reportedUid),
+      reporter: relatedByUid.get(report.reporterUid),
+    }));
+  },
+
+  subscribeToSubmittedUserReports(reporterUid: string, callback: (items: UserReport[]) => void, onError?: (error: any) => void) {
+    let active = true;
+
+    const refresh = () => {
+      this.getSubmittedUserReports(reporterUid)
+        .then((items) => {
+          if (active) callback(items);
+        })
+        .catch((error) => onError?.(error));
+    };
+
+    refresh();
+
+    const channel = supabase
+      .channel(`realtime:user_reports:${reporterUid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_reports', filter: `reporter_uid=eq.${reporterUid}` }, refresh)
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  },
+
   async getNotifications(uid: string): Promise<AppNotification[]> {
     const cacheKey = `notifications:${uid}`;
     const cached = readCache<AppNotification[]>(cacheKey, CACHE_TTL.notifications);
@@ -4820,6 +5038,11 @@ export const supabaseService = {
       supabase.channel(`realtime:market_settings:${uid}`).on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'market_settings', filter: `user_uid=eq.${uid}` },
+        refresh
+      ),
+      supabase.channel(`realtime:admin_notifications:${uid}`).on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'admin_notifications' },
         refresh
       ),
     ];

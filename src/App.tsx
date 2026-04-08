@@ -28,6 +28,7 @@ import WithdrawAmount from './components/WithdrawAmount';
 import JobDetails from './components/JobDetails';
 import JobApply from './components/JobApply';
 import Notifications from './components/Notifications';
+import ReportedUsers from './components/ReportedUsers';
 import Comments from './components/Comments';
 import Market from './components/Market';
 import SellItem from './components/SellItem';
@@ -294,6 +295,7 @@ export default function App() {
             <Route path="/requests" element={<FriendRequests profile={profile} />} />
             <Route path="/manage-gigs" element={<ManageGigs profile={profile} />} />
             <Route path="/notifications" element={<Notifications profile={profile} />} />
+            <Route path="/report-users" element={<ReportedUsers profile={profile} />} />
             <Route path="/profile/:uid" element={<Profile profile={profile} />} />
             <Route path="/messages" element={<Chat profile={profile} />} />
             <Route path="/wallets" element={<Wallets profile={profile} />} />

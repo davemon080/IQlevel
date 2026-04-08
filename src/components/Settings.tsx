@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { supabaseService } from '../services/supabaseService';
 import type { AppPreferences, NotificationSettings, UserProfile } from '../types';
-import { User, Lock, Bell, LogOut, ChevronRight, Camera, Check, AlertCircle, Globe, Smartphone, Wallet, Copy, Store, Palette, BriefcaseBusiness, Trash2 } from 'lucide-react';
+import { User, Lock, Bell, LogOut, ChevronRight, Camera, Check, AlertCircle, Globe, Smartphone, Wallet, Copy, Store, Palette, BriefcaseBusiness, Trash2, Flag } from 'lucide-react';
 import CachedImage from './CachedImage';
 import { getErrorMessage } from '../utils/errors';
 import { ensurePaystackV2Script, startPaystackTransaction } from '../utils/paystack';
@@ -162,6 +162,7 @@ export default function Settings({ profile, onLogout, onProfileUpdate }: Setting
             <MenuRow icon={User} label="Personal Information" sublabel="Name, bio, and profile photo" onClick={() => go('profile')} />
             <MenuRow icon={Lock} label="Security" sublabel="Password management" onClick={() => go('security')} />
             <MenuRow icon={Bell} label="Notifications" sublabel="Control what notifications you receive" onClick={() => go('notifications')} />
+            <LinkRow to="/report-users" icon={Flag} label="Report Users" sublabel="Flag harmful accounts and track your reports" />
             <LinkRow to="/wallets" icon={Wallet} label="Wallets" sublabel="Balances and transactions" />
             <LinkRow to="/active-gigs" icon={BriefcaseBusiness} label="My Active Gigs" sublabel="Current assigned gigs" />
             <MenuRow icon={Store} label="Market" sublabel="Seller details and visibility" onClick={() => go('market')} />

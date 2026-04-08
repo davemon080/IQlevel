@@ -696,12 +696,12 @@ export default function Feed({ profile }: FeedProps) {
                                 setOpenPostMenuId(null);
                                 const confirmed = await confirm({
                                   title: 'Report this user?',
-                                  description: 'We will treat this post as reported and you can also contact support for urgent issues.',
-                                  confirmLabel: 'Report',
+                                  description: 'We will open the report page with this user selected so you can send the full report to admin.',
+                                  confirmLabel: 'Continue',
                                   tone: 'danger',
                                 });
                                 if (!confirmed) return;
-                                showToast('Report submitted. Our team will review it.');
+                                navigate(`/report-users?uid=${post.authorUid}`);
                               }}
                               className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
                             >

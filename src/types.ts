@@ -220,6 +220,35 @@ export interface AppNotification {
   createdAt: string;
   read?: boolean;
   link?: string;
+  deliveryMode?: 'notification' | 'popup' | 'both';
+  audience?: 'general' | 'individual';
+  targetUid?: string;
+}
+
+export interface AdminAnnouncement {
+  id: string;
+  createdBy: string;
+  targetUid?: string;
+  title: string;
+  body: string;
+  link?: string;
+  deliveryMode: 'notification' | 'popup' | 'both';
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface UserReport {
+  id: string;
+  reporterUid: string;
+  reportedUid: string;
+  reason: string;
+  details?: string;
+  status: 'pending' | 'reviewing' | 'resolved' | 'dismissed';
+  adminNote?: string;
+  createdAt: string;
+  updatedAt?: string;
+  reportedUser?: UserProfile;
+  reporter?: UserProfile;
 }
 
 export interface NotificationSettings {

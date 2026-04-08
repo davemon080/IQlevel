@@ -10,6 +10,7 @@ import GlobalSearch from './GlobalSearch';
 import CachedImage from './CachedImage';
 import { useConfirmDialog } from './ConfirmDialog';
 import { AppToast, subscribeToAppToasts } from '../utils/appToast';
+import AdminPopupNotifications from './AdminPopupNotifications';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -395,6 +396,7 @@ export default function Layout({ children, user, profile, onLogout }: LayoutProp
           </div>
         </div>
       )}
+      <AdminPopupNotifications profile={profile} />
       {confirmDialog}
     </div>
   );
