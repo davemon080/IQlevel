@@ -236,15 +236,15 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
     updatePortfolio(index, 'imageUrl', url);
   };
 
-  if (loading) return <div className="max-w-5xl mx-auto p-6 text-sm text-gray-500">Loading profile...</div>;
-  if (!userProfile) return <div className="max-w-5xl mx-auto p-6 text-sm text-gray-500">Profile not found.</div>;
+  if (loading) return <div className="px-4 py-6 text-sm text-gray-500 sm:px-6 lg:px-8">Loading profile...</div>;
+  if (!userProfile) return <div className="px-4 py-6 text-sm text-gray-500 sm:px-6 lg:px-8">Profile not found.</div>;
 
   if (companyPartner) {
     const isFollowingCompany = myCompanyFollows.some((item) => item.companyUid === companyPartner.userUid);
 
     return (
       <div className="-mx-4 -mt-4 bg-[linear-gradient(180deg,#f5fffb_0%,#ffffff_24%,#f8fafc_100%)] pb-8 md:mx-0 md:mt-0 md:bg-none">
-        <div className="mx-auto max-w-6xl space-y-4 px-4 pt-6 sm:px-6 lg:space-y-6 lg:px-8 lg:pt-8">
+        <div className="space-y-4 px-4 pt-6 sm:px-6 lg:space-y-6 lg:px-8 lg:pt-8">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100">
             <ArrowLeft size={20} className="text-gray-600" />
@@ -252,7 +252,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
           <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Company Profile</h1>
         </div>
 
-        <div className="overflow-hidden rounded-[2rem] border border-emerald-100 bg-white shadow-sm">
+        <section className="overflow-hidden rounded-[2rem] border border-emerald-100 bg-white shadow-sm">
           <div className="bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.2),_transparent_24%),linear-gradient(120deg,#052e2b_0%,#0f766e_45%,#34d399_100%)] px-4 py-7 text-white sm:px-6 lg:px-8 lg:py-10">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
@@ -437,14 +437,14 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               )}
             </div>
           </div>
-        </div>
+        </section>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100">
           <ArrowLeft size={20} className="text-gray-600" />
@@ -453,7 +453,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
       </div>
 
       <div className="space-y-6">
-        <div className="overflow-hidden rounded-[2rem] border border-teal-100 bg-white shadow-sm">
+        <section className="overflow-hidden rounded-[2rem] border border-teal-100 bg-white shadow-sm">
         <div className="relative h-44 bg-gradient-to-r from-teal-600 to-emerald-600 sm:h-52 lg:h-60">
           {(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) && (
             <CachedImage
@@ -849,7 +849,7 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             )}
           </section>
         </div>
-        </div>
+        </section>
       </div>
     </div>
   );
