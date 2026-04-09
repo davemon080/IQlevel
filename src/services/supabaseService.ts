@@ -3,6 +3,7 @@ import { UserProfile, Post, Job, Message, Proposal, Attachment, FriendRequest, C
 import { getCartoonAvatar } from '../utils/avatar';
 import { getUploadOptimizationOptions, optimizeImageFile } from '../utils/image';
 import { showAppToast } from '../utils/appToast';
+import { initiatePaystackBankTransfer } from '../utils/paystackServer';
 
 type DbUserProfile = {
   uid: string;
@@ -1004,6 +1005,19 @@ function buildWithdrawalReference(account: WithdrawalAccount) {
   return `bank_withdrawal:${account.bankCode}:${account.accountNumber}:${account.accountName}`;
 }
 
+function buildPaystackWithdrawalReference(uid: string) {
+  const uniquePart = Math.random().toString(36).slice(2, 12);
+  const normalizedUid = uid.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 18);
+  return `wd_${normalizedUid}_${Date.now()}_${uniquePart}`.slice(0, 50);
+}
+
+function mapPaystackTransferStatus(status: string): WalletTransaction['status'] {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'success' || normalized === 'completed') return 'completed';
+  if (normalized === 'failed' || normalized === 'reversed' || normalized === 'rejected') return 'failed';
+  return 'pending';
+}
+
 function getCurrentDeviceId() {
   if (typeof window === 'undefined') return 'server-session';
   const key = 'connect_current_device_id';
@@ -1653,15 +1667,36 @@ export const supabaseService = {
   },
 
   saveWithdrawalAccount(uid: string, account: Omit<WithdrawalAccount, 'id' | 'createdAt'>): WithdrawalAccount[] {
-    const existing = this.listWithdrawalAccounts(uid).filter(
+    const existingAccounts = this.listWithdrawalAccounts(uid);
+    const matched = existingAccounts.find(
+      (item) => item.accountNumber === account.accountNumber && item.bankCode === account.bankCode
+    );
+    const existing = existingAccounts.filter(
       (item) => !(item.accountNumber === account.accountNumber && item.bankCode === account.bankCode)
     );
     const nextAccount: WithdrawalAccount = {
+      ...matched,
       ...account,
-      id: `wa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      createdAt: new Date().toISOString(),
+      id: matched?.id || `wa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: matched?.createdAt || new Date().toISOString(),
     };
     const next = [nextAccount, ...existing];
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(`${WITHDRAWAL_ACCOUNTS_KEY_PREFIX}${uid}`, JSON.stringify(next));
+    }
+    return next;
+  },
+
+  updateWithdrawalAccountRecipientCode(
+    uid: string,
+    match: Pick<WithdrawalAccount, 'accountNumber' | 'bankCode'>,
+    recipientCode: string
+  ): WithdrawalAccount[] {
+    const next = this.listWithdrawalAccounts(uid).map((account) =>
+      account.accountNumber === match.accountNumber && account.bankCode === match.bankCode
+        ? { ...account, recipientCode }
+        : account
+    );
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(`${WITHDRAWAL_ACCOUNTS_KEY_PREFIX}${uid}`, JSON.stringify(next));
     }
@@ -4267,19 +4302,45 @@ export const supabaseService = {
       throw new Error('Invalid transaction PIN.');
     }
 
+    if (currency !== 'NGN') {
+      throw new Error('Bank withdrawals are currently available for NGN wallets only.');
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error('Enter a valid withdrawal amount.');
+    }
+
     const wallet = await this.getOrCreateWallet(uid);
-    const current = currency === 'USD' ? wallet.usdBalance : currency === 'NGN' ? wallet.ngnBalance : wallet.eurBalance;
-    const totalDebit = currency === 'NGN' ? amount + NGN_TRANSACTION_FEE : amount;
+    const current = wallet.ngnBalance;
+    const totalDebit = amount + NGN_TRANSACTION_FEE;
     if (totalDebit > current) {
       throw new Error('Insufficient balance.');
     }
 
+    const paystackReference = buildPaystackWithdrawalReference(uid);
+    const transfer = await initiatePaystackBankTransfer({
+      accountNumber: account.accountNumber,
+      bankCode: account.bankCode,
+      bankName: account.bankName,
+      accountName: account.accountName,
+      recipientCode: account.recipientCode,
+      amountKobo: Math.round(amount * 100),
+      reference: paystackReference,
+      reason: `Wallet withdrawal for ${uid}`,
+    });
+
     const nextBalances = {
-      usd_balance: wallet.usdBalance - (currency === 'USD' ? amount : 0),
-      ngn_balance: wallet.ngnBalance - (currency === 'NGN' ? totalDebit : 0),
-      eur_balance: wallet.eurBalance - (currency === 'EUR' ? amount : 0),
+      usd_balance: wallet.usdBalance,
+      ngn_balance: wallet.ngnBalance - totalDebit,
+      eur_balance: wallet.eurBalance,
     };
     const timestamp = new Date().toISOString();
+    const transactionStatus = mapPaystackTransferStatus(transfer.status);
+    const transactionReference = `${buildWithdrawalReference(account)}|fee:${NGN_TRANSACTION_FEE}|paystack_ref:${transfer.reference}|transfer_code:${transfer.transferCode}|recipient:${transfer.recipientCode}`;
+
+    if (transfer.recipientCode && transfer.recipientCode !== account.recipientCode) {
+      this.updateWithdrawalAccountRecipientCode(uid, account, transfer.recipientCode);
+    }
 
     await runQuery(
       supabase
@@ -4296,8 +4357,8 @@ export const supabaseService = {
         type: 'withdraw',
         method: 'transfer',
         amount,
-        status: 'completed',
-        reference: `${buildWithdrawalReference(account)}${currency === 'NGN' ? `|fee:${NGN_TRANSACTION_FEE}` : ''}`,
+        status: transactionStatus,
+        reference: transactionReference,
         created_at: timestamp,
       }),
       'withdrawToBankAccountWithPin:transaction'
@@ -4317,12 +4378,20 @@ export const supabaseService = {
         type: 'withdraw',
         method: 'transfer',
         amount,
-        status: 'completed',
+        status: transactionStatus,
         createdAt: timestamp,
-        reference: `${buildWithdrawalReference(account)}${currency === 'NGN' ? `|fee:${NGN_TRANSACTION_FEE}` : ''}`,
+        reference: transactionReference,
       },
       ...(current || []),
     ]);
+
+    return {
+      status: transactionStatus,
+      paystackStatus: transfer.status,
+      reference: transfer.reference,
+      transferCode: transfer.transferCode,
+      recipientCode: transfer.recipientCode,
+    };
   },
 
   async transferByUserId(senderUid: string, recipientIdentifier: string, currency: WalletCurrency, amount: number) {

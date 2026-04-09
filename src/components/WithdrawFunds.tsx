@@ -174,7 +174,7 @@ export default function WithdrawFunds({ profile }: WithdrawFundsProps) {
           )}
 
           <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs text-sky-800">
-            Account-name verification now uses Paystack account resolution before the account can be saved or used for withdrawal.
+            Account-name verification now uses Paystack account resolution, and the withdrawal step will reuse an existing Paystack recipient or create one automatically before initiating the transfer.
           </div>
         </div>
       </div>

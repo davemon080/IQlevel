@@ -15,6 +15,16 @@ type PaystackVerifyTransactionResponse = {
   paidAt?: string | null;
 };
 
+type PaystackTransferResponse = {
+  reference: string;
+  transferCode: string;
+  status: string;
+  amountKobo: number;
+  currency: string;
+  recipientCode: string;
+  recipientName?: string;
+};
+
 async function getFunctionsHttpErrorMessage(error: { context?: Response | null } | null) {
   const response = error?.context;
   if (!response) {
@@ -95,5 +105,29 @@ export function verifyPaystackTransaction(reference: string) {
   return invokePaystack<PaystackVerifyTransactionResponse>({
     action: 'verify_transaction',
     reference,
+  });
+}
+
+export function initiatePaystackBankTransfer(params: {
+  accountNumber: string;
+  bankCode: string;
+  bankName?: string;
+  accountName: string;
+  recipientCode?: string;
+  amountKobo: number;
+  reference: string;
+  reason?: string;
+}) {
+  return invokePaystack<PaystackTransferResponse>({
+    action: 'initiate_transfer',
+    accountNumber: params.accountNumber,
+    bankCode: params.bankCode,
+    bankName: params.bankName,
+    accountName: params.accountName,
+    recipientCode: params.recipientCode,
+    amountKobo: params.amountKobo,
+    currency: 'NGN',
+    reference: params.reference,
+    reason: params.reason,
   });
 }

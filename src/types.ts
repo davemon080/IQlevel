@@ -197,6 +197,7 @@ export interface WithdrawalAccount {
   bankCode: string;
   bankName: string;
   accountName: string;
+  recipientCode?: string;
   createdAt: string;
 }
 

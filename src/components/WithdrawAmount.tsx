@@ -27,6 +27,10 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
+    if (currency !== 'NGN') {
+      setCurrency('NGN');
+    }
+
     const accountId = searchParams.get('accountId');
     const savedAccounts = supabaseService.listWithdrawalAccounts(profile.uid);
     const selected = savedAccounts.find((item) => item.id === accountId) || null;
@@ -63,7 +67,7 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
       active = false;
       unsubscribeWallet();
     };
-  }, [profile.uid, searchParams]);
+  }, [currency, profile.uid, searchParams, setCurrency]);
 
   const availableBalance = useMemo(() => {
     if (!wallet) return 0;
@@ -88,8 +92,8 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
       setError('Enter a valid withdrawal amount.');
       return;
     }
-    if (amountNumber > availableBalance) {
-      setError('Insufficient balance.');
+    if (amountNumber + 50 > availableBalance) {
+      setError('Insufficient balance. NGN bank withdrawals include a N50 Paystack transfer fee.');
       return;
     }
     setPin('');
@@ -106,9 +110,13 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
     setProcessing(true);
     setError(null);
     try {
-      await supabaseService.withdrawToBankAccountWithPin(profile.uid, currency, amountNumber, pin, account);
+      const result = await supabaseService.withdrawToBankAccountWithPin(profile.uid, currency, amountNumber, pin, account);
       setShowPinPad(false);
-      setSuccess('Withdrawal completed successfully.');
+      setSuccess(
+        result.status === 'completed'
+          ? 'Withdrawal completed successfully.'
+          : 'Withdrawal submitted. Paystack is processing the transfer.'
+      );
       window.setTimeout(() => navigate('/wallets/history'), 1200);
     } catch (nextError) {
       setError(getErrorMessage(nextError, 'Withdrawal failed.'));
@@ -158,14 +166,12 @@ export default function WithdrawAmount({ profile }: WithdrawAmountProps) {
 
       <form onSubmit={openPinPad} className="space-y-4 rounded-3xl border border-violet-100 bg-white/95 p-6 shadow-sm">
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          A N50 fee is deducted automatically from each NGN withdrawal.
+          Paystack bank withdrawals currently support NGN only. Your entered amount is sent to the bank account, and an extra N50 fee is deducted from your wallet.
         </div>
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Currency</label>
-          <select value={currency} onChange={(e) => setCurrency(e.target.value as WalletCurrency)} className="w-full rounded-2xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-violet-500">
-            <option value="USD">USD</option>
+          <select value={currency} onChange={(e) => setCurrency(e.target.value as WalletCurrency)} disabled className="w-full rounded-2xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-70">
             <option value="NGN">NGN</option>
-            <option value="EUR">EUR</option>
           </select>
         </div>
 
