@@ -1,4 +1,5 @@
 import { supabase } from '../supabase';
+import { NigerianBankOption } from '../types';
 
 type PaystackResolveAccountResponse = {
   accountName: string;
@@ -23,6 +24,10 @@ type PaystackTransferResponse = {
   currency: string;
   recipientCode: string;
   recipientName?: string;
+};
+
+type PaystackBankListResponse = {
+  banks: NigerianBankOption[];
 };
 
 async function getFunctionsHttpErrorMessage(error: { context?: Response | null } | null) {
@@ -129,5 +134,12 @@ export function initiatePaystackBankTransfer(params: {
     currency: 'NGN',
     reference: params.reference,
     reason: params.reason,
+  });
+}
+
+export function listPaystackBanks() {
+  return invokePaystack<PaystackBankListResponse>({
+    action: 'list_banks',
+    country: 'nigeria',
   });
 }

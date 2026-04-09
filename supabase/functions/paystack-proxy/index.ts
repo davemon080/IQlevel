@@ -23,6 +23,11 @@ type VerifyTransactionPayload = {
   reference: string;
 };
 
+type ListBanksPayload = {
+  action: 'list_banks';
+  country?: string;
+};
+
 type InitiateTransferPayload = {
   action: 'initiate_transfer';
   accountNumber: string;
@@ -84,7 +89,7 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const payload = (await request.json()) as ResolveAccountPayload | VerifyTransactionPayload | InitiateTransferPayload;
+    const payload = (await request.json()) as ResolveAccountPayload | VerifyTransactionPayload | ListBanksPayload | InitiateTransferPayload;
 
     if (payload.action === 'resolve_account') {
       const accountNumber = String(payload.accountNumber || '').trim();
@@ -153,6 +158,39 @@ Deno.serve(async (request) => {
           amountKobo: verified.data.amount,
           currency: verified.data.currency,
           paidAt: verified.data.paid_at ?? null,
+        },
+      });
+    }
+
+    if (payload.action === 'list_banks') {
+      const country = String(payload.country || 'nigeria').trim().toLowerCase();
+      const { response: paystackResponse, body: banks } = await paystackRequest<Array<{
+        code?: string;
+        name?: string;
+        active?: boolean;
+        country?: string;
+        type?: string;
+      }>>(secretKey, `/bank?country=${encodeURIComponent(country)}&perPage=100`);
+
+      if (!paystackResponse.ok || !banks?.status || !Array.isArray(banks.data)) {
+        return jsonResponse(400, {
+          ok: false,
+          error: banks?.message || 'Unable to load banks from Paystack.',
+        });
+      }
+
+      const mappedBanks = banks.data
+        .filter((bank) => bank?.code && bank?.name && bank?.active !== false)
+        .map((bank) => ({
+          code: String(bank.code),
+          name: String(bank.name),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      return jsonResponse(200, {
+        ok: true,
+        data: {
+          banks: mappedBanks,
         },
       });
     }

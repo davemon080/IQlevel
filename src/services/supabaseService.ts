@@ -1703,6 +1703,14 @@ export const supabaseService = {
     return next;
   },
 
+  deleteWithdrawalAccount(uid: string, accountId: string): WithdrawalAccount[] {
+    const next = this.listWithdrawalAccounts(uid).filter((account) => account.id !== accountId);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(`${WITHDRAWAL_ACCOUNTS_KEY_PREFIX}${uid}`, JSON.stringify(next));
+    }
+    return next;
+  },
+
   getFeedCacheSnapshot(): FeedCacheSnapshot | null {
     return readCacheAnyAge<FeedCacheSnapshot>('feed:snapshot');
   },

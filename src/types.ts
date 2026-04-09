@@ -201,6 +201,11 @@ export interface WithdrawalAccount {
   createdAt: string;
 }
 
+export interface NigerianBankOption {
+  code: string;
+  name: string;
+}
+
 export interface WalletTransaction {
   id: string;
   userUid: string;
