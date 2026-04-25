@@ -444,16 +444,15 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
   }
 
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100">
+        <button onClick={() => navigate(-1)} className="rounded-full p-2 hover:bg-gray-100">
           <ArrowLeft size={20} className="text-gray-600" />
         </button>
         <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
       </div>
 
-      <div className="space-y-6">
-        <section className="overflow-hidden">
+      <section className="overflow-hidden rounded-[1.75rem] border border-gray-200 bg-white shadow-sm">
         <div className="relative h-44 bg-gradient-to-r from-teal-600 to-emerald-600 sm:h-52 lg:h-60">
           {(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) && (
             <CachedImage
@@ -461,12 +460,12 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
               alt="cover"
               loading="lazy"
               decoding="async"
-              wrapperClassName="w-full h-full"
-              imgClassName="w-full h-full object-cover"
+              wrapperClassName="h-full w-full"
+              imgClassName="h-full w-full object-cover"
             />
           )}
           {isOwnProfile && editing && (
-            <label className="absolute bottom-3 right-3 p-2 rounded-xl bg-black/30 text-white cursor-pointer">
+            <label className="absolute bottom-3 right-3 cursor-pointer rounded-xl bg-black/30 p-2 text-white">
               <Camera size={16} />
               <input
                 type="file"
@@ -478,67 +477,77 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
           )}
         </div>
 
-        <div className="space-y-6 px-4 pb-5 sm:px-6 lg:px-8 lg:pb-8">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-5 px-4 pb-5 sm:px-6 lg:px-8 lg:pb-8">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end">
-            <div className="relative -mt-14 sm:-mt-16">
-              <CachedImage
-                src={(editing ? draft.photoURL : userProfile.photoURL) || ''}
-                alt={userProfile.displayName}
-                fallbackMode="avatar"
-                loading="lazy"
-                decoding="async"
-                referrerPolicy="no-referrer"
-                wrapperClassName="w-28 h-28 rounded-2xl border-4 border-white"
-                imgClassName="w-full h-full rounded-2xl object-cover"
-              />
-              {isOwnProfile && editing && (
-                <label className="absolute bottom-1 right-1 p-1.5 rounded-lg bg-black/30 text-white cursor-pointer">
-                  <Camera size={14} />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => e.target.files?.[0] && handleUploadImage(e.target.files[0], 'photoURL')}
-                  />
-                </label>
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="break-words text-2xl font-bold text-gray-900 sm:text-[1.9rem]">{editing ? draft.displayName : userProfile.displayName}</h2>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-500">
-                <span className="rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700">{userProfile.role}</span>
-                <span className="text-xs text-gray-400">Profile completion: {completion}%</span>
+              <div className="relative -mt-14 sm:-mt-16">
+                <CachedImage
+                  src={(editing ? draft.photoURL : userProfile.photoURL) || ''}
+                  alt={userProfile.displayName}
+                  fallbackMode="avatar"
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  wrapperClassName="h-28 w-28 rounded-2xl border-4 border-white bg-white"
+                  imgClassName="h-full w-full rounded-2xl object-cover"
+                />
+                {isOwnProfile && editing && (
+                  <label className="absolute bottom-1 right-1 cursor-pointer rounded-lg bg-black/30 p-1.5 text-white">
+                    <Camera size={14} />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => e.target.files?.[0] && handleUploadImage(e.target.files[0], 'photoURL')}
+                    />
+                  </label>
+                )}
               </div>
-              <button
-                onClick={handleCopyUserId}
-                type="button"
-                className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-left text-xs font-semibold text-gray-600 hover:bg-gray-200"
-              >
-                <Copy size={12} />
-                {copiedId ? 'Copied' : `User ID: ${(editing ? draft.publicId : userProfile.publicId) || userProfile.uid}`}
-              </button>
+              <div className="min-w-0">
+                <h2 className="break-words text-2xl font-bold text-gray-900 sm:text-[1.9rem]">
+                  {editing ? draft.displayName : userProfile.displayName}
+                </h2>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700">
+                    {userProfile.role}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {(editing ? draft.publicId : userProfile.publicId) || userProfile.uid}
+                  </span>
+                </div>
+                <button
+                  onClick={handleCopyUserId}
+                  type="button"
+                  className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-left text-xs font-semibold text-gray-600 hover:bg-gray-200"
+                >
+                  <Copy size={12} />
+                  {copiedId ? 'Copied user ID' : 'Copy user ID'}
+                </button>
+              </div>
             </div>
-            </div>
+
             {isOwnProfile ? (
               <div className="flex flex-wrap gap-2 sm:justify-end">
                 {!editing ? (
-                  <button onClick={() => setEditing(true)} className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 font-semibold text-sm">
-                    Edit
+                  <button
+                    onClick={() => setEditing(true)}
+                    className="rounded-xl bg-gray-100 px-4 py-2 text-sm font-semibold hover:bg-gray-200"
+                  >
+                    Edit Profile
                   </button>
                 ) : (
                   <button
                     onClick={handleSave}
                     disabled={saving}
-                    className="px-4 py-2 rounded-xl bg-teal-700 text-white hover:bg-teal-800 font-semibold text-sm inline-flex items-center gap-2"
+                    className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800"
                   >
                     <Save size={14} />
-                    {saving ? 'Saving...' : 'Save'}
+                    {saving ? 'Saving...' : 'Save Changes'}
                   </button>
                 )}
                 <button
                   onClick={() => navigator.clipboard.writeText(window.location.href)}
-                  className="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200"
+                  className="rounded-xl bg-gray-100 px-3 py-2 hover:bg-gray-200"
                 >
                   <Share2 size={16} />
                 </button>
@@ -546,12 +555,18 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             ) : (
               <div className="flex flex-wrap gap-2 sm:justify-end">
                 {canMessageUser ? (
-                  <button onClick={() => navigate(`/messages?uid=${userProfile.uid}`)} className="px-4 py-2 rounded-xl bg-teal-700 text-white hover:bg-teal-800 text-sm font-semibold inline-flex items-center gap-2">
+                  <button
+                    onClick={() => navigate(`/messages?uid=${userProfile.uid}`)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800"
+                  >
                     <MessageSquare size={14} />
                     Message
                   </button>
                 ) : (
-                  <button onClick={() => navigate('/network')} className="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 text-sm font-semibold inline-flex items-center gap-2">
+                  <button
+                    onClick={() => navigate('/network')}
+                    className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200"
+                  >
                     <Users size={14} />
                     Connect First
                   </button>
@@ -560,297 +575,503 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
             )}
           </div>
 
-          <div className="-mx-1 flex gap-2 overflow-x-auto border-b border-gray-100 px-1 pb-1">
-            {(['about', 'portfolio', 'activity'] as const).map((value) => (
-              <button
-                key={value}
-                onClick={() => setTab(value)}
-                className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold capitalize transition ${tab === value ? 'bg-teal-50 text-teal-700' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'}`}
-              >
-                {value}
-              </button>
-            ))}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Completion</p>
+              <p className="mt-1.5 text-lg font-bold text-gray-900">{completion}%</p>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Posts</p>
+              <p className="mt-1.5 text-lg font-bold text-gray-900">{posts.length}</p>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Following</p>
+              <p className="mt-1.5 text-lg font-bold text-gray-900">{myCompanyFollows.length} companies</p>
+            </div>
           </div>
+        </div>
+      </section>
 
-          {tab === 'about' && (
-            <div className="mt-6 space-y-7">
-              <section className="space-y-4">
-                <p className="text-sm font-bold text-gray-900">Personal Details</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <EditableField label="Display Name" value={editing ? draft.displayName : userProfile.displayName} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, displayName: v }))} />
-                  <EditableField label="Public User ID" value={editing ? draft.publicId : userProfile.publicId || userProfile.uid} editing={false} onChange={() => undefined} />
-                  <EditableField label="Phone Number" value={editing ? draft.phoneNumber : userProfile.phoneNumber} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, phoneNumber: v }))} />
-                  <EditableField label="Status" value={editing ? draft.status : userProfile.status} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, status: v }))} />
-                </div>
-              </section>
+      <section className="rounded-[1.75rem] border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+          {(['about', 'portfolio', 'activity'] as const).map((value) => (
+            <button
+              key={value}
+              onClick={() => setTab(value)}
+              className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold capitalize transition ${
+                tab === value ? 'bg-teal-50 text-teal-700' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+              }`}
+            >
+              {value}
+            </button>
+          ))}
+        </div>
 
-              <section className="space-y-4">
-                <p className="text-sm font-bold text-gray-900">Location & Date Of Birth</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <EditableField label="Location" value={editing ? draft.location : userProfile.location} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, location: v }))} />
-                  <EditableField label="Date Of Birth" value={editing ? draft.dateOfBirth : userProfile.dateOfBirth} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, dateOfBirth: v }))} inputType="date" />
-                </div>
-              </section>
+        {tab === 'about' && (
+          <div className="mt-6 space-y-7">
+            <section className="space-y-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 sm:p-5">
+              <p className="text-sm font-bold text-gray-900">Personal Details</p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <EditableField
+                  label="Display Name"
+                  value={editing ? draft.displayName : userProfile.displayName}
+                  editing={editing}
+                  onChange={(v) => setDraft((prev) => ({ ...prev, displayName: v }))}
+                />
+                <EditableField
+                  label="Public User ID"
+                  value={editing ? draft.publicId : userProfile.publicId || userProfile.uid}
+                  editing={false}
+                  onChange={() => undefined}
+                />
+                <EditableField
+                  label="Phone Number"
+                  value={editing ? draft.phoneNumber : userProfile.phoneNumber}
+                  editing={editing}
+                  onChange={(v) => setDraft((prev) => ({ ...prev, phoneNumber: v }))}
+                />
+                <EditableField
+                  label="Status"
+                  value={editing ? draft.status : userProfile.status}
+                  editing={editing}
+                  onChange={(v) => setDraft((prev) => ({ ...prev, status: v }))}
+                />
+              </div>
+            </section>
 
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-bold text-gray-900">Skills</p>
-                  {editing && (
-                    <button onClick={handleAddSkill} className="px-2 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200">
-                      <Plus size={12} />
-                    </button>
-                  )}
+            <section className="space-y-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 sm:p-5">
+              <p className="text-sm font-bold text-gray-900">Location & Date Of Birth</p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <EditableField
+                  label="Location"
+                  value={editing ? draft.location : userProfile.location}
+                  editing={editing}
+                  onChange={(v) => setDraft((prev) => ({ ...prev, location: v }))}
+                />
+                <EditableField
+                  label="Date Of Birth"
+                  value={editing ? draft.dateOfBirth : userProfile.dateOfBirth}
+                  editing={editing}
+                  onChange={(v) => setDraft((prev) => ({ ...prev, dateOfBirth: v }))}
+                  inputType="date"
+                />
+              </div>
+            </section>
+
+            <section className="space-y-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 sm:p-5">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-gray-900">Skills</p>
+                {editing && (
+                  <button
+                    onClick={handleAddSkill}
+                    className="rounded-lg bg-gray-100 px-2 py-1 text-xs hover:bg-gray-200"
+                  >
+                    <Plus size={12} />
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(editing ? draft.skills : userProfile.skills || []).map((skill) => (
+                  <span
+                    key={skill}
+                    className="flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700"
+                  >
+                    {skill}
+                    {editing && (
+                      <button onClick={() => removeSkill(skill)}>
+                        <Trash2 size={11} />
+                      </button>
+                    )}
+                  </span>
+                ))}
+                {(!(editing ? draft.skills : userProfile.skills) ||
+                  (editing ? draft.skills : userProfile.skills || []).length === 0) && (
+                  <p className="text-sm text-gray-500">No skills added yet.</p>
+                )}
+              </div>
+            </section>
+
+            <section className="space-y-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-bold text-gray-900">More details</p>
+                  <p className="text-xs text-gray-500">Experience, education, social links, and extended bio.</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {(editing ? draft.skills : userProfile.skills || []).map((skill) => (
-                    <span key={skill} className="px-3 py-1 rounded-full text-xs bg-gray-100 text-gray-700 flex items-center gap-1">
-                      {skill}
+                <button
+                  type="button"
+                  onClick={() => setShowMoreDetails((prev) => !prev)}
+                  className="text-sm font-semibold text-teal-700 hover:text-teal-800"
+                >
+                  {showMoreDetails ? 'Hide details' : 'See more details'}
+                </button>
+              </div>
+
+              {showMoreDetails && (
+                <div className="space-y-6">
+                  <section className="space-y-3">
+                    <p className="text-sm font-bold text-gray-900">Experience</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-500">Work history</span>
                       {editing && (
-                        <button onClick={() => removeSkill(skill)}>
-                          <Trash2 size={11} />
+                        <button
+                          onClick={addExperience}
+                          className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs hover:bg-gray-200"
+                        >
+                          <Plus size={12} />
+                          Add
                         </button>
                       )}
-                    </span>
-                  ))}
-                  {(!(editing ? draft.skills : userProfile.skills) || (editing ? draft.skills : userProfile.skills || []).length === 0) && (
-                    <p className="text-sm text-gray-500">No skills added yet.</p>
-                  )}
-                </div>
-              </section>
-
-              <section className="space-y-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-gray-900">More details</p>
-                    <p className="text-xs text-gray-500">Experience, education, social links, and extended bio.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowMoreDetails((prev) => !prev)}
-                    className="text-sm font-semibold text-teal-700 hover:text-teal-800"
-                  >
-                    {showMoreDetails ? 'Hide details' : 'See more details'}
-                  </button>
-                </div>
-
-                {showMoreDetails && (
-                  <div className="space-y-6">
-                    <section className="space-y-3">
-                      <p className="text-sm font-bold text-gray-900">Experience</p>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-500">Work history</span>
+                    </div>
+                    {(editing ? draft.experience : userProfile.experience || []).map((exp, index) => (
+                      <div key={index} className="space-y-2 rounded-xl border border-gray-100 bg-white p-3">
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                          <EditableField
+                            label="Title"
+                            value={exp.title}
+                            editing={editing}
+                            onChange={(v) => updateExperience(index, 'title', v)}
+                          />
+                          <EditableField
+                            label="Company"
+                            value={exp.company}
+                            editing={editing}
+                            onChange={(v) => updateExperience(index, 'company', v)}
+                          />
+                          <EditableField
+                            label="Type"
+                            value={exp.type}
+                            editing={editing}
+                            onChange={(v) => updateExperience(index, 'type', v)}
+                          />
+                          <EditableField
+                            label="Period"
+                            value={exp.period}
+                            editing={editing}
+                            onChange={(v) => updateExperience(index, 'period', v)}
+                          />
+                        </div>
+                        <EditableField
+                          label="Description"
+                          value={exp.description}
+                          editing={editing}
+                          textarea
+                          onChange={(v) => updateExperience(index, 'description', v)}
+                        />
                         {editing && (
-                          <button onClick={addExperience} className="px-2 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1">
-                            <Plus size={12} />
-                            Add
+                          <button
+                            onClick={() => removeExperience(index)}
+                            className="text-xs font-semibold text-red-600"
+                          >
+                            Remove
                           </button>
                         )}
                       </div>
-                      {(editing ? draft.experience : userProfile.experience || []).map((exp, index) => (
-                        <div key={index} className="p-3 rounded-xl border border-gray-100 space-y-2">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            <EditableField label="Title" value={exp.title} editing={editing} onChange={(v) => updateExperience(index, 'title', v)} />
-                            <EditableField label="Company" value={exp.company} editing={editing} onChange={(v) => updateExperience(index, 'company', v)} />
-                            <EditableField label="Type" value={exp.type} editing={editing} onChange={(v) => updateExperience(index, 'type', v)} />
-                            <EditableField label="Period" value={exp.period} editing={editing} onChange={(v) => updateExperience(index, 'period', v)} />
-                          </div>
-                          <EditableField label="Description" value={exp.description} editing={editing} textarea onChange={(v) => updateExperience(index, 'description', v)} />
-                          {editing && (
-                            <button onClick={() => removeExperience(index)} className="text-xs text-red-600 font-semibold">Remove</button>
-                          )}
-                        </div>
-                      ))}
-                      {(!(editing ? draft.experience : userProfile.experience) || (editing ? draft.experience : userProfile.experience || []).length === 0) && (
-                        <p className="text-sm text-gray-500">No experience added yet.</p>
-                      )}
-                    </section>
-
-                    <section className="space-y-3">
-                      <p className="text-sm font-bold text-gray-900">Education</p>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <EditableField label="University" value={editing ? draft.education?.university : userProfile.education?.university} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, education: { ...(prev.education || { university: '', degree: '', verified: false }), university: v } }))} />
-                        <EditableField label="Degree" value={editing ? draft.education?.degree : userProfile.education?.degree} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, education: { ...(prev.education || { university: '', degree: '', verified: false }), degree: v } }))} />
-                        <EditableField label="Year" value={editing ? draft.education?.year : userProfile.education?.year} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, education: { ...(prev.education || { university: '', degree: '', verified: false }), year: v } }))} />
-                      </div>
-                    </section>
-
-                    <section className="space-y-3">
-                      <p className="text-sm font-bold text-gray-900">Social Links</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <EditableField label="LinkedIn" value={editing ? draft.socialLinks?.linkedin : userProfile.socialLinks?.linkedin} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), linkedin: v } }))} />
-                        <EditableField label="GitHub" value={editing ? draft.socialLinks?.github : userProfile.socialLinks?.github} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), github: v } }))} />
-                        <EditableField label="Twitter" value={editing ? draft.socialLinks?.twitter : userProfile.socialLinks?.twitter} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), twitter: v } }))} />
-                        <EditableField label="Website" value={editing ? draft.socialLinks?.website : userProfile.socialLinks?.website} editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), website: v } }))} />
-                      </div>
-                    </section>
-
-                    <section className="space-y-3">
-                      <EditableField label="Bio" value={editing ? draft.bio : userProfile.bio} textarea editing={editing} onChange={(v) => setDraft((prev) => ({ ...prev, bio: v }))} />
-                    </section>
-                  </div>
-                )}
-              </section>
-
-              {myCompanyFollows.length > 0 && (
-                <section className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold text-gray-900">Following</p>
-                    <span className="text-xs font-semibold text-gray-400">{myCompanyFollows.length} compan{myCompanyFollows.length === 1 ? 'y' : 'ies'}</span>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {myCompanyFollows.map((follow) => {
-                      const company = followedCompanies[follow.companyUid];
-                      if (!company) return null;
-                      return (
-                        <button
-                          key={follow.id}
-                          type="button"
-                          onClick={() => navigate(`/profile/${company.userUid}`)}
-                          className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 text-left hover:border-teal-200 hover:bg-teal-50"
-                        >
-                          <CachedImage
-                            src={company.companyLogoUrl}
-                            alt={company.companyName}
-                            fallbackMode="logo"
-                            wrapperClassName="h-14 w-14 rounded-2xl"
-                            imgClassName="h-full w-full rounded-2xl object-cover"
-                          />
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-bold text-gray-900">{company.companyName}</p>
-                            <p className="truncate text-xs text-gray-500">{company.location}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-            </div>
-          )}
-
-          {tab === 'portfolio' && (
-            <div className="mt-6 space-y-4">
-              {editing && (
-                <button onClick={addPortfolio} className="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-semibold inline-flex items-center gap-2">
-                  <Plus size={14} />
-                  Add Portfolio Item
-                </button>
-              )}
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {(editing ? draft.portfolio : userProfile.portfolio || []).map((item, index) => (
-                  <div key={index} className="space-y-3">
-                    <CachedImage
-                      src={item.imageUrl || 'https://via.placeholder.com/600x400?text=Project'}
-                      alt={item.title}
-                      fallbackMode="media"
-                      loading="lazy"
-                      decoding="async"
-                      wrapperClassName="w-full h-44 rounded-xl"
-                      imgClassName="w-full h-full rounded-xl object-cover"
-                    />
-                    <EditableField label="Project Title" value={item.title} editing={editing} onChange={(v) => updatePortfolio(index, 'title', v)} />
-                    <EditableField label="Project Link" value={item.link} editing={editing} onChange={(v) => updatePortfolio(index, 'link', v)} />
-                    {editing && (
-                      <>
-                        <EditableField label="Image URL" value={item.imageUrl} editing={editing} onChange={(v) => updatePortfolio(index, 'imageUrl', v)} />
-                        <label className="text-xs font-semibold text-teal-700 cursor-pointer">
-                          Upload image
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadPortfolioImage(e.target.files[0], index)} />
-                        </label>
-                      </>
+                    ))}
+                    {(!(editing ? draft.experience : userProfile.experience) ||
+                      (editing ? draft.experience : userProfile.experience || []).length === 0) && (
+                      <p className="text-sm text-gray-500">No experience added yet.</p>
                     )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+                  </section>
 
-          {tab === 'activity' && (
-            <div className="space-y-3">
-              {posts.length === 0 && <div className="px-4 py-10 text-center text-sm text-gray-500">No activity yet.</div>}
-              {posts.map((post) => (
-                <div key={post.id} className="p-1">
-                  <p className="text-xs text-gray-400 mb-2">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</p>
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{post.content}</p>
-                  {post.imageUrl && (
-                    <CachedImage
-                      src={post.imageUrl}
-                      alt="post"
-                      fallbackMode="post"
-                      loading="lazy"
-                      decoding="async"
-                      wrapperClassName="w-full mt-3 rounded-xl"
-                      imgClassName="w-full h-full rounded-xl object-cover"
+                  <section className="space-y-3">
+                    <p className="text-sm font-bold text-gray-900">Education</p>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <EditableField
+                        label="University"
+                        value={editing ? draft.education?.university : userProfile.education?.university}
+                        editing={editing}
+                        onChange={(v) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            education: {
+                              ...(prev.education || { university: '', degree: '', verified: false }),
+                              university: v,
+                            },
+                          }))
+                        }
+                      />
+                      <EditableField
+                        label="Degree"
+                        value={editing ? draft.education?.degree : userProfile.education?.degree}
+                        editing={editing}
+                        onChange={(v) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            education: {
+                              ...(prev.education || { university: '', degree: '', verified: false }),
+                              degree: v,
+                            },
+                          }))
+                        }
+                      />
+                      <EditableField
+                        label="Year"
+                        value={editing ? draft.education?.year : userProfile.education?.year}
+                        editing={editing}
+                        onChange={(v) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            education: {
+                              ...(prev.education || { university: '', degree: '', verified: false }),
+                              year: v,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                  </section>
+
+                  <section className="space-y-3">
+                    <p className="text-sm font-bold text-gray-900">Social Links</p>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <EditableField
+                        label="LinkedIn"
+                        value={editing ? draft.socialLinks?.linkedin : userProfile.socialLinks?.linkedin}
+                        editing={editing}
+                        onChange={(v) =>
+                          setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), linkedin: v } }))
+                        }
+                      />
+                      <EditableField
+                        label="GitHub"
+                        value={editing ? draft.socialLinks?.github : userProfile.socialLinks?.github}
+                        editing={editing}
+                        onChange={(v) =>
+                          setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), github: v } }))
+                        }
+                      />
+                      <EditableField
+                        label="Twitter"
+                        value={editing ? draft.socialLinks?.twitter : userProfile.socialLinks?.twitter}
+                        editing={editing}
+                        onChange={(v) =>
+                          setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), twitter: v } }))
+                        }
+                      />
+                      <EditableField
+                        label="Website"
+                        value={editing ? draft.socialLinks?.website : userProfile.socialLinks?.website}
+                        editing={editing}
+                        onChange={(v) =>
+                          setDraft((prev) => ({ ...prev, socialLinks: { ...(prev.socialLinks || {}), website: v } }))
+                        }
+                      />
+                    </div>
+                  </section>
+
+                  <section className="space-y-3">
+                    <EditableField
+                      label="Bio"
+                      value={editing ? draft.bio : userProfile.bio}
+                      textarea
+                      editing={editing}
+                      onChange={(v) => setDraft((prev) => ({ ...prev, bio: v }))}
                     />
+                  </section>
+                </div>
+              )}
+            </section>
+
+            {myCompanyFollows.length > 0 && (
+              <section className="space-y-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 sm:p-5">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold text-gray-900">Following</p>
+                  <span className="text-xs font-semibold text-gray-400">
+                    {myCompanyFollows.length} compan{myCompanyFollows.length === 1 ? 'y' : 'ies'}
+                  </span>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {myCompanyFollows.map((follow) => {
+                    const company = followedCompanies[follow.companyUid];
+                    if (!company) return null;
+                    return (
+                      <button
+                        key={follow.id}
+                        type="button"
+                        onClick={() => navigate(`/profile/${company.userUid}`)}
+                        className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 text-left hover:border-teal-200 hover:bg-teal-50"
+                      >
+                        <CachedImage
+                          src={company.companyLogoUrl}
+                          alt={company.companyName}
+                          fallbackMode="logo"
+                          wrapperClassName="h-14 w-14 rounded-2xl"
+                          imgClassName="h-full w-full rounded-2xl object-cover"
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-gray-900">{company.companyName}</p>
+                          <p className="truncate text-xs text-gray-500">{company.location}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        {tab === 'portfolio' && (
+          <div className="mt-6 space-y-4">
+            {editing && (
+              <button
+                onClick={addPortfolio}
+                className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-3 py-2 text-sm font-semibold hover:bg-gray-200"
+              >
+                <Plus size={14} />
+                Add Portfolio Item
+              </button>
+            )}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {(editing ? draft.portfolio : userProfile.portfolio || []).map((item, index) => (
+                <div key={index} className="space-y-3 rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
+                  <CachedImage
+                    src={item.imageUrl || 'https://via.placeholder.com/600x400?text=Project'}
+                    alt={item.title}
+                    fallbackMode="media"
+                    loading="lazy"
+                    decoding="async"
+                    wrapperClassName="h-44 w-full rounded-xl"
+                    imgClassName="h-full w-full rounded-xl object-cover"
+                  />
+                  <EditableField
+                    label="Project Title"
+                    value={item.title}
+                    editing={editing}
+                    onChange={(v) => updatePortfolio(index, 'title', v)}
+                  />
+                  <EditableField
+                    label="Project Link"
+                    value={item.link}
+                    editing={editing}
+                    onChange={(v) => updatePortfolio(index, 'link', v)}
+                  />
+                  {editing && (
+                    <>
+                      <EditableField
+                        label="Image URL"
+                        value={item.imageUrl}
+                        editing={editing}
+                        onChange={(v) => updatePortfolio(index, 'imageUrl', v)}
+                      />
+                      <label className="cursor-pointer text-xs font-semibold text-teal-700">
+                        Upload image
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => e.target.files?.[0] && uploadPortfolioImage(e.target.files[0], index)}
+                        />
+                      </label>
+                    </>
                   )}
                 </div>
               ))}
             </div>
-          )}
+          </div>
+        )}
 
-          <section className="space-y-4">
-            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-gray-400">Posts</p>
-                <h3 className="mt-2 text-lg font-bold text-gray-900">All Posts</h3>
-              </div>
-              <p className="text-sm text-gray-500">
-                {posts.length === 0 ? 'No posts published yet.' : `${posts.length} post${posts.length === 1 ? '' : 's'} from this profile`}
-              </p>
-            </div>
-
-            {posts.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm text-gray-500">
-                This profile has not shared any posts yet.
-              </div>
-            ) : (
-              <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
-                {posts.map((post) => (
-                  <article key={post.id} className="flex h-full flex-col overflow-hidden">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <span className="ml-4 mt-4 rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700 shadow-sm">
-                        {post.type}
-                      </span>
-                      <span className="mr-4 mt-4 text-xs text-gray-400">
-                        {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
-                      </span>
-                    </div>
-                    <div className="px-4 pb-4">
-                      <p className="text-sm leading-7 text-gray-800 whitespace-pre-wrap">{post.content}</p>
-                    </div>
-                    {post.imageUrl && (
-                      <CachedImage
-                        src={post.imageUrl}
-                        alt="post"
-                        fallbackMode="post"
-                        loading="lazy"
-                        decoding="async"
-                        wrapperClassName="w-full overflow-hidden"
-                        imgClassName="h-full w-full object-cover"
-                      />
-                    )}
-                    <div className="flex items-center gap-5 border-t border-gray-100 px-4 py-3">
-                      <button onClick={() => void togglePostLike(post.id)} className={`inline-flex items-center gap-1 text-xs font-bold ${likedPostIds.has(post.id) ? 'text-rose-600' : 'text-gray-500 hover:text-teal-700'}`}>
-                        <Heart size={14} className={likedPostIds.has(post.id) ? 'fill-current' : ''} />
-                        Like ({likeCountMap[post.id] || 0})
-                      </button>
-                      <button onClick={() => navigate(`/comments/${post.id}`)} className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-teal-700">
-                        <MessageCircle size={14} />
-                        Comment ({commentCountMap[post.id] || 0})
-                      </button>
-                      <button onClick={() => void sharePost(post.id)} className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-teal-700">
-                        <Share2 size={14} />
-                        Share
-                      </button>
-                    </div>
-                  </article>
-                ))}
+        {tab === 'activity' && (
+          <div className="mt-6 space-y-3">
+            {posts.length === 0 && (
+              <div className="rounded-2xl border border-gray-100 bg-gray-50/70 px-4 py-10 text-center text-sm text-gray-500">
+                No activity yet.
               </div>
             )}
-          </section>
+            {posts.map((post) => (
+              <div key={post.id} className="rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
+                <p className="mb-2 text-xs text-gray-400">
+                  {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
+                </p>
+                <p className="whitespace-pre-wrap text-sm text-gray-800">{post.content}</p>
+                {post.imageUrl && (
+                  <CachedImage
+                    src={post.imageUrl}
+                    alt="post"
+                    fallbackMode="post"
+                    loading="lazy"
+                    decoding="async"
+                    wrapperClassName="mt-3 w-full rounded-xl"
+                    imgClassName="h-full w-full rounded-xl object-cover"
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4 rounded-[1.75rem] border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-gray-400">Posts</p>
+            <h3 className="mt-2 text-lg font-bold text-gray-900">All Posts</h3>
+          </div>
+          <p className="text-sm text-gray-500">
+            {posts.length === 0 ? 'No posts published yet.' : `${posts.length} post${posts.length === 1 ? '' : 's'} from this profile`}
+          </p>
         </div>
-        </section>
-      </div>
+
+        {posts.length === 0 ? (
+          <div className="rounded-2xl border border-gray-100 bg-gray-50/70 px-4 py-10 text-center text-sm text-gray-500">
+            This profile has not shared any posts yet.
+          </div>
+        ) : (
+          <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {posts.map((post) => (
+              <article key={post.id} className="flex h-full flex-col overflow-hidden rounded-2xl border border-gray-100 bg-gray-50/70">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <span className="ml-4 mt-4 rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700 shadow-sm">
+                    {post.type}
+                  </span>
+                  <span className="mr-4 mt-4 text-xs text-gray-400">
+                    {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
+                  </span>
+                </div>
+                <div className="px-4 pb-4">
+                  <p className="whitespace-pre-wrap text-sm leading-7 text-gray-800">{post.content}</p>
+                </div>
+                {post.imageUrl && (
+                  <CachedImage
+                    src={post.imageUrl}
+                    alt="post"
+                    fallbackMode="post"
+                    loading="lazy"
+                    decoding="async"
+                    wrapperClassName="w-full overflow-hidden"
+                    imgClassName="h-full w-full object-cover"
+                  />
+                )}
+                <div className="flex items-center gap-5 border-t border-gray-100 px-4 py-3">
+                  <button
+                    onClick={() => void togglePostLike(post.id)}
+                    className={`inline-flex items-center gap-1 text-xs font-bold ${
+                      likedPostIds.has(post.id) ? 'text-rose-600' : 'text-gray-500 hover:text-teal-700'
+                    }`}
+                  >
+                    <Heart size={14} className={likedPostIds.has(post.id) ? 'fill-current' : ''} />
+                    Like ({likeCountMap[post.id] || 0})
+                  </button>
+                  <button
+                    onClick={() => navigate(`/comments/${post.id}`)}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-teal-700"
+                  >
+                    <MessageCircle size={14} />
+                    Comment ({commentCountMap[post.id] || 0})
+                  </button>
+                  <button
+                    onClick={() => void sharePost(post.id)}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-teal-700"
+                  >
+                    <Share2 size={14} />
+                    Share
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
