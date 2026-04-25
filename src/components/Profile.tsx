@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { UserProfile, Post, CompanyPartnerRequest, CompanyFollow } from '../types';
 import { supabaseService } from '../services/supabaseService';
-import { ArrowLeft, Building2, Camera, ExternalLink, Globe, Heart, MapPin, MessageCircle, MessageSquare, Save, Share2, Plus, Trash2, Copy, Users } from 'lucide-react';
+import { ArrowLeft, Briefcase, Building2, Camera, ExternalLink, Globe, GraduationCap, Heart, Linkedin, Mail, MapPin, MessageCircle, MessageSquare, Save, Share2, Plus, Trash2, Copy, Users } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import CachedImage from './CachedImage';
 import { PostComment, PostLike } from '../types';
@@ -452,35 +452,32 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
         <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
       </div>
 
-      <section className="overflow-hidden rounded-[1.75rem] border border-gray-200 bg-white shadow-sm">
-        <div className="relative h-44 bg-gradient-to-r from-teal-600 to-emerald-600 sm:h-52 lg:h-60">
-          {(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) && (
-            <CachedImage
-              src={(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) || ''}
-              alt="cover"
-              loading="lazy"
-              decoding="async"
-              wrapperClassName="h-full w-full"
-              imgClassName="h-full w-full object-cover"
-            />
-          )}
-          {isOwnProfile && editing && (
-            <label className="absolute bottom-3 right-3 cursor-pointer rounded-xl bg-black/30 p-2 text-white">
-              <Camera size={16} />
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => e.target.files?.[0] && handleUploadImage(e.target.files[0], 'coverPhotoURL')}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+        <section className="overflow-hidden rounded-[1.35rem] border border-gray-200 bg-white shadow-sm">
+          <div className="relative h-44 bg-gradient-to-r from-teal-600 to-emerald-600 sm:h-52">
+            {(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) && (
+              <CachedImage
+                src={(editing ? draft.coverPhotoURL : userProfile.coverPhotoURL) || ''}
+                alt="cover"
+                loading="lazy"
+                decoding="async"
+                wrapperClassName="h-full w-full"
+                imgClassName="h-full w-full object-cover"
               />
-            </label>
-          )}
-        </div>
-
-        <div className="space-y-5 px-4 pb-5 sm:px-6 lg:px-8 lg:pb-8">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-            <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end">
-              <div className="relative -mt-14 sm:-mt-16">
+            )}
+            {isOwnProfile && editing && (
+              <label className="absolute bottom-3 right-3 cursor-pointer rounded-xl bg-black/30 p-2 text-white">
+                <Camera size={16} />
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && handleUploadImage(e.target.files[0], 'coverPhotoURL')}
+                />
+              </label>
+            )}
+            <div className="absolute -bottom-14 left-4 sm:left-6">
+              <div className="relative">
                 <CachedImage
                   src={(editing ? draft.photoURL : userProfile.photoURL) || ''}
                   alt={userProfile.displayName}
@@ -488,12 +485,12 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"
-                  wrapperClassName="h-28 w-28 rounded-2xl border-4 border-white bg-white"
-                  imgClassName="h-full w-full rounded-2xl object-cover"
+                  wrapperClassName="h-24 w-24 rounded-full border-4 border-white bg-white shadow-sm sm:h-28 sm:w-28"
+                  imgClassName="h-full w-full rounded-full object-cover"
                 />
                 {isOwnProfile && editing && (
-                  <label className="absolute bottom-1 right-1 cursor-pointer rounded-lg bg-black/30 p-1.5 text-white">
-                    <Camera size={14} />
+                  <label className="absolute bottom-1 right-1 cursor-pointer rounded-full bg-black/35 p-1.5 text-white">
+                    <Camera size={12} />
                     <input
                       type="file"
                       accept="image/*"
@@ -503,94 +500,116 @@ export default function Profile({ profile: loggedInProfile }: ProfileProps) {
                   </label>
                 )}
               </div>
+            </div>
+          </div>
+
+          <div className="px-4 pb-5 pt-16 sm:px-6 sm:pb-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div className="min-w-0">
-                <h2 className="break-words text-2xl font-bold text-gray-900 sm:text-[1.9rem]">
+                <h2 className="break-words text-3xl font-bold leading-tight text-gray-900">
                   {editing ? draft.displayName : userProfile.displayName}
                 </h2>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700">
-                    {userProfile.role}
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    {(editing ? draft.publicId : userProfile.publicId) || userProfile.uid}
-                  </span>
-                </div>
+                <p className="mt-1 text-base text-gray-600">
+                  {(editing ? draft.status : userProfile.status) || userProfile.role || 'Member'}
+                </p>
                 <button
                   onClick={handleCopyUserId}
                   type="button"
-                  className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-left text-xs font-semibold text-gray-600 hover:bg-gray-200"
+                  className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-left text-xs font-semibold text-gray-600 hover:bg-gray-200"
                 >
                   <Copy size={12} />
-                  {copiedId ? 'Copied user ID' : 'Copy user ID'}
+                  {copiedId ? 'Copied user ID' : ((editing ? draft.publicId : userProfile.publicId) || userProfile.uid)}
                 </button>
               </div>
-            </div>
 
-            {isOwnProfile ? (
-              <div className="flex flex-wrap gap-2 sm:justify-end">
-                {!editing ? (
+              {isOwnProfile ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {!editing ? (
+                    <button
+                      onClick={() => setEditing(true)}
+                      className="min-h-10 rounded-full bg-blue-600 px-6 text-sm font-semibold text-white hover:bg-blue-700"
+                    >
+                      Edit profile
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="inline-flex min-h-10 items-center gap-2 rounded-full bg-blue-600 px-6 text-sm font-semibold text-white hover:bg-blue-700"
+                    >
+                      <Save size={14} />
+                      {saving ? 'Saving...' : 'Save changes'}
+                    </button>
+                  )}
                   <button
-                    onClick={() => setEditing(true)}
-                    className="rounded-xl bg-gray-100 px-4 py-2 text-sm font-semibold hover:bg-gray-200"
+                    onClick={() => navigator.clipboard.writeText(window.location.href)}
+                    className="inline-flex min-h-10 items-center rounded-full border border-blue-600 px-5 text-sm font-semibold text-blue-600 hover:bg-blue-50"
                   >
-                    Edit Profile
+                    Share
                   </button>
-                ) : (
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800"
-                  >
-                    <Save size={14} />
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                )}
-                <button
-                  onClick={() => navigator.clipboard.writeText(window.location.href)}
-                  className="rounded-xl bg-gray-100 px-3 py-2 hover:bg-gray-200"
-                >
-                  <Share2 size={16} />
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-2 sm:justify-end">
-                {canMessageUser ? (
-                  <button
-                    onClick={() => navigate(`/messages?uid=${userProfile.uid}`)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800"
-                  >
-                    <MessageSquare size={14} />
-                    Message
-                  </button>
-                ) : (
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  {canMessageUser ? (
+                    <button
+                      onClick={() => navigate(`/messages?uid=${userProfile.uid}`)}
+                      className="inline-flex min-h-10 items-center gap-2 rounded-full bg-blue-600 px-6 text-sm font-semibold text-white hover:bg-blue-700"
+                    >
+                      <MessageSquare size={14} />
+                      Message
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => navigate('/network')}
+                      className="inline-flex min-h-10 items-center gap-2 rounded-full border border-gray-300 bg-white px-5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                      <Users size={14} />
+                      Connect first
+                    </button>
+                  )}
                   <button
                     onClick={() => navigate('/network')}
-                    className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200"
+                    className="inline-flex min-h-10 items-center rounded-full border border-blue-600 px-5 text-sm font-semibold text-blue-600 hover:bg-blue-50"
                   >
-                    <Users size={14} />
-                    Connect First
+                    + Follow
                   </button>
-                )}
-              </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <aside className="rounded-[1.35rem] border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-200 px-5 py-4">
+            <h3 className="text-2xl font-bold text-gray-900">Intro</h3>
+          </div>
+          <div className="space-y-4 px-5 py-4">
+            <IntroItem
+              icon={Briefcase}
+              text={(editing ? draft.role : userProfile.role) || 'Student'}
+            />
+            {(editing ? draft.education?.university : userProfile.education?.university) && (
+              <IntroItem
+                icon={GraduationCap}
+                text={`Went to ${(editing ? draft.education?.university : userProfile.education?.university)}`}
+              />
+            )}
+            {(editing ? draft.location : userProfile.location) && (
+              <IntroItem icon={MapPin} text={`Lives in ${editing ? draft.location : userProfile.location}`} />
+            )}
+            <IntroItem icon={Users} text={`Following ${myCompanyFollows.length} compan${myCompanyFollows.length === 1 ? 'y' : 'ies'}`} />
+            <IntroItem icon={Users} text={`${completion}% profile completion`} />
+            {userProfile.phoneNumber && <IntroItem icon={Mail} text={userProfile.phoneNumber} />}
+            {(editing ? draft.socialLinks?.linkedin : userProfile.socialLinks?.linkedin) && (
+              <IntroItem
+                icon={Linkedin}
+                text={(editing ? draft.socialLinks?.linkedin : userProfile.socialLinks?.linkedin) || ''}
+                href={(editing ? draft.socialLinks?.linkedin : userProfile.socialLinks?.linkedin) || undefined}
+              />
             )}
           </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Completion</p>
-              <p className="mt-1.5 text-lg font-bold text-gray-900">{completion}%</p>
-            </div>
-            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Posts</p>
-              <p className="mt-1.5 text-lg font-bold text-gray-900">{posts.length}</p>
-            </div>
-            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Following</p>
-              <p className="mt-1.5 text-lg font-bold text-gray-900">{myCompanyFollows.length} companies</p>
-            </div>
-          </div>
-        </div>
-      </section>
+        </aside>
+      </div>
 
       <section className="rounded-[1.75rem] border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
@@ -1115,6 +1134,29 @@ function EditableField({
         )
       ) : (
         <p className="text-sm text-gray-800">{value || 'Not set'}</p>
+      )}
+    </div>
+  );
+}
+
+function IntroItem({
+  icon: Icon,
+  text,
+  href,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  text: string;
+  href?: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 text-gray-700">
+      <Icon size={17} className="mt-0.5 text-gray-400" />
+      {href ? (
+        <a href={href} target="_blank" rel="noopener noreferrer" className="break-all text-blue-600 hover:underline">
+          {text}
+        </a>
+      ) : (
+        <p className="break-words text-[15px]">{text}</p>
       )}
     </div>
   );
